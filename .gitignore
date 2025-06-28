@@ -1,4 +1,7 @@
 
+# Personal 
+.env
+
 # pixi environments
 .pixi
 *.egg-info
