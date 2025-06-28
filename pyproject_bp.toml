@@ -1,0 +1,106 @@
+[project]
+authors = [{name = "Amit Klein", email = "a3klein@ucsd.edu"}]
+dependencies = []
+name = "spida"
+requires-python = ">= 3.11"
+version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+spida = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+fire = ">=0.7.0,<0.8"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+spatialdata = { features = ["spatialdata"], solve-group = "default" }
+preprocessing = { features = ["preprocessing", "spatialdata"], solve-group = "default" } 
+
+[tool.pixi.feature.spatialdata.tasks.ingest_region]
+args = [
+	"exp",
+	"reg",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "source", "default" = "machine"}, 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py ingest_region {{exp}} {{reg}} --type={{type}} --source={{source}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[tool.pixi.feature.spatialdata.tasks.ingest_all]
+args = [
+	"exp",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "source", "default" = "machine"}, 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py ingest_all {{exp}} --type={{type}} --source={{source}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[tool.pixi.feature.spatialdata.tasks.load_seg_region]
+args = [
+	"exp", "reg", "seg_dir",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py load_segmentation_region {{exp}} {{reg}} {{seg_dir}} --type={{type}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[tool.pixi.feature.spatialdata.tasks.load_seg_all]
+args = [
+	"exp", "seg_dir",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py load_segmentation_all {{exp}} {{seg_dir}} --type={{type}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[tool.pixi.feature.preprocessing.tasks.filter_cells_region]
+args = [
+	"exp", "reg",
+	{ "arg" = "prefix_name", "default" = "default"},
+	{ "arg" = "plot" , "default" = "False"},
+	{ "arg" = "cutoffs_path", "default" = "None"},
+]
+cmd = "python main.py filter_cells_region {{exp}} {{reg}} {{prefix_name}} --cutoffs_path={{cutoffs_path}} --plot={{plot}}"
+cwd = "src/spida/P"
+
+[tool.pixi.feature.preprocessing.tasks.filter_cells_all]
+args = [
+	"exp",
+	{ "arg" = "prefix_name", "default" = "default"},
+	{ "arg" = "plot" , "default" = "False"},
+	{ "arg" = "cutoffs_path", "default" = "None"},
+]
+cmd = "python main.py filter_cells_all {{exp}} {{prefix_name}} --cutoffs_path={{cutoffs_path}} --plot={{plot}}"
+cwd = "src/spida/P"
+
+[tool.pixi.feature.spatialdata.tasks]
+# ingest = { args = ["exp", "reg"], cmd = "python main.py ingest {{exp}} {{reg}}", cwd = "src/spida/io"}
+ingest-help = {cmd = "python main.py ingest_region --help", cwd = "src/spida/io"}
+io-help = {cmd = "python main.py --help", cwd = "src/spida/io"}
+
+[tool.pixi.feature.preprocessing.tasks]
+filter-help = {cmd = "python main.py filter_cells_region --help", cwd = "src/spida/P"}
+P-help = {cmd = "python main.py --help", cwd = "src/spida/P"}
+
+[tool.pixi.feature.preprocessing.dependencies]
+polars = "*"
+
+[dependency-groups]
+spatialdata = ["spatialdata[extra]"]
+

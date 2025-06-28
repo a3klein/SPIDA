@@ -1,0 +1,229 @@
+[workspace]
+authors = ["Amit Klein <a3klein@ucsd.edu>"]
+channels = ["conda-forge", "pypi"]
+name = "spida"
+platforms = ["linux-64"]
+version = "0.1.0"
+preview = ['pixi-build']
+
+[package.host-dependencies]
+hatchling = "*"
+
+[package.build]
+backend = { name = "pixi-build-python", version = "0.1*" } 
+channels = [
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/conda-forge",
+]
+
+
+# Global dependencies 
+[dependencies]
+fire = ">=0.7.0,<0.8"
+python-dotenv = ">=1.1.0,<2"
+python = ">=3.10"
+[pypi-dependencies]
+ruff = "*"
+spida = { path = "." }
+
+# Defining Features
+[feature.preprocessing.dependencies]
+spatialdata = "*"
+spatialdata-io = "*"
+spatialdata-plot = "*"
+polars = "*"
+opentsne = "*"
+pynndescent = "*"
+# scvi-tools = "*"
+statsmodels = "*"
+scanpy = "*"
+leidenalg = "*"
+scikit-learn = "1.6.0.*"
+[feature.preprocessing.pypi-dependencies] 
+allcools = { git = "https://github.com/DingWB/ALLCools" }
+imblearn = "*"
+# pym3c = { git = "https://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@github.com/DingWB/pym3c"}
+
+[feature.proseg.dependencies]
+rust = "*"
+
+[feature.deepcell.pypi-dependencies]
+deepcell = "==0.12.6"
+shapely = "*"
+supervision = "*"
+geopandas = "*"
+natsort = "*"
+pyarrow = "*" 
+[feature.deepcell.dependencies]
+python = "<=3.10,>3.8"
+
+[feature.cellpose.dependencies]
+python = "3.11.*"
+shapely = "*"
+geopandas = "*"
+supervision = "*"
+pyarrow = "*"
+ # pyclesperanto-prototype = "*"
+ # ocl-icd-system = "*"
+[feature.cellpose.pypi-dependencies]
+cellpose = "==4.0.4"
+
+[feature.mapmycells.dependencies]
+python="3.10.*"
+zarr = "*"
+[feature.mapmycells.pypi-dependencies]
+cell_type_mapper = { path = "../bican/mmc/cell_type_mapper", editable = true}
+
+# Setting environment names for all the features 
+[environments]
+preprocessing = ['preprocessing']
+proseg = ["proseg"]
+deepcell = ["deepcell"]
+cellpose = ["cellpose"]
+mapmycells = ["mapmycells"]
+
+# Preprocssing Tasks 
+[feature.preprocessing.tasks]
+ingest-help = {cmd = "python main.py ingest_region --help | echo", cwd = "src/spida/io"}
+io-help = {cmd = "python main.py --help | echo", cwd = "src/spida/io"}
+filter-help = {cmd = "python main.py filter_cells_region --help | echo", cwd = "src/spida/P"}
+setup-help = {cmd = "python main.py setup_adata --help | echo", cwd = "src/spida/P" }
+P-help = {cmd = "python main.py --help | echo", cwd = "src/spida/P"}
+
+[feature.preprocessing.tasks.ingest_region]
+args = [
+	"exp",
+	"reg",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "source", "default" = "machine"}, 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py ingest_region {{exp}} {{reg}} --type={{type}} --source={{source}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[feature.preprocessing.tasks.ingest_all]
+args = [
+	"exp",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "source", "default" = "machine"}, 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py ingest_all {{exp}} --type={{type}} --source={{source}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[feature.preprocessing.tasks.load_seg_region]
+args = [
+	"exp", "reg", "seg_dir",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py load_segmentation_region {{exp}} {{reg}} {{seg_dir}} --type={{type}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[feature.preprocessing.tasks.load_seg_all]
+args = [
+	"exp", "seg_dir",
+	{ "arg" = "plot", "default" = "False" },
+	{ "arg" = "type", "default" = "merscope"} , 
+	{ "arg" = "prefix_name", "default" = "default"},
+]
+cmd = "python main.py load_segmentation_all {{exp}} {{seg_dir}} --type={{type}} --prefix_name={{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/io"
+
+[feature.preprocessing.tasks.filter_cells_region]
+args = [
+	"exp", "reg",
+	{ "arg" = "prefix_name", "default" = "default"},
+	{ "arg" = "plot" , "default" = "False"},
+	{ "arg" = "cutoffs_path", "default" = "None"},
+]
+cmd = "python main.py filter_cells_region {{exp}} {{reg}} {{prefix_name}} --cutoffs_path={{cutoffs_path}} --plot={{plot}}"
+cwd = "src/spida/P"
+
+[feature.preprocessing.tasks.filter_cells_all]
+args = [
+	"exp",
+	{ "arg" = "prefix_name", "default" = "default"},
+	{ "arg" = "plot" , "default" = "False"},
+	{ "arg" = "cutoffs_path", "default" = "None"},
+]
+cmd = "python main.py filter_cells_all {{exp}} {{prefix_name}} --cutoffs_path={{cutoffs_path}} --plot={{plot}}"
+cwd = "src/spida/P"
+
+[feature.preprocessing.tasks.setup_adata_region]
+args = [
+	"exp", "reg", 
+	{ "arg" = "prefix_name", "default" = "default"},
+	{ "arg" = "plot" , "default" = "False"},
+]
+cmd = "python main.py setup_adata_region {{exp}} {{reg}} {{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/P"
+
+[feature.preprocessing.tasks.setup_adata_all]
+args = [
+	"exp",
+	{ "arg" = "prefix_name", "default" = "default"},
+	{ "arg" = "plot" , "default" = "False"},
+]
+cmd = "python main.py setup_adata_all {{exp}} {{prefix_name}} --plot={{plot}}"
+cwd = "src/spida/P"
+
+[feature.preprocessing.tasks.segment_region]
+args = [
+	"type", "exp", "reg", 
+	{ "arg" = "input_dir", "default" = "None"},
+	{ "arg" = "output_dir", "default" = "None"},
+]
+cmd = "python main.py run_segmentation {{type}} {{exp}} {{reg}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
+cwd = "src/spida/segmentation"
+
+[feature.preprocessing.tasks.segment_all]
+args = [
+	"type", "exp",
+	{ "arg" = "input_dir", "default" = "None"},
+	{ "arg" = "output_dir", "default" = "None"},
+]
+cmd = "python main.py segment_experiment {{type}} {{exp}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
+cwd = "src/spida/segmentation"
+
+[feature.cellpose.tasks.segment_cellpose_region]
+args = [
+	"exp", "reg",
+	{ "arg" = "input_dir", "default" = "None"},
+	{ "arg" = "output_dir", "default" = "None"},
+]
+cmd = "python main.py run_segmentation cellpose {{exp}} {{reg}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
+cwd = "src/spida/segmentation"
+
+[feature.cellpose.tasks.segment_cellpose_all]
+args = [
+	"exp",
+	{ "arg" = "input_dir", "default" = "None"},
+	{ "arg" = "output_dir", "default" = "None"},
+]
+cmd = "python main.py segment_experiment cellpose {{exp}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
+cwd = "src/spida/segmentation"
+
+[feature.deepcell.tasks.segment_mesmer_region]
+args = [
+	"exp", "reg",
+	{ "arg" = "input_dir", "default" = "None"},
+	{ "arg" = "output_dir", "default" = "None"},
+]
+cmd = "python main.py run_segmentation mesmer {{exp}} {{reg}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
+cwd = "src/spida/segmentation"
+
+[feature.deepcell.tasks.segment_mesmer_all]
+args = [
+	"exp",
+	{ "arg" = "input_dir", "default" = "None"},
+	{ "arg" = "output_dir", "default" = "None"},
+]
+cmd = "python main.py segment_experiment mesmer {{exp}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
+cwd = "src/spida/segmentation"
+
+[tasks]
+lint-fast = "ruff --fix src/"
