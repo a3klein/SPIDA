@@ -8478,3 +8478,311 @@ INFO:ome_zarr.reader: - dtype = uint16
 INFO:ome_zarr.reader:root_attr: multiscales
 INFO:ome_zarr.reader:root_attr: omero
 INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.0, 4.000093457943925], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000442086648983, 8.00018691588785], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.000884173297965, 16.0003738317757], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 72388, 85602)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2756)', '4096 (+ 3682)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 36194, 42801)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3426)', '4096 (+ 1841)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 18097, 21400)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1713)', '4096 (+ 920)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 9048, 10700)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 856)', '4096 (+ 2508)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4524, 5350)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 428)', '4096 (+ 1254)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.0001298448354214, 4.0], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000779119594858, 8.000443066016837], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.003636363636364, 16.000886132033674], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 61614, 72228)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 174)', '4096 (+ 2596)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 30807, 36114)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2135)', '4096 (+ 3346)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 15403, 18057)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3115)', '4096 (+ 1673)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 7701, 9028)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3605)', '4096 (+ 836)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 3850, 4514)
+INFO:ome_zarr.reader: - chunks =  ['1', '3850', '4096 (+ 418)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.000029901623658, 2.0000324728040266], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.000179415106752, 4.000194843151263], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000837320574163, 8.000909327097947], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.001674641148327, 16.001818654195894], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 66887, 61591)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1351)', '4096 (+ 151)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 33443, 30795)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 675)', '4096 (+ 2123)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 16721, 15397)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 337)', '4096 (+ 3109)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 8360, 7698)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 168)', '4096 (+ 3602)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4180, 3849)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 84)', '3849']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.0001298448354214, 4.0], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000779119594858, 8.000443066016837], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.003636363636364, 16.000886132033674], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 61614, 72228)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 174)', '4096 (+ 2596)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 30807, 36114)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2135)', '4096 (+ 3346)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 15403, 18057)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3115)', '4096 (+ 1673)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 7701, 9028)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3605)', '4096 (+ 836)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 3850, 4514)
+INFO:ome_zarr.reader: - chunks =  ['1', '3850', '4096 (+ 418)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0000286853503915], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.000106797671811, 4.000172117039587], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.00064082024992, 8.000344234079174], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.002990813928648, 16.002524672940098], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 74910, 69723)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1182)', '4096 (+ 91)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 37455, 34861)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 591)', '4096 (+ 2093)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 18727, 17430)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2343)', '4096 (+ 1046)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 9363, 8715)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1171)', '4096 (+ 523)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4681, 4357)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 585)', '4096 (+ 261)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.0, 4.000093457943925], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000442086648983, 8.00018691588785], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.000884173297965, 16.0003738317757], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 72388, 85602)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2756)', '4096 (+ 3682)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 36194, 42801)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3426)', '4096 (+ 1841)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 18097, 21400)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1713)', '4096 (+ 920)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 9048, 10700)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 856)', '4096 (+ 2508)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4524, 5350)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 428)', '4096 (+ 1254)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.000029901623658, 2.0000324728040266], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.000179415106752, 4.000194843151263], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000837320574163, 8.000909327097947], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.001674641148327, 16.001818654195894], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 66887, 61591)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1351)', '4096 (+ 151)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 33443, 30795)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 675)', '4096 (+ 2123)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 16721, 15397)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 337)', '4096 (+ 3109)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 8360, 7698)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 168)', '4096 (+ 3602)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4180, 3849)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 84)', '3849']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.0001298448354214, 4.0], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000779119594858, 8.000443066016837], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.003636363636364, 16.000886132033674], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 61614, 72228)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 174)', '4096 (+ 2596)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 30807, 36114)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2135)', '4096 (+ 3346)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 15403, 18057)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3115)', '4096 (+ 1673)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 7701, 9028)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3605)', '4096 (+ 836)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 3850, 4514)
+INFO:ome_zarr.reader: - chunks =  ['1', '3850', '4096 (+ 418)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0000286853503915], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.000106797671811, 4.000172117039587], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.00064082024992, 8.000344234079174], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.002990813928648, 16.002524672940098], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 74910, 69723)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1182)', '4096 (+ 91)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 37455, 34861)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 591)', '4096 (+ 2093)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 18727, 17430)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2343)', '4096 (+ 1046)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 9363, 8715)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1171)', '4096 (+ 523)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4681, 4357)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 585)', '4096 (+ 261)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.0, 2.0], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.0, 4.000093457943925], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000442086648983, 8.00018691588785], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.000884173297965, 16.0003738317757], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 72388, 85602)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 2756)', '4096 (+ 3682)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 36194, 42801)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 3426)', '4096 (+ 1841)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 18097, 21400)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1713)', '4096 (+ 920)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 9048, 10700)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 856)', '4096 (+ 2508)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4524, 5350)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 428)', '4096 (+ 1254)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+WARNING:ome_zarr.io:version mismatch: detected: RasterFormatV02, requested: FormatV04
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
+INFO:ome_zarr.reader:datasets [{'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}], 'path': '0'}, {'coordinateTransformations': [{'scale': [1.0, 2.000029901623658, 2.0000324728040266], 'type': 'scale'}], 'path': '1'}, {'coordinateTransformations': [{'scale': [1.0, 4.000179415106752, 4.000194843151263], 'type': 'scale'}], 'path': '2'}, {'coordinateTransformations': [{'scale': [1.0, 8.000837320574163, 8.000909327097947], 'type': 'scale'}], 'path': '3'}, {'coordinateTransformations': [{'scale': [1.0, 16.001674641148327, 16.001818654195894], 'type': 'scale'}], 'path': '4'}]
+INFO:ome_zarr.reader:resolution: 0
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 66887, 61591)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 1351)', '4096 (+ 151)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 1
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 33443, 30795)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 675)', '4096 (+ 2123)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 2
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 16721, 15397)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 337)', '4096 (+ 3109)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 3
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 8360, 7698)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 168)', '4096 (+ 3602)']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:resolution: 4
+INFO:ome_zarr.reader: - shape ('c', 'y', 'x') = (8, 4180, 3849)
+INFO:ome_zarr.reader: - chunks =  ['1', '4096 (+ 84)', '3849']
+INFO:ome_zarr.reader: - dtype = uint16
+INFO:ome_zarr.reader:root_attr: multiscales
+INFO:ome_zarr.reader:root_attr: omero
+INFO:ome_zarr.reader:root_attr: spatialdata_attrs
