@@ -9,7 +9,7 @@ import seaborn as sns
 
 sys.path.append(os.getenv("SPIDA_PATH"))
 from spida._constants import CELL_X, CELL_Y
-from spida.plotting.cluster_plots import plot_scatter
+from spida.pl import plot_scatter
 from spida._utilities import _region_to_donor
 
 def plot_feature_distribution(df:pd.DataFrame, feature:str, feature_alias:str=None, min_val=None, max_val=None,

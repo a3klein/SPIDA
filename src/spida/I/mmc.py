@@ -314,3 +314,127 @@ def run_mmc(query_adata:ad.AnnData,
     query_adata.write_h5ad(query_path)
     
     return 0
+
+
+
+#### Runners 
+def mmc_setup(ref_path:str,
+            heirarchy_list:list,
+            BRAIN_REGION:str,
+            CODEBOOK:str,
+            codebook_path:str=None,
+            mmc_store_path:str=None,
+            ref_norm:str="log2CPM", 
+            **kwargs
+            ): 
+    """
+    Setup function for MapMyCells integration.
+    
+    Parameters:
+    ref_path (str): Path to the reference data.
+    heirarchy_list (list): List of hierarchy levels for the annotation.
+    BRAIN_REGION (str): Brain region for the annotation.
+    CODEBOOK (str): Codebook for the annotation.
+    codebook_path (str, optional): Path to the codebook file. Defaults to None.
+    mmc_store_path (str, optional): Path to the store of MapMyCells markers. Defaults to None.
+    ref_norm (str, optional): Normalization method for the reference AnnData.X. Defaults to "log2CPM".
+    **kwargs: Additional keyword arguments.
+    """
+    setup_mmc(ref_path=ref_path,
+            BRAIN_REGION=BRAIN_REGION,
+            CODEBOOK=CODEBOOK,
+            codebook_path=codebook_path,
+            heirarchy_list=heirarchy_list,
+            mmc_store_path=mmc_store_path,
+            ref_norm=ref_norm,
+            **kwargs)
+    """
+    Setup function for MapMyCells integration.
+    """
+
+    print("DONE")
+    return 0
+
+
+def mmc_annotation_region(
+                        exp_name:str, 
+                        reg_name:str, 
+                        prefix_name:str, 
+                        BRAIN_REGION:str, 
+                        CODEBOOK:str, 
+                        mmc_store_path:str=None, 
+                        anndata_store_path:str=None, 
+                        annotations_store_path:str=None,
+                        **kwargs
+                        ):
+    """
+    Run MapMyCells annotation on a given experiment and region.
+    
+    Parameters: 
+    exp_name (str): Name of the experiment.
+    reg_name (str): Name of the region.
+    prefix_name (str): Prefix for the keys in the spatialdata object.
+    BRAIN_REGION (str): Brain region for the annotation.
+    CODEBOOK (str): Codebook for the annotation.
+    mmc_store_path (str, optional): Path to the store of MapMyCells markers. Defaults to None.
+    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
+    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults to None.
+    **kwargs: Additional keyword arguments.
+    """
+    print("RUNNING MMC ANNOTATIONS, EXPERIMENT %s, REGION %s, PREFIX %s" %(exp_name, reg_name, prefix_name) )
+
+    # # Getting the sdata object (right now from a constant zarr store path)
+    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
+    adata = ad.read_zarr(f"{zarr_path}/tables/{prefix_name}_table")
+
+    ### Need to get the adata_path from this function (it must have been written out beforehand)
+
+    return run_mmc(
+            adata,
+            BRAIN_REGION,
+            CODEBOOK,
+            mmc_store_path,
+            anndata_store_path, 
+            annotations_store_path,
+            kwargs=kwargs,
+        )
+
+
+def mmc_annotation_experiment(
+        exp_name:str, 
+        prefix_name:str, 
+        BRAIN_REGION:str, 
+        CODEBOOK:str, 
+        mmc_store_path:str=None, 
+        anndata_store_path:str=None, 
+        annotations_store_path:str=None,
+        **kwargs
+        ):
+    """
+    Run MapMyCells annotation for an entire experiment.
+    
+    Parameters:
+    exp_name (str): Name of the experiment.
+    prefix_name (str): Prefix for the keys in the spatialdata object.
+    BRAIN_REGION (str): Brain region for the annotation.
+    CODEBOOK (str): Codebook for the annotation.
+    mmc_store_path (str, optional): Path to the store of MapMyCells markers. Defaults to None.
+    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
+    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults to None.
+    **kwargs: Additional keyword arguments.
+    """
+    
+    # Getting the regions for the experiment
+    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    exp_path = Path(f"{zarr_store}/{exp_name}")
+    regions = glob.glob(f"{exp_path}/region_*")
+    
+    for reg in regions: 
+        reg_name = reg.split("/")[-1]
+        mmc_annotation_region(exp_name, reg_name, prefix_name, 
+                            BRAIN_REGION=BRAIN_REGION, CODEBOOK=CODEBOOK,
+                            mmc_store_path=mmc_store_path,
+                            anndata_store_path=anndata_store_path,
+                            annotations_store_path=annotations_store_path,
+                            **kwargs)

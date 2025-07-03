@@ -1,10 +1,3 @@
-
-import sys
-
-spida_path = "/ceph/cephatlas/aklein/spida/src"
-sys.path.append(spida_path)
-
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 
