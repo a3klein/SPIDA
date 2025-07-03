@@ -1,5 +1,7 @@
 import os
+import glob
 from pathlib import Path
+import warnings
 
 # assuming that all genes in the merscope dataset should overlap with the genes in the scRNA dataset. 
 import numpy as np
@@ -257,3 +259,69 @@ def run_allcools_seurat(ref_adata:ad.AnnData,
     return qry_adata
 
 
+### Runners
+def allcools_integration_region(exp_name:str,
+                                reg_name:str, 
+                                prefix_name:str, 
+                                ref_path:str,
+                                anndata_store_path:str=None, 
+                                annotations_store_path:str=None,
+                                **kwargs):
+    """
+    Run ALLCools integration on a given experiment and region.
+    Parameters:
+    exp_name (str): Name of the experiment.
+    reg_name (str): Name of the region.
+    prefix_name (str): Prefix for the keys in the spatialdata object.
+    ref_path (str): Path to the reference RNA AnnData object .
+    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
+    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults
+    to None.
+    **kwargs: Additional keyword arguments for ALLCools integration.
+    """
+    print("RUNNING ALLCOOLS INTEGRATION, EXPERIMENT %s, REGION %s, PREFIX %s" %(exp_name, reg_name, prefix_name) )
+
+    # # Getting the sdata object (right now from a constant zarr store path)
+    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
+    adata = ad.read_zarr(f"{zarr_path}/tables/{prefix_name}_table")
+
+    ref_adata = ad.read_h5ad(ref_path)
+
+    adata = run_allcools_seurat(ref_adata, adata,
+                                anndata_store_path,
+                                annotations_store_path,
+                                **kwargs)
+    
+    print("DONE WITH ALLCOOLS INTEGRATION")
+
+def allcools_integration_experiment(exp_name:str,
+                                    prefix_name:str, 
+                                    ref_path:str,
+                                    anndata_store_path:str=None, 
+                                    annotations_store_path:str=None,
+                                    **kwargs):
+    """
+    Run ALLCools integration for an entire experiment.
+    
+    Parameters:
+    exp_name (str): Name of the experiment.
+    prefix_name (str): Prefix for the keys in the spatialdata object.
+    ref_path (str): Path to the reference RNA AnnData object .
+    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
+    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults
+    to None.
+    **kwargs: Additional keyword arguments for ALLCools integration.
+    """
+
+    # Getting the regions for the experiment
+    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    exp_path = Path(f"{zarr_store}/{exp_name}")
+    regions = glob.glob(f"{exp_path}/region_*")
+    
+    for reg in regions: 
+        reg_name = reg.split("/")[-1]
+        allcools_integration_region(exp_name, reg_name, prefix_name, ref_path,
+                                    anndata_store_path=anndata_store_path,
+                                    annotations_store_path=annotations_store_path,
+                                    **kwargs)

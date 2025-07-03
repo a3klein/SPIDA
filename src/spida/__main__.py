@@ -1,10 +1,7 @@
 from pathlib import Path
 import fire
 
-# spida_path = "/ceph/cephatlas/aklein/spida/src"
-# sys.path.append(spida_path)
-# from spida._templates import *
-from _templates import *
+from spida._templates import *
 
 TEMPLATE_PREFIX = "template"
 
@@ -114,6 +111,33 @@ def gen_run(out_loc:str,
             ):
     """
     Generate the run commands for the main processing steps in SPIDA.
+
+    Parameters
+    ----------
+    out_loc : str
+        The directory where the output script will be saved.
+    type : str or list
+        The type of processing step(s) to generate commands for. 
+        Options include "start", "load_seg", "seg", "mmc_annotation", and "allc_integration".
+    exp_name : str or list
+        The name(s) of the experiment(s) to be processed.
+    prefix_name : str or list
+        The prefix name(s) for the output files.
+    kwargs : dict
+        Additional keyword arguments for specific processing steps. These may include: 
+        - seg_input_dir: Directory for input segmentation data.
+        - seg_output_dir: Directory for output segmentation data.
+        - seg_type: Type of segmentation to run.
+        - seg_fam: Family of segmentation to run.
+        - plot_load: Whether to plot the loading step.
+        - plot_filtering: Whether to plot the filtering step.
+        - plot_setup: Whether to plot the setup step.
+        - cutoffs_path: Path to the cutoffs JSON file.
+        - brain_region: Brain region for MMC annotation.
+        - codebook: Codebook for MMC annotation.
+        - adata_path: Path to the AnnData object for integration.
+        - adata_ref_path: Path to the reference AnnData object for integration.
+        - rna_cluster_col: Column name for RNA clusters in the AnnData object.
     """
     
     # Get the output file location 

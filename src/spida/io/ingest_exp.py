@@ -16,7 +16,7 @@ with warnings.catch_warnings():
 
 spida_path = "/ceph/cephatlas/aklein/spida/src"
 sys.path.append(spida_path)
-from spida._utilities import _gen_keys
+from spida._utilities import _gen_keys, _backup_adata
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 
 
@@ -178,6 +178,8 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
         sdata.write_element(KEYS[SHAPES_KEY])
     if f"tables/{KEYS[TABLE_KEY]}" not in sdata.elements_paths_on_disk():
         sdata.write_element(KEYS[TABLE_KEY])
+    else: 
+        _backup_adata(exp_name, reg_name, tables[KEYS[TABLE_KEY]], element_name=KEYS[TABLE_KEY])
     
     sd.save_transformations(sdata)
     
