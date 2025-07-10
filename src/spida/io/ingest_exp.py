@@ -2,6 +2,8 @@ import sys
 import subprocess
 import warnings
 
+import numpy as np
+
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     import spatialdata as sd
@@ -14,8 +16,8 @@ with warnings.catch_warnings():
         set_transformation
     )
 
-spida_path = "/ceph/cephatlas/aklein/spida/src"
-sys.path.append(spida_path)
+# spida_path = "/ceph/cephatlas/aklein/spida/src"
+# sys.path.append(spida_path)
 from spida._utilities import _gen_keys, _backup_adata
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 

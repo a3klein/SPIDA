@@ -1,8 +1,12 @@
+import os
 import sys
 import glob
 import pathlib
 import fire # type: ignore
 import warnings
+
+from dotenv import load_dotenv # type: ignore
+load_dotenv()
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
@@ -17,7 +21,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 # Setting Logging for this module 
 import logging
-logging.basicConfig(filename="/ceph/cephatlas/aklein/spida/tests/spida.log", level=logging.INFO)
+logging.basicConfig(filename="../../spida.log", level=logging.INFO)
 
 
 class io_cli(): 
@@ -54,8 +58,8 @@ class io_cli():
         KEYS = _gen_keys(prefix_name, exp_name, reg_name)
 
         if type == "merscope" and source == "machine":
-            root_path = "/ceph/cephatlas/merscope_data/processed"
-            processed_path = "/data/aklein/bican_zarr"
+            root_path = os.getenv("PROCESSED_ROOT_PATH", "/ceph/cephatlas/merscope_data/processed")
+            processed_path = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
             input_path = f"{root_path}/{exp_name}/out/{reg_name}"
             zarr_path = f"{processed_path}/{exp_name}/{reg_name}"
 
@@ -66,7 +70,8 @@ class io_cli():
 
             print(sdata.tables.keys())
             if plot: 
-                image_path = f"/ceph/cephatlas/aklein/bican/images/{exp_name}/default/{reg_name}/pixi-ing.pdf"
+                image_path = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
+                image_path = f"{image_path}/{exp_name}/default/{reg_name}/pixi-ing.pdf"
                 pathlib.Path(image_path).parent.mkdir(parents=True, exist_ok=True)
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore")
@@ -92,9 +97,11 @@ class io_cli():
         prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
         source (str): Source of the data (default is "machine").
         """
+        
+        print("INGESTING ALL REGIONS; EXPERIMENT %s" %(exp_name) )
 
         if type == "merscope" and source == "machine":
-            root_path = "/ceph/cephatlas/merscope_data/processed"
+            root_path = os.getenv("PROCESSED_ROOT_PATH", "/ceph/cephatlas/merscope_data/processed")
             input_path = f"{root_path}/{exp_name}/out"
             regions = glob.glob(f"{input_path}/region_*")
             for reg in regions: 
@@ -123,7 +130,8 @@ class io_cli():
         print("LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s" %(exp_name, reg_name, type) )
 
 
-        zarr_path = f"/data/aklein/bican_zarr/{exp_name}/{reg_name}"
+        zarr_root = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+        zarr_path = f"{zarr_root}/{exp_name}/{reg_name}"
         print(zarr_path)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
@@ -141,7 +149,8 @@ class io_cli():
             image_scale_keys = list(sdata[KEYS[IMAGE_KEY]].keys())
             
             # define plot pdf
-            image_path = f"/ceph/cephatlas/aklein/bican/images/{exp_name}/{prefix_name}/{reg_name}/pixi-load.pdf"
+            image_root = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
+            image_path = f"{image_root}/{exp_name}/{prefix_name}/{reg_name}/pixi-load.pdf"
             pathlib.Path(image_path).parent.mkdir(parents=True, exist_ok=True)
             
             # plot

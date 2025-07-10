@@ -11,8 +11,8 @@ import anndata as ad
 #     warnings.filterwarnings("ignore")
 #     import spatialdata as sd
 
-spida_path = "/ceph/cephatlas/aklein/spida/src"
-sys.path.append(spida_path)
+# spida_path = "/ceph/cephatlas/aklein/spida/src"
+# sys.path.append(spida_path)
 from spida._utilities import _validate_adata
 from spida._constants import * # type: ignore
 

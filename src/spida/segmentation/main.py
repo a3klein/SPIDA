@@ -6,7 +6,7 @@ from pathlib import Path
 import fire # type: ignore
 import glob
 
-sys.path.append(os.getenv("SPIDA_PATH"))
+# sys.path.append(os.getenv("SPIDA_PATH"))
 
 
 # The controller that calls the specified segmentation algorithms 
