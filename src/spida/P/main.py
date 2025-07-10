@@ -20,7 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 # Setting Logging for this module 
 import logging
-logging.basicConfig(filename="/ceph/cephatlas/aklein/spida/tests/spida.log", level=logging.INFO)
+logging.basicConfig(filename="../../spida.log", level=logging.INFO)
 
 class P_cli(): 
     """

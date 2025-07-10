@@ -7,7 +7,7 @@ import anndata as ad
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-sys.path.append(os.getenv("SPIDA_PATH"))
+# sys.path.append(os.getenv("SPIDA_PATH"))
 from spida._constants import CELL_X, CELL_Y
 from spida.pl import plot_scatter
 from spida._utilities import _region_to_donor

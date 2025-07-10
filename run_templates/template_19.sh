@@ -2,14 +2,11 @@
 
     
     # DEFAULT 
-    # pixi run ingest_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 True 
-    # pixi run -e preprocessing python src/spida/cli.py io ingest_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 --plot=True
+    pixi run -e preprocessing python src/spida/cli.py io ingest_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 --plot=False  # Plotting is raising errors? 
 
     # FILTERING 
-    # pixi run filter_cells_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 default True None
-    pixi run -e preprocessing python src/spida/cli.py P filter_cells_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 default --plot=True --cutoffs_path=None
+    pixi run -e preprocessing python src/spida/cli.py P filter_cells_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 default --plot=True --cutoffs_path=/home/x-aklein2/projects/aklein/BICAN/data/filtering_cutoffs.json # Set Cutoffs Path
 
     # SETUP ADATA 
-    # pixi run setup_adata_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 default True
     pixi run -e preprocessing python src/spida/cli.py P setup_adata_all 202506291134_BICAN-4x1-CAT-E-03_VMSC31910 default --plot=True
     

@@ -19,8 +19,8 @@ import pandas as pd
 # from dask import array as da
 
 # spida imports 
-spida_path = "/ceph/cephatlas/aklein/spida/src"
-sys.path.append(spida_path)
+# spida_path = "/ceph/cephatlas/aklein/spida/src"
+# sys.path.append(spida_path)
 from spida._constants import PROSEG_PRESET, REGION_KEY, GEOMETRY_COL
 
 def _get_polygons(boundaries_path : Path, transformations : dict[str, BaseTransformation]) -> gpd.GeoDataFrame: 

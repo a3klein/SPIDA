@@ -25,6 +25,7 @@ class CLI():
         self.generate_template = gen_run
 
 if __name__ == "__main__":
+    print("Firing")
     # fire.Fire(name="spida")
     fire.Fire(CLI)
 
