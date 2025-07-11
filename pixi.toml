@@ -71,8 +71,8 @@ cellpose = "==4.0.4"
 [feature.mapmycells.dependencies]
 python="3.10.*"
 zarr = "*"
-#[feature.mapmycells.pypi-dependencies]
-#cell_type_mapper = { path = "../bican/mmc/cell_type_mapper", editable = true}
+[feature.mapmycells.pypi-dependencies]
+cell_type_mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" }
 
 # Setting environment names for all the features 
 [environments]
