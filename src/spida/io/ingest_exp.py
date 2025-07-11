@@ -103,7 +103,6 @@ def _cast_multipolygons_to_polygons(sdata, shapes_key, subset_field:list=['Entit
         gdf.sort_values(by="area", ascending=False, inplace=True) 
         index_dup = gdf.index[gdf.index.duplicated()]
         print(len(index_dup), "duplicated indices found in gdf") # print how many duplicates were found 
-        ### TODO: Depending on the preset might need to change the subset field to a parameter
         gdf = gdf.drop_duplicates(subset=subset_field)
         sdata[shapes_key] = gdf
     return sdata
@@ -119,6 +118,7 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
                           cell_by_gene_fname:str="cell_by_gene.csv",
                           detected_transcripts_fname:str="detected_transcripts.csv",
                           cellpose_micron_space_fname:str="cellpose_micron_space.parquet",
+                          **kwargs
                          ): 
     """
     Load the vpt segmentation into a spatialdata object. 
@@ -212,6 +212,7 @@ def load_proseg_segmentation(sdata:sd.SpatialData,
                              cell_by_gene_fname:str="expected-counts.csv.gz",
                              detected_transcripts_fname:str="transcript-metadata.csv.gz",
                              cell_polygons_fname:str="cell-polygons.geojson.gz",
+                             **kwargs
                             ): 
     """
     Load the ProSeg segmentation data.
