@@ -60,7 +60,7 @@ class P_cli():
 
         # default cutoffs path
         if cutoffs_path is None: 
-            cutoffs_path = Path("/ceph/cephatlas/aklein/bican/reference/filtering_cutoffs.json")
+            cutoffs_path = os.getenv("DEF_CUTOFFS_PATH", "/ceph/cephatlas/aklein/bican/reference/filtering_cutoffs.json")
         
         # determining donor from region name
         donor_name = _region_to_donor(reg_name)
@@ -142,7 +142,8 @@ class P_cli():
                 _write_adata(exp_name, reg_name, p, fout)
             # if no region is provided, write all regions
             else: 
-                region_list = glob.glob(f"/data/aklein/bican_zarr/{exp_name}/region_*")
+                zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+                region_list = glob.glob(f"{zarr_store}/{exp_name}/region_*")
                 for reg in region_list: 
                     rname = reg.split("/")[-1]
                     fout = f"{output_path}/{exp_name}/{p}"
