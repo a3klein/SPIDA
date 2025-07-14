@@ -64,8 +64,6 @@ geopandas = "*"
 supervision = "*"
 pyarrow = "*"
 scikit-image = "*"
- # pyclesperanto-prototype = "*"
- # ocl-icd-system = "*"
 [feature.cellpose.pypi-dependencies]
 cellpose = "==4.0.4"
 
