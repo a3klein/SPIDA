@@ -163,7 +163,7 @@ def run_filtering(adata:ad.AnnData,
                    "proseg_nuclei" : "proseg",
                    "proseg_SAM" : "proseg",
                    "mesmer" : "default"}
-    seg_fam = seg_fam_map[prefix_name]
+    seg_fam = seg_fam_map.get(prefix_name, "default")
     PRESET = PROSEG_PRESET if seg_fam == "proseg" else DEFAULT_PRESET # PRESET for column names
     
     # Cutoffs for the filtering 

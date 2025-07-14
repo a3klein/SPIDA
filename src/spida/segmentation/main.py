@@ -129,7 +129,7 @@ def align_proseg(
     """
 
     from proseg import align_proseg_transcripts
-    from vpt import generate_metadata
+    from vpt import generate_metadata, seg_to_vpt
     from spida.io import load_segmentation_region
     
     if input_dir is None: 
@@ -174,10 +174,24 @@ def align_proseg(
         region=reg_name,
         input_boundaries=cell_polygons_fname,
         output_boundaries="merged_converted_boundaries.parquet",
+        input_transcripts=detected_transcripts_fname,
         input_entity_by_gene=cell_by_gene_fname,
         output_metadata=cell_metadata_fname,
-        output_signals="merged_sum_signals.csv"
+        output_signals="merged_sum_signals.csv",
+        output_entity_by_gene="cell_by_gene.csv", 
+        output_transcripts="detected_transcripts.csv"
     )
+    
+    # generate_metadata(
+    #     root_dir=input_dir,
+    #     seg_out_dir=seg_dir,
+    #     region=reg_name,
+    #     input_boundaries=cell_polygons_fname,
+    #     output_boundaries="merged_converted_boundaries.parquet",
+    #     input_entity_by_gene=cell_by_gene_fname,
+    #     output_metadata=cell_metadata_fname,
+    #     output_signals="merged_sum_signals.csv"
+    # )
 
     logging.info(f"Loading segmentation data for region {reg_name} in experiment {exp_name}.")
     # Loading the new segmentation data into the spatialdata object 
@@ -189,9 +203,9 @@ def align_proseg(
         prefix_name=out_prefix_name,
         plot=False,
         cell_metadata_fname=cell_metadata_fname,
-        cell_by_gene_fname=cell_by_gene_fname,
-        detected_transcripts_fname=detected_transcripts_fname,
-        cellpose_micron_space_fname=cell_polygons_fname,
+        cell_by_gene_fname="cell_by_gene.csv", 
+        detected_transcripts_fname="detected_transcripts.csv",
+        cellpose_micron_space_fname="merged_converted_boundaries.parquet",
         )
 
 

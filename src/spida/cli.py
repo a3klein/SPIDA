@@ -1,6 +1,6 @@
 import fire # type: ignore
 
-from spida.io.main import io_cli
+from spida.io.cli import io_cli
 from spida.P.main import P_cli
 from spida.I.main import I_cli
 from spida.__main__ import gen_run
