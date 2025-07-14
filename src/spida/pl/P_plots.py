@@ -66,6 +66,7 @@ def plot_filtering(adata:ad.AnnData, exp_name:str, reg_name:str, prefix_name:str
     reg_name (str): Name of the region.
     prefix_name (str): Prefix for the keys in the spatialdata object.
     """
+    plt.rcParams['axes.facecolor'] = 'white'
     fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(16, 8), constrained_layout=True)
 
     plot_feature_distribution(adata.obs, feature="volume", feature_alias="Cell Volume",
@@ -95,7 +96,7 @@ def plot_setup(adata:ad.AnnData, exp_name:str, reg_name:str, prefix_name:str, pd
     prefix_name (str): Prefix for the keys in the spatialdata object.
     pdf_file (str, optional): Path to save the plot as a PDF file. Defaults to None.
     """
-
+    plt.rcParams['axes.facecolor'] = 'white'
     donor = _region_to_donor(reg_name)
     # Plot the UMAP embeddings 
     plot_scatter(adata, title=f"{donor} - UMAP", colors=['volume', 'nCount_RNA', 'leiden'], ncols=3,

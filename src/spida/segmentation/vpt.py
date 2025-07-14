@@ -51,6 +51,7 @@ def _cli_segmentation(CONFIG_FILE:str,
             --output-path {output_dir}/{region} \
             --tile-size {tile_size} \
             --tile-overlap {tile_overlap} \
+            --overwrite
         """
     ret = subprocess.run(segmentation_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
@@ -73,11 +74,13 @@ def _cli_partition_transcripts(
 
     ### VPT command to partition transcripts
     partition_transcripts_command = f"""
-        vpt partition-transcripts \
+        vpt --verbose --processes 8 \
+            partition-transcripts \
             --input-boundaries {output_dir}/{region}/{input_boundaries} \
             --input-transcripts {root_dir}/{region}/{input_transcripts} \
             --output-entity-by-gene {output_dir}/{region}/{output_entity_by_gene} \
             --output-transcripts {output_dir}/{region}/{output_transcripts} \
+            --overwrite
         """
     ret = subprocess.run(partition_transcripts_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
@@ -100,7 +103,8 @@ def _cli_get_metadata(
     """    
 
     metadata_command = f"""
-        vpt derive-entity-metadata \
+        vpt --verbose --processes 8 \
+            derive-entity-metadata \
             --input-boundaries {output_dir}/{region}/{input_boundaries} \
             --input-entity-by-gene {output_dir}/{region}/{input_entity_by_gene} \
             --output-metadata {output_dir}/{region}/{output_metadata} \
@@ -112,11 +116,14 @@ def _cli_get_metadata(
 
     ### VPT sum the signals
     sum_signals_command = f"""
-        vpt sum-signals \
+        vpt --verbose --processes 8 \
+            sum-signals \
             --input-images {root_dir}/{region}/images/ \
             --input-boundaries {output_dir}/{region}/{input_boundaries} \
             --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv \
-            --output-csv {output_dir}/{region}/{output_signals}
+            --output-csv {output_dir}/{region}/{output_signals} \
+            --overwrite
+
         """
     ret = subprocess.run(sum_signals_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
@@ -181,6 +188,7 @@ def _convert_geometry(
         region:str,
         input_boundaries:str = "polygons.parquet",
         output_boundaries:str = "cellpose_micron_space.parquet",
+        convert_micron:bool = True,
         ):
     """
     Convert the geometry of the segmented images to VPT format.
@@ -188,15 +196,19 @@ def _convert_geometry(
 
     ### VPT command to convert the geometry
     convert_geometry_command = f"""
-        vpt convert-geometry \
+        vpt --verbose --processes 8 \
+            convert-geometry \
             --input-boundaries {output_dir}/{region}/{input_boundaries} \
             --output-boundaries {output_dir}/{region}/{output_boundaries} \
             --convert-to-3D \
-            --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv \
             --number-z-planes 7 \
             --spacing-z-planes 1.5 \
-            --overwrite
+            --overwrite \
         """
+    
+    if convert_micron:
+        convert_geometry_command += f" --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv"
+
 
     ret = subprocess.run(convert_geometry_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
@@ -222,7 +234,7 @@ def seg_to_vpt(root_dir:str,
 
     """
 
-    assert Path(f"{seg_out_dir}/{region}/polygons.parquet").exists(), "polygons.parquet file does not exist in the specified directory."
+    assert Path(f"{seg_out_dir}/{region}/{vpt_filepaths.get('input_boundaries', 'polygons.parquet')}").exists(), "polygons.parquet file does not exist in the specified directory."
 
     _add_vpt_binary()
 
@@ -268,7 +280,10 @@ def generate_metadata(root_dir:str,
                       input_boundaries:str = "cellpose_micron_space.parquet",
                       output_boundaries:str = "cellpose_micron_space.parquet",input_entity_by_gene:str = "cell_by_gene.csv",
                       output_metadata:str = "cell_metadata.csv",
-                      output_signals:str = "sum_signals.csv"
+                      output_signals:str = "sum_signals.csv",
+                      input_transcripts:str = "detected_transcripts.parquet",
+                      output_transcripts:str = "detected_transcripts.csv",
+                      output_entity_by_gene:str = "cell_by_gene.csv",
                       ):
     """
     Generate metadata from the segmented images and partitioned transcripts.
@@ -289,8 +304,17 @@ def generate_metadata(root_dir:str,
                       output_dir=seg_out_dir,
                       region=region,
                       input_boundaries=input_boundaries,
-                      output_boundaries=output_boundaries
+                      output_boundaries=output_boundaries,
+                      convert_micron=False
                       )
+    
+    _cli_partition_transcripts(root_dir=root_dir,
+                              output_dir=seg_out_dir,
+                              region=region,
+                              input_boundaries=output_boundaries,
+                              output_entity_by_gene=output_entity_by_gene,
+                              output_transcripts=output_transcripts,
+                                )
 
     _cli_get_metadata(root_dir=root_dir,
                       output_dir=seg_out_dir,

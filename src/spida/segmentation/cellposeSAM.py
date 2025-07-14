@@ -197,7 +197,7 @@ def _masks_to_polygons(masks: np.ndarray,
     gdf = gpd.GeoDataFrame({"ID" : all_cells, "Geometry" : all_polygons, "z" : all_layers},
                            geometry="Geometry", 
                            crs=None)
-    logging.info(f"Converting {len(mask_ids)} masks to polygons; gdf shape: {gdf.shape}.")
+    # logging.info(f"Converting {len(mask_ids)} masks to polygons; gdf shape: {gdf.shape}.")
     return gdf
 
 
@@ -280,7 +280,7 @@ def run_cellposeSAM(
     logging.info("STARTING SEGMENTATION")
     masks, flows, styles = _cellpose_wrapper(img, batch_size=16, **kwargs)
     logging.info("SEGMENTATION COMPLETED")
-    ski.io.imsave(f"{output_dir}/{region}/masks.tif", masks.astype(np.uint16))
+    # ski.io.imsave(f"{output_dir}/{region}/masks.tif", masks.astype(np.uint16))
 
     logging.info(f"Cellpose segmentation completed for region {region}.")
     logging.info(f"Number of masks detected: {len(np.unique(masks)) - 1}; mask shape: {masks.shape}")

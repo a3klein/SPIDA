@@ -106,7 +106,7 @@ python cli.py align exp1 reg1 --kwargs max_iterations=100 convergence_threshold=
 ## Available Segmentation Types
 
 - `proseg`: ProSeg segmentation algorithm
-- `vpt`: VPT (Voronoi Polygon Tessellation) segmentation
+- `vpt`: VPT (Vizgen Postprocessing Tool) segmentation
 - `cellpose`: Cellpose segmentation algorithm
 - `mesmer`: Mesmer segmentation algorithm
 

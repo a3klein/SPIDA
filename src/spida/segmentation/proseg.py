@@ -267,6 +267,7 @@ def align_proseg_transcripts(
     # Merging the transcripts 
     merge_transcripts = merged.drop(["assignment", "fov_proseg", "mapped_cell", "z"], axis=1)
     merge_transcripts[cell_column] = merge_transcripts[cell_column].fillna(cell_missing)
+    merge_transcripts = merge_transcripts.rename(columns={x : "global_x", y: "global_y", z: "global_z"})
 
     ### Saving the Outputs: 
     logging.info(f"Saving Outputs to {save_dir}")
