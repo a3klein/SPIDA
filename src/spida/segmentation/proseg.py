@@ -2,9 +2,11 @@ import os
 from dotenv import load_dotenv # type: ignore
 load_dotenv()
 
+import logging
 import warnings
 import pathlib
 import subprocess
+import re
 
 def _add_proseg_binary(): 
 
@@ -20,7 +22,19 @@ def _add_proseg_binary():
     if ret.returncode != 0: 
         raise ValueError("Proseg failed to run. Check the installation and the PATH variable.")
     
-    print("proseg binary added to PATH successfully.")
+    proseg_out = ret.stdout.decode()
+    proseg_options = proseg_out.split("Options:")[-1]
+
+    # Extract the options from the proseg output
+    global proseg_args
+    escaped_start = re.escape("--")
+    escaped_end = re.escape(" ")
+    pattern = f"{escaped_start}(.*?){escaped_end}"
+    proseg_args = re.findall(pattern, proseg_options.strip())
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    proseg_args = [ansi_escape.sub('', arg) for arg in proseg_args]
+    
+    logging.info("proseg binary added to PATH successfully.")
 
 def _execute_cli_proseg(root_dir:str, output_dir:str, region:str, **proseg_params): 
     """
@@ -38,13 +52,18 @@ def _execute_cli_proseg(root_dir:str, output_dir:str, region:str, **proseg_param
         --output-cell-polygons cell-polygons.geojson.gz \
         --output-cell-polygon-layers cell-polygons-layers.geojson.gz \
         --output-union-cell-polygons union-cell-polygons.geojson.gz \
-        --voxel-layers 4 \
         """
     for _key, _val in proseg_params.items():
-        proseg_run_cmd += f"--{_key} {_val} \\\n"
+        if _key not in proseg_args:
+            continue
+        if isinstance(_val, bool):
+            if _val:
+                proseg_run_cmd += f"--{_key} "
+        else:
+            proseg_run_cmd += f"--{_key} {_val} "
 
     # proseg_run_cmd += f"--nthreads {os.cpu_count()} \\\n"
-    print(f"Running proseg with command:\n{proseg_run_cmd}")
+    logging.info(f"Running proseg with command:\n{proseg_run_cmd}")
 
     # run command and report results
     ret = subprocess.run(proseg_run_cmd.split(), capture_output=True, check=True)
@@ -155,15 +174,14 @@ def align_proseg_transcripts(
     )
     proseg = proseg.round(2)
 
-    print(proseg.shape[0] / proseg_transcripts.shape[0] * 100, "% of Proseg Transcripts with Probability > 0.5 and not Background")
-    print("unique cellpose cells: %i; unique proseg cells %i" %
-       (transcripts[cell_column].nunique(), proseg['assignment'].nunique()))
-    
+    logging.info(f"{proseg.shape[0] / proseg_transcripts.shape[0] * 100:.2f}% of Proseg Transcripts with Probability > 0.5 and not Background")
+    logging.info(f"unique cellpose cells: {transcripts[cell_column].nunique()}; unique proseg cells {proseg['assignment'].nunique()}")
+
     # Merge Transcripts on X and Y coordinates (drops transcripts in proseg without a match in seed transcripts)
     merged = transcripts.merge(proseg, on=[x, y], how="left", suffixes=("", "_proseg"))
 
-    print("num of aligned proseg transcripts", (~pd.isna(merged['assignment'])).sum())
-    print("percent of aligned proseg transcripts", (~pd.isna(merged['assignment'])).sum() / proseg.shape[0] * 100)
+    logging.info(f"num of aligned proseg transcripts: { (~pd.isna(merged['assignment'])).sum()}")
+    logging.info(f"percent of aligned proseg transcripts: { (~pd.isna(merged['assignment'])).sum() / proseg.shape[0] * 100:.2f}")
 
     # Each row is a an overlapping seed, proseg cell combination. 
     # Count is the number of transcripts that overlap between the two cells.
@@ -173,8 +191,8 @@ def align_proseg_transcripts(
             .reset_index(name="count")
     )
     # Misleading due to the filtering of transcripts in Proseg cells
-    print("%.3f%% Seed Transcripts within Aligned Cells " % (mapping['count'].sum() / transcripts.shape[0] * 100))
-    print("%.3f%% Proseg Transcripts within Aligned Cells " % (mapping['count'].sum() / proseg.shape[0] * 100))
+    logging.info(f"{mapping['count'].sum() / transcripts.shape[0] * 100:.3f}% Seed Transcripts within Aligned Cells ")
+    logging.info(f"{mapping['count'].sum() / proseg.shape[0] * 100:.3f}% Proseg Transcripts within Aligned Cells ")
 
     # Generating the Jaccard Index for each cell pair -> The similarity measure used between the cells
     mapping['cell_count'] = mapping.groupby(cell_column)['count'].transform('sum')
@@ -195,15 +213,15 @@ def align_proseg_transcripts(
     # Filter out cell combinations with a low jaccard index (Proseg not aligned with Seed)
     mapping = mapping.query("jaccard >= @min_jaccard").copy()
     
-    print("Number of Mapped Seed Cells: %i" % mapping[cell_column].nunique())
-    print("Number of Assignments: %i" % mapping['assignment'].nunique())
-    print("Should Match")
+    logging.info("Number of Mapped Seed Cells: %i" % mapping[cell_column].nunique())
+    logging.info("Number of Assignments: %i" % mapping['assignment'].nunique())
+    logging.info("Should Match")
 
     # Merging the mapping between seed and proseg cells with the overall merged transcript dataframe
     mapping.rename(columns={cell_column: "mapped_cell"}, inplace=True)
     merged = merged.merge(mapping[['assignment', 'mapped_cell']], on="assignment", how="left")
 
-    print("Number of Unmapped Seed Cells: %i; Number of Removed Proseg Cells: %i" % 
+    logging.info("Number of Unmapped Seed Cells: %i; Number of Removed Proseg Cells: %i" % 
       (merged.groupby(cell_column)['mapped_cell'].apply(lambda x : x.isna().all()).sum(),
         merged.query("assignment.notna() & mapped_cell.isna()")['assignment'].nunique()))
 
@@ -211,16 +229,16 @@ def align_proseg_transcripts(
     # remain in the dataset, but the seed mapped to proseg cells are merged with the proseg cells
     merged[cell_column] = merged["mapped_cell"].fillna(merged[cell_column])
 
-    print("%.2f%% of transcripts in Final cells, %.2f%% of transcripts in only joint cells, %.2f%% in proseg cells" %
+    logging.info("%.2f%% of transcripts in Final cells, %.2f%% of transcripts in only joint cells, %.2f%% in proseg cells" %
        (100 * ( 1 - merged[cell_column].isna().mean()),
         100 * (1 - merged['mapped_cell'].isna().mean()),
         100 * (1 - merged['assignment'].isna().mean())))
     
     proseg_to_seed_dict = mapping.set_index("assignment")["mapped_cell"].to_dict()
     _final_seeds = merged[cell_column].dropna().unique()
-    print("Number of Final Seeds: %i" % len(_final_seeds))
+    logging.info("Number of Final Seeds: %i" % len(_final_seeds))
     _final_proseg = mapping['assignment'].unique()
-    print("Number of Final Proseg Cells: %i" % len(_final_proseg))
+    logging.info("Number of Final Proseg Cells: %i" % len(_final_proseg))
 
     # Get counts - Cell x Gene
     counts = merged.groupby(cell_column)[gene_column].value_counts().unstack().fillna(0)
@@ -228,7 +246,7 @@ def align_proseg_transcripts(
     counts.index = counts.index.astype(int).values
     counts.columns.name = None
     if filter_blank: 
-        print("Filtering Blank Transcripts from cell by gene")
+        logging.info("Filtering Blank Transcripts from cell by gene")
         counts = counts.loc[:, ~counts.columns.str.contains("Blank")]
 
     # Mapping the proseg polygons to the matching seed IDs
@@ -251,7 +269,7 @@ def align_proseg_transcripts(
     merge_transcripts[cell_column] = merge_transcripts[cell_column].fillna(cell_missing)
 
     ### Saving the Outputs: 
-    print(f"Saving Outputs to {save_dir}")
+    logging.info(f"Saving Outputs to {save_dir}")
     counts.to_csv(save_dir / merged_cell_by_gene_fname)
     merge_polygons.to_file(save_dir / merged_cell_polygons_fname, driver="GeoJSON")
     merge_transcripts.to_csv(save_dir / merged_transcripts_fname)

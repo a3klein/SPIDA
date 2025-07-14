@@ -226,6 +226,8 @@ def seg_to_vpt(root_dir:str,
 
     _add_vpt_binary()
 
+    print(f"Converting Geometry for region {region}...")
+
     _convert_geometry(root_dir=root_dir,
                       output_dir=seg_out_dir,
                       region=region,
@@ -246,6 +248,8 @@ def seg_to_vpt(root_dir:str,
                               output_transcripts=vpt_filepaths.get("output_transcripts", "detected_transcripts.csv"),
                                 )
 
+    print(f"Partitioned transcripts for region {region}.")
+    
     # Run VPT get metadata
     _cli_get_metadata(root_dir=root_dir,
                       output_dir=seg_out_dir,
@@ -255,6 +259,8 @@ def seg_to_vpt(root_dir:str,
                       output_metadata=vpt_filepaths.get("output_metadata", "cell_metadata.csv"),
                       output_signals=vpt_filepaths.get("output_signals", "sum_signals.csv"),
                       )
+
+    print(f"Metadata and signals derived for region {region}.")
 
 def generate_metadata(root_dir:str,
                       seg_out_dir:str,
