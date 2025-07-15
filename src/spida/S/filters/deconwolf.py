@@ -14,10 +14,10 @@ import imageio.v3 as iio
 def _configure_deconwolf():
     """Configure Deconwolf."""
     config = configparser.ConfigParser()
-    config_path = os.getenv("DECONWOLF_CONFIG", "/anvil/projects/x-mcb130189/aklein/BICAN/fish_supp/.config.ini")
+    config_path = Path(os.getenv("DECONWOLF_CONFIG", "/anvil/projects/x-mcb130189/aklein/BICAN/fish_supp/.config.ini"))
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found at {config_path}. Please create a .config.ini file.")
-    config.read(config_path)
+    config.read(str(config_path))
     dw_path = Path(config.get("Paths", "dw_path"))
     if not dw_path.exists():
         raise FileNotFoundError(

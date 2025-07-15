@@ -1044,9 +1044,10 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zlib-ng-2.2.4-h7955e40_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py312h66e93f0_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
-      - pypi: git+https://github.com/DingWB/ALLCools#dce6a5262b5e27629142e904ef9a26be0dd3bd31
+      - pypi: git+https://github.com/DingWB/ALLCools#95b3a1f62d44d90b5f59f2d66cadf6304d372674
       - pypi: https://files.pythonhosted.org/packages/9d/41/721fec82606242a2072ee909086ff918dfad7d0199a9dfd4928df9c72494/imbalanced_learn-0.13.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/81/a7/4179e6ebfd654bd0eac0b9c06125b8b4c96a9d0a8ff9e9507eb2a26d2d7e/imblearn-0.0-py2.py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/89/93/5878b1eed2e0b6662002d069763025e4374c16ad3d18d8e10a9fefac7b16/pybedtools-0.12.0.tar.gz
       - pypi: https://files.pythonhosted.org/packages/7e/1c/a9952c5c5598c9e5c501fea855049577a499dd5f15cd6b716c373ab3ee27/pyBigWig-0.3.24-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/df/a6/c100df6c8118b4ce1f9c086bb9cf5bccd4f71d05ceb2ecf474f3b0ea87b8/pysam-0.23.3-cp312-cp312-manylinux_2_28_x86_64.whl
@@ -1190,7 +1191,7 @@ packages:
   - pkg:pypi/aiosignal?source=hash-mapping
   size: 13229
   timestamp: 1734342253061
-- pypi: git+https://github.com/DingWB/ALLCools#dce6a5262b5e27629142e904ef9a26be0dd3bd31
+- pypi: git+https://github.com/DingWB/ALLCools#95b3a1f62d44d90b5f59f2d66cadf6304d372674
   name: allcools
   version: 1.0.21
   requires_dist:

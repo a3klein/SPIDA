@@ -42,6 +42,7 @@ scikit-learn = "1.6.0.*"
 [feature.preprocessing.pypi-dependencies] 
 allcools = { git = "https://github.com/DingWB/ALLCools" }
 imblearn = "*"
+opencv-python = "*"
 # pym3c = { git = "https://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@github.com/DingWB/pym3c"}
 
 [feature.proseg.dependencies]

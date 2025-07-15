@@ -1,6 +1,7 @@
 # From Fishtank
 import ast
 import math
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -54,3 +55,53 @@ def parse_rotation(arg: str) -> float:
         radians = math.atan2(matrix[1, 0], matrix[0, 0])
         return math.degrees(radians)
     return float(arg)
+
+
+# Parssing kwargs in the argparse call as an action 
+class ParseKwargs(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, dict())
+        for value in values:
+            key, val = value.split('=')
+            
+            # Try to convert to appropriate types
+            if val.lower() in ('true', 'false'):
+                getattr(namespace, self.dest)[key] = val.lower() == 'true'
+            elif val.replace('.', '').replace('-', '').isdigit():
+                if '.' in val:
+                    getattr(namespace, self.dest)[key] = float(val)
+                else:
+                    getattr(namespace, self.dest)[key] = int(val)
+            else:
+                getattr(namespace, self.dest)[key] = val
+
+# parsing kwargs in the main blcok as a functino
+def parse_kwargs(kwargs_list):
+    """
+    Parse a list of key=value strings into a dictionary.
+
+    Args:
+        kwargs_list: List of strings in 'key=value' format
+        
+    Returns:
+        dict: Dictionary of parsed key-value pairs
+    """
+    kwargs_dict = {}
+    if kwargs_list:
+        for kwarg in kwargs_list:
+            if '=' not in kwarg:
+                raise ValueError(f"Invalid kwarg format: {kwarg}. Expected 'key=value'")
+            key, value = kwarg.split('=', 1)
+            
+            # Try to convert to appropriate types
+            if value.lower() in ('true', 'false'):
+                kwargs_dict[key] = value.lower() == 'true'
+            elif value.replace('.', '').replace('-', '').isdigit():
+                if '.' in value:
+                    kwargs_dict[key] = float(value)
+                else:
+                    kwargs_dict[key] = int(value)
+            else:
+                kwargs_dict[key] = value
+    
+    return kwargs_dict

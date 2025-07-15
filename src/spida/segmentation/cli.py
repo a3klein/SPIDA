@@ -14,60 +14,13 @@ load_dotenv()
 
 # Import the main functions
 from main import run_segmentation, segment_experiment, align_proseg
+from spida.utilities.script_utils import ParseKwargs, parse_kwargs
 
 # logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
                     format='[%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s - %(message)s',
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
 
-
-
-class ParseKwargs(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, dict())
-        for value in values:
-            key, val = value.split('=')
-            
-            # Try to convert to appropriate types
-            if val.lower() in ('true', 'false'):
-                getattr(namespace, self.dest)[key] = val.lower() == 'true'
-            elif val.replace('.', '').replace('-', '').isdigit():
-                if '.' in val:
-                    getattr(namespace, self.dest)[key] = float(val)
-                else:
-                    getattr(namespace, self.dest)[key] = int(val)
-            else:
-                getattr(namespace, self.dest)[key] = val
-
-def parse_kwargs(kwargs_list):
-    """
-    Parse a list of key=value strings into a dictionary.
-    
-    Args:
-        kwargs_list: List of strings in 'key=value' format
-        
-    Returns:
-        dict: Dictionary of parsed key-value pairs
-    """
-    kwargs_dict = {}
-    if kwargs_list:
-        for kwarg in kwargs_list:
-            if '=' not in kwarg:
-                raise ValueError(f"Invalid kwarg format: {kwarg}. Expected 'key=value'")
-            key, value = kwarg.split('=', 1)
-            
-            # Try to convert to appropriate types
-            if value.lower() in ('true', 'false'):
-                kwargs_dict[key] = value.lower() == 'true'
-            elif value.replace('.', '').replace('-', '').isdigit():
-                if '.' in value:
-                    kwargs_dict[key] = float(value)
-                else:
-                    kwargs_dict[key] = int(value)
-            else:
-                kwargs_dict[key] = value
-    
-    return kwargs_dict
 
 
 def create_parser():
@@ -89,41 +42,18 @@ def create_parser():
         help='Run segmentation on a single region',
         description='Run an implemented segmentation algorithm on a given region'
     )
+    run_parser.add_argument('type', choices=['proseg', 'vpt', 'cellpose', 'mesmer'], help='Type of segmentation to run')
+    run_parser.add_argument('exp_name', help='Name of the experiment')
+    run_parser.add_argument('reg_name', help='Name of the region')
+    run_parser.add_argument('--input_dir',type=str, help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)')
+    run_parser.add_argument('--output_dir',type=str,help='Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)')
     run_parser.add_argument(
-        'type',
-        choices=['proseg', 'vpt', 'cellpose', 'mesmer'],
-        help='Type of segmentation to run'
+        '--config_path',type=str,default="/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json",
+        help='Configuration file path (for VPT segmentation)'
     )
-    run_parser.add_argument(
-        'exp_name',
-        help='Name of the experiment'
-    )
-    run_parser.add_argument(
-        'reg_name',
-        help='Name of the region'
-    )
-    run_parser.add_argument(
-        '--input_dir',
-        type=str,
-        help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)'
-    )
-    run_parser.add_argument(
-        '--output_dir',
-        type=str,
-        help='Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)'
-    )
-    run_parser.add_argument(
-        '--config_path',
-        type=str,
-        help='Configuration file path (for VPT segmentation)',
-        default="/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json"
-    )
-    run_parser.add_argument(
-        '-k', '--kwargs',
-        nargs='*',
-        action=ParseKwargs,
-        help='Additional keyword arguments to segmentation algorithms in key=value format (e.g., --kwargs param1=value1 param2=value2)'
-    )
+    run_parser.add_argument('-k', '--kwargs',nargs='*',action=ParseKwargs,
+                            help='Additional keyword arguments to segmentation algorithms in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+    
     
     # Subcommand: segment_experiment
     exp_parser = subparsers.add_parser(
@@ -131,37 +61,14 @@ def create_parser():
         help='Run segmentation for all regions in an experiment',
         description='Run segmentation for all regions in an experiment'
     )
-    exp_parser.add_argument(
-        'type',
-        choices=['proseg', 'vpt', 'cellpose', 'mesmer'],
-        help='Type of segmentation to run'
-    )
-    exp_parser.add_argument(
-        'exp_name',
-        help='Name of the experiment'
-    )
-    exp_parser.add_argument(
-        '--input_dir',
-        type=str,
-        help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)'
-    )
-    exp_parser.add_argument(
-        '--output_dir',
-        type=str,
-        help='Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)'
-    )
-    exp_parser.add_argument(
-        '--config_path',
-        type=str,
-        help='Configuration file path (for VPT segmentation)',
-        default="/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json"
-    )
-    exp_parser.add_argument(
-        '--kwargs',
-        type=str,
-        nargs='*',
-        help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)'
-    )
+    exp_parser.add_argument('type',choices=['proseg', 'vpt', 'cellpose', 'mesmer'],help='Type of segmentation to run')
+    exp_parser.add_argument('exp_name',help='Name of the experiment')
+    exp_parser.add_argument('--input_dir',type=str,help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)')
+    exp_parser.add_argument('--output_dir',type=str,help='Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)')
+    exp_parser.add_argument('--config_path',type=str,default="/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json",
+                            help='Configuration file path (for VPT segmentation)')
+    exp_parser.add_argument('-k','--kwargs',type=str,nargs='*',
+        help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
     
     # Subcommand: align_proseg
     align_parser = subparsers.add_parser(
@@ -169,131 +76,33 @@ def create_parser():
         help='Align Proseg transcripts to seed transcripts',
         description='Align Proseg transcripts to seed transcripts'
     )
-    align_parser.add_argument(
-        'exp_name',
-        help='Name of the experiment'
-    )
-    align_parser.add_argument(
-        'reg_name',
-        help='Name of the region'
-    )
-    align_parser.add_argument(
-        '--seed-prefix-name',
-        type=str,
-        default='default',
-        help='Seed prefix name (default: default)'
-    )
-    align_parser.add_argument(
-        '--prefix-name',
-        type=str,
-        default='proseg',
-        help='Prefix name (default: proseg)'
-    )
-    align_parser.add_argument(
-        '--input-dir',
-        type=str,
-        help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)'
-    )
-    align_parser.add_argument(
-        '--seg-dir',
-        type=str,
-        help='Segmentation directory (default: uses SEGMENTATION_OUT_PATH env var)'
-    )
-    align_parser.add_argument(
-        '--x',
-        type=str,
-        default='x',
-        help='X coordinate column name (default: x)'
-    )
-    align_parser.add_argument(
-        '--y',
-        type=str,
-        default='y',
-        help='Y coordinate column name (default: y)'
-    )
-    align_parser.add_argument(
-        '--z',
-        type=str,
-        default='global_z',
-        help='Z coordinate column name (default: global_z)'
-    )
-    align_parser.add_argument(
-        '--cell-column',
-        type=str,
-        default='cell_id',
-        help='Cell column name (default: cell_id)'
-    )
-    align_parser.add_argument(
-        '--barcode-column',
-        type=str,
-        default='barcode_id',
-        help='Barcode column name (default: barcode_id)'
-    )
-    align_parser.add_argument(
-        '--gene-column',
-        type=str,
-        default='gene',
-        help='Gene column name (default: gene)'
-    )
-    align_parser.add_argument(
-        '--fov-column',
-        type=str,
-        default='fov',
-        help='FOV column name (default: fov)'
-    )
-    align_parser.add_argument(
-        '--cell-missing',
-        type=int,
-        default=-1,
-        help='Cell missing value (default: -1)'
-    )
-    align_parser.add_argument(
-        '--min-jaccard',
-        type=float,
-        default=0.4,
-        help='Minimum Jaccard index (default: 0.4)'
-    )
-    align_parser.add_argument(
-        '--min-prob',
-        type=float,
-        default=0.5,
-        help='Minimum probability (default: 0.5)'
-    )
-    align_parser.add_argument(
-        '--filter-blank',
-        action='store_true',
-        help='Filter blank genes'
-    )
-    align_parser.add_argument(
-        '--cell-metadata-fname',
-        type=str,
-        default='merged_cell_metadata.csv',
-        help='Cell metadata filename (default: merged_cell_metadata.csv)'
-    )
-    align_parser.add_argument(
-        '--cell-by-gene-fname',
-        type=str,
-        default='merged_cell_by_gene.csv',
-        help='Cell by gene filename (default: merged_cell_by_gene.csv)'
-    )
-    align_parser.add_argument(
-        '--detected-transcripts-fname',
-        type=str,
-        default='merged_transcript_metadata.csv',
-        help='Detected transcripts filename (default: merged_transcript_metadata.csv)'
-    )
-    align_parser.add_argument(
-        '--cell-polygons-fname',
-        type=str,
-        default='merged_cell_polygons.geojson',
-        help='Cell polygons filename (default: merged_cell_polygons.geojson)'
-    )
-    align_parser.add_argument(
-        '--kwargs',
-        type=str,
-        nargs='*',
-        help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)'
-    )
+    align_parser.add_argument('exp_name',help='Name of the experiment')
+    align_parser.add_argument('reg_name',help='Name of the region')
+    align_parser.add_argument('--seed-prefix-name',type=str,default='default',help='Seed prefix name (default: default)')
+    align_parser.add_argument('--prefix-name',type=str,default='proseg',help='Prefix name (default: proseg)')
+    align_parser.add_argument('--input-dir',type=str,help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)')
+    align_parser.add_argument('--seg-dir',type=str,help='Segmentation directory (default: uses SEGMENTATION_OUT_PATH env var)')
+    align_parser.add_argument('--x',type=str,default='x',help='X coordinate column name (default: x)')
+    align_parser.add_argument('--y',type=str,default='y',help='Y coordinate column name (default: y)')
+    align_parser.add_argument('--z',type=str,default='global_z',help='Z coordinate column name (default: global_z)')
+    align_parser.add_argument('--cell-column',type=str,default='cell_id',help='Cell column name (default: cell_id)')
+    align_parser.add_argument('--barcode-column',type=str,default='barcode_id',help='Barcode column name (default: barcode_id)')
+    align_parser.add_argument('--gene-column',type=str,default='gene',help='Gene column name (default: gene)')
+    align_parser.add_argument('--fov-column',type=str,default='fov',help='FOV column name (default: fov)')
+    align_parser.add_argument('--cell-missing',type=int,default=-1,help='Cell missing value (default: -1)')
+    align_parser.add_argument('--min-jaccard',type=float,default=0.4,help='Minimum Jaccard index (default: 0.4)')
+    align_parser.add_argument('--min-prob',type=float,default=0.5,help='Minimum probability (default: 0.5)')
+    align_parser.add_argument('--filter-blank',action='store_true',help='Filter blank genes')
+    align_parser.add_argument('--cell-metadata-fname',type=str,default='merged_cell_metadata.csv',
+                              help='Cell metadata filename (default: merged_cell_metadata.csv)')
+    align_parser.add_argument('--cell-by-gene-fname',type=str,default='merged_cell_by_gene.csv',
+                              help='Cell by gene filename (default: merged_cell_by_gene.csv)')
+    align_parser.add_argument('--detected-transcripts-fname',type=str,default='merged_transcript_metadata.csv',
+                              help='Detected transcripts filename (default: merged_transcript_metadata.csv)')
+    align_parser.add_argument('--cell-polygons-fname',type=str,default='merged_cell_polygons.geojson',
+                              help='Cell polygons filename (default: merged_cell_polygons.geojson)')
+    align_parser.add_argument('-k', '--kwargs',type=str,nargs='*',
+                              help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
     
     return parser
 

@@ -7,9 +7,12 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely as shp
-import matplotlib.pyplot as plt
 import skimage as ski
 import imageio.v3 as iio
+
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+import matplotlib.cm as cm
 
 
 def tile_image_with_overlap(image : np.ndarray,
@@ -198,8 +201,22 @@ def tile_image_with_overlap(image : np.ndarray,
     
     return tiles, tile_info
 
+def colormap_mapper(values, colormap='viridis'):
+    """
+    Map values to a colormap.
+    
+    Parameters:
+    - values: array-like, values to map
+    - colormap: str, name of the colormap to use
+    
+    Returns:
+    - mapped_colors: array-like, colors corresponding to the input values
+    """
+    norm = Normalize(vmin=min(values), vmax=max(values))
+    cmap = cm.get_cmap(colormap)
+    return lambda x: cmap(norm(x))
 
-def visualize_tiling_grid(tile_info : list, image_shape : tuple):
+def visualize_tiling_grid(tile_info : list, image_shape : tuple, color_prop : str = None):
     """
     Visualize the tiling grid on the image to preview how tiles will be arranged.
     
@@ -227,22 +244,34 @@ def visualize_tiling_grid(tile_info : list, image_shape : tuple):
         # Draw image boundary
         ax.add_patch(plt.Rectangle((0, 0), width, height, fill=False, edgecolor='black', linewidth=2))
         
+        if color_prop is not None: 
+            # Create a colormap based on the color property
+            values = [tile[color_prop] for tile in tile_info]
+            mapper = colormap_mapper(values, colormap='Grays')
+        
         # Draw tile boundaries
         for tile in tile_info: 
             id = tile['tile_id']
             row, col = tile['position']
             end_row, end_col = tile['end_position']
             tile_h, tile_w = tile['actual_size']
+            cprop = tile.get(color_prop, None)
             
-            # Draw tile rectangle
-            rect = plt.Rectangle((col, height - end_row), end_col - col, end_row - row, 
-                               fill=False, edgecolor='red', linewidth=1, alpha=0.7)
-            ax.add_patch(rect)
-            
-            # Add tile number
-            ax.text(col + (end_col - col) / 2, height - (row + (end_row - row) / 2), 
-                   str(id), ha='center', va='center', fontsize=8, 
-                   bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7))
+            if color_prop is not None:
+                # Draw tile rectangle
+                rect = plt.Rectangle((col, height - end_row), end_col - col, end_row - row, 
+                                facecolor=mapper(cprop), edgecolor='red', linewidth=1, alpha=1)
+                ax.add_patch(rect)
+            else: 
+                # Draw tile rectangle
+                rect = plt.Rectangle((col, height - end_row), end_col - col, end_row - row, 
+                                fill=False, edgecolor='red', linewidth=1, alpha=0.7)
+                ax.add_patch(rect)
+                
+                # Add tile number
+                ax.text(col + (end_col - col) / 2, height - (row + (end_row - row) / 2), 
+                    str(id), ha='center', va='center', fontsize=8, 
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7))
 
         overlap = tile_info[0]['end_position'][1] - tile_info[1]['position'][1]
 
@@ -318,7 +347,7 @@ def save_tiles(tiles, tile_info, output_dir, prefix="tile", format="tif", func :
     return saved_files
 
 
-def reconstruct_image_from_tiles(output_dir, tile_info, original_shape, overlap_strategy='average', prefix="tile", format="tif", suffix=None):
+def reconstruct_image_from_tile_files(output_dir, tile_info, original_shape, overlap_strategy='average', prefix="tile", format="tif", suffix=None):
     """
     Reconstruct the original image from tiles stored in a directory.
     
@@ -409,6 +438,56 @@ def reconstruct_image_from_tiles(output_dir, tile_info, original_shape, overlap_
         pass  # Implementation would be more complex
     
     return reconstructed.astype(reconstructed.dtype)
+
+
+def reconstruct_image_from_tiles(tiles, tile_info, original_shape, overlap_strategy='average'):
+    """
+    Reconstruct the original image from tiles.
+    
+    Parameters:
+    -----------
+    tiles : list of numpy.ndarray
+        List of tile arrays
+    tile_info : list of dict
+        List of tile information dictionaries
+    original_shape : tuple
+        Shape of the original image
+    overlap_strategy : str, optional
+        How to handle overlapping regions ('average', 'max')
+    
+    Returns:
+    --------
+    reconstructed : numpy.ndarray
+        Reconstructed image
+    """
+    # Initialize output array
+    reconstructed = np.zeros(original_shape, dtype=tiles[0].dtype)
+    weight_map = np.zeros(original_shape, dtype=np.float32)
+    
+    # Place tiles back into the reconstructed image
+    for tile, info in zip(tiles, tile_info):
+        pos = info['position']
+        actual_size = info['actual_size']
+        
+        if len(pos) == 2:  # 2D
+            r, c = pos
+            reconstructed[r:r+actual_size[0], c:c+actual_size[1]] += tile
+            weight_map[r:r+actual_size[0], c:c+actual_size[1]] += 1
+        else:  # 3D
+            d, r, c = pos
+            reconstructed[d:d+actual_size[0], r:r+actual_size[1], c:c+actual_size[2]] += tile
+            weight_map[d:d+actual_size[0], r:r+actual_size[1], c:c+actual_size[2]] += 1
+    
+    # Handle overlapping regions
+    if overlap_strategy == 'average':
+        # Avoid division by zero
+        weight_map[weight_map == 0] = 1
+        reconstructed = reconstructed / weight_map
+    elif overlap_strategy == 'max':
+        # TODO: For max strategy, we need to reconstruct differently
+        pass  # Implementation would be more complex
+    
+    return reconstructed.astype(tiles[0].dtype)
 
 
 def save_projected_tiles_from_files(input_dir, tile_info, output_dir=None, prefix="tile", input_format="tif", output_format="tif", input_suffix=".decon", output_suffix=".decon.2d", projection_method="max", z_slice_range=None):
