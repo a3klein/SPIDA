@@ -17,12 +17,18 @@ import numpy as np
 import skimage as ski
 import imageio.v3 as iio
 
-from spida.utilities.tiling import tile_image_with_overlap, save_tiles, reconstruct_image_from_tiles
+from spida.utilities.tiling import (
+    tile_image_with_overlap, 
+    save_tiles, 
+    reconstruct_image_from_tiles,
+    reconstruct_image_from_tile_files, 
+    visualize_tiling_grid
+)
 from spida.utilities.script_utils import parse_path, parse_list, parse_dict
 from spida.utilities.read_raw import read_info
 from spida.S.filters import deconwolf
 
-logger = logging.getLogger("decon_large_image")
+logger = logging.getLogger("decon_image")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 def project_down_2D(input_file, output_file: str | Path = None): 
@@ -90,7 +96,7 @@ def fresh_run(_file, **filter_args):
 
 
 def get_parser():
-    """Get parser for decon_large_image"""
+    """Get parser for decon_image"""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("-i", "--image_path", type=parse_path, required=True, help="Path to the image file or directory")
     parser.add_argument("--data_org_path", type=str, required=True, help="Path to data organization file")
@@ -113,11 +119,11 @@ def get_parser():
     parser.add_argument("--gpu", type=bool, default=False, help="Use GPU")
     parser.add_argument("--continue_stalled", type=bool, default=False, help="Continue processing if some tiles already processed")
     parser.add_argument("--plot_thr", type=bool, default=False, help="Plot thresholding histogram")
-    parser.set_defaults(func=decon_large_image)
+    parser.set_defaults(func=decon_image)
     return parser
 
 
-def decon_large_image(
+def decon_image(
     image_path: str | Path,
     data_org_path: str | Path = "{input}/dataorganization.csv",
     channels: str | list[str] = "DAPI",
@@ -144,6 +150,10 @@ def decon_large_image(
     if "{input}" in data_org_path:
         data_org_path = data_org_path.format(input=input)
 
+    if isinstance(output_dir, str):
+        output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     df_info = read_info(data_org_path)
     use_channels = channels if isinstance(channels, list) else [channels]
     channels = df_info.set_index("channel").loc[use_channels, :].reset_index()
@@ -165,24 +175,49 @@ def decon_large_image(
         logger.info(f"Tiled image into {len(tiles)} tiles with tile_size: {tile_size}, overlap: {overlap}")
 
         ### Filtering the Tiles to remove empty tiles 
-        tile_maxes = [tile['max_intensity'] for tile in tile_info]
-        thr = ski.filters.threshold_minimum(np.asarray(tile_maxes))
-        for _ti in tile_info: 
+        for _t, _ti in zip(tiles, tile_info): # calculating maximum intensity in tile
+            _ti['max_intensity'] = np.max(_t)
+        tile_maxes = [tile['max_intensity'] for tile in tile_info] # aggregating max intensities
+        thr = ski.filters.threshold_otsu(np.asarray(tile_maxes)) / 2 # calculating liberal threshold
+        for _ti in tile_info:  # applying threshold to tile info
             _ti['thresholded'] = _ti['max_intensity'] > thr
-        logging.info(f"Applied Minimum threshold: {thr} to tile max intensities")
+        logger.info(f"Applied Minimum threshold: {thr} to tile max intensities")
+        # Getting the subsetted list of tiles
+        ret = [(t, ti) for t, ti in zip(tiles, tile_info) if ti['thresholded']]
+        tiles = [t for t, _ in ret]
+        sub_tile_info = [ti for _, ti in ret]
+        logger.info(f"Filtered tiles to {len(tiles)} with max intensity above threshold: {thr}")
+
+        # plotting threshold decision 
         if plot_thr: 
+            logger.info("Plotting thresholding histogram and tile grid visualizations")
             fig, ax = plt.subplots(figsize=(10, 10), dpi=200)
             sns.histplot(tile_maxes, bins=100, kde=True, ax=ax)
             ax.axvline(thr, c="red", linestyle="--", label="Threshold")
-            fig.savefig(output_dir / f"tile_maxes_{_channel}.png")
-        ret = [(t, ti) for t, ti in zip(tiles, tile_info) if ti['thresholded']]
-        tiles = [t for t, _ in ret]
-        tile_info = [ti for _, ti in ret]
-        logger.info(f"Filtered tiles to {len(tiles)} with max intensity above threshold: {thr}")
+            fig.savefig(output_dir / f"plot_tile_maxes_{_channel}.png")
+
+            fig = visualize_tiling_grid(tile_info, large_img.shape, color_prop="max_intensity")
+            fig.savefig(output_dir / f"plot_tile_grid_max_{_channel}.png")
+            fig = visualize_tiling_grid(tile_info, large_img.shape, color_prop="thresholded")
+            fig.savefig(output_dir / f"plot_tile_grid__thr{_channel}.png")
+
+            # Reconstruct the image and plot the difference 
+            reconstructed = reconstruct_image_from_tiles(tiles, sub_tile_info, large_img.shape)
+            diff = np.abs(large_img.astype(np.float32) - reconstructed.astype(np.float32))
+            
+            # downsample diff for plot
+            downscale = (1,) * (diff.ndim - 2) + (10, 10)
+            diff = ski.transform.downscale_local_mean(diff, downscale)
+        
+            fig, ax = plt.subplots(figsize=(10, 10))
+            ax.imshow(diff, cmap="Grays_r")
+            fig.savefig(output_dir / f"plot_tile_diff_{_channel}.png")
+
+            del diff, reconstructed
 
         # Save Tiles (applying 7 slice expansion): 
         to_3D = lambda x: np.asarray([x]*7)
-        saved_files = save_tiles(tiles, tile_info, output_dir, func=to_3D)
+        saved_files = save_tiles(tiles, sub_tile_info, output_dir, func=to_3D)
         logger.info(f"Saved {len(saved_files)} tiles to {output_dir}")
 
         del tiles # Clear memory
@@ -231,9 +266,9 @@ def decon_large_image(
         logger.info(f"Completed deconvolution and 2D projection for all tiles.")
 
         # Reconstruct deconvolved image from saved 2D tiles
-        deconed_image = reconstruct_image_from_tiles(
+        deconed_image = reconstruct_image_from_tile_files(
             output_dir=output_dir, 
-            tile_info=tile_info, 
+            tile_info=sub_tile_info, 
             original_shape=large_img.shape,
             suffix=".decon.2d"
         )
