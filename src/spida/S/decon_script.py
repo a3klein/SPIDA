@@ -16,6 +16,7 @@ import seaborn as sns
 import numpy as np
 import skimage as ski
 import imageio.v3 as iio
+import tifffile
 
 from spida.utilities.tiling import (
     tile_image_with_overlap, 
@@ -274,7 +275,9 @@ def decon_image(
         )
         logger.info(f"Reconstructed deconvolved image with shape: {deconed_image.shape}")
 
-        iio.imsave(channel_image_path.with_suffix(".decon.tif"), deconed_image)
+        with tifffile.TiffWriter(channel_image_path.with_suffix(".decon.tif"), bigtiff=True) as tiff_writer:
+            tiff_writer.write(deconed_image)
+        # iio.imwrite(channel_image_path.with_suffix(".decon.tif"), deconed_image)
         logger.info(f"Saved deconvolved image to {channel_image_path.with_suffix('.decon.tif')}")
 
         return deconed_image

@@ -2,6 +2,7 @@ import os
 import glob
 from pathlib import Path
 import warnings
+import logging
 
 # assuming that all genes in the merscope dataset should overlap with the genes in the scRNA dataset. 
 import numpy as np
@@ -41,7 +42,7 @@ def _allcools_pca(ref_adata:ad.AnnData,
     # run PCA - RNA
     np.random.seed(13)
 
-    print("Downsampling Reference for PCA")
+    logging.info("Downsampling Reference for PCA")
 
     # select cells to fit the model
     train_cell = np.zeros(ref_adata.shape[0]).astype(bool)
@@ -55,9 +56,9 @@ def _allcools_pca(ref_adata:ad.AnnData,
     model = TruncatedSVD(n_components=ndim, algorithm='arpack', random_state=0) 
     model.fit(ref_adata.X[ref_adata.obs['Train'].values]) # fit the model on reference only 
     sel_dim = (model.singular_values_ != 0)
-    print("Selecting number of PCA dimensions: ", sel_dim.sum())
+    logging.info(f"Selecting number of PCA dimensions: {sel_dim.sum()}")
 
-    print("Transforming Reference for PCA")
+    logging.info("Transforming Reference for PCA")
     chunks = []
     for chunk_start in range(0, ref_adata.shape[0], chunk_size):
         chunks.append(
@@ -66,7 +67,7 @@ def _allcools_pca(ref_adata:ad.AnnData,
     ref_adata.obsm['X_pca'] = np.concatenate(chunks, axis=0)[:, sel_dim]
     ref_adata.obsm['X_pca'] /= model.singular_values_[sel_dim] # unit-variance “whitening”
 
-    print("Transforming Query for PCA")
+    logging.info("Transforming Query for PCA")
     chunks = []
     for chunk_start in range(0, qry_adata.shape[0], chunk_size):
         chunks.append(model.transform(qry_adata.X[chunk_start:(chunk_start + chunk_size)]))
@@ -91,7 +92,7 @@ def _allcools_seurat_wrapper(ref_adata, qry_adata, **kwargs):
     AnnData: Integrated AnnData object.
     """
 
-    print("Concatenating reference and query")
+    logging.info("Concatenating reference and query")
     adata = ref_adata.concatenate(
         qry_adata, batch_categories=["ref", "query"], batch_key="Modality", index_unique=None
     )
@@ -100,11 +101,11 @@ def _allcools_seurat_wrapper(ref_adata, qry_adata, **kwargs):
     ncc = significant_pc_test(ref_adata, p_cutoff=0.1, update=False, obsm="X_pca")
     ncc = min(50, ncc, ref_adata.shape[0] - 1, qry_adata.shape[0] - 1, ref_adata.shape[1] // 5)
     ncc = max(ncc, 5)
-    print("number of pcs used in ref_data pca:" + str(ref_adata.obsm["X_pca"].shape[1]))
+    logging.info(f"number of pcs used in ref_data pca: {ref_adata.obsm['X_pca'].shape[1]}")
     npc = min([50, ncc + 10, ref_adata.shape[0] - 1, ref_adata.obsm["X_pca"].shape[1]])
-    print(npc, ncc, ref_adata.shape[0], qry_adata.shape[0])
+    logging.info(f"npc: {npc}, ncc: {ncc}, ref_adata.shape[0]: {ref_adata.shape[0]}, qry_adata.shape[0]: {qry_adata.shape[0]}")
 
-    print("Running Seurat Integration on reference and query data")
+    logging.info("Running Seurat Integration on reference and query data")
     integrator = SeuratIntegration()
     adata_list = [ref_adata, qry_adata]
 
@@ -137,7 +138,7 @@ def _allcools_seurat_wrapper(ref_adata, qry_adata, **kwargs):
         sd=1,
         alignments=[[[0], [1]]],
     )
-    print("Integration time:", time.time() - start_time)
+    logging.info(f"Integration time: {time.time() - start_time}")
 
     adata.obsm["X_pca_integrate"] = np.concatenate(corrected)
     
@@ -153,7 +154,7 @@ def _transfer_labels(adata, integrator, rna_cell_type='supercluster_term'):
     rna_cell_type (str): The column name in adata.obs that contains the RNA cell type labels.
     """
 
-    print("Running Label Transfer")
+    logging.info("Running Label Transfer")
     key_to_transfer=[rna_cell_type]
     label_transfer=integrator.label_transfer(
         ref=[0],qry=[1],categorical_key=key_to_transfer,continuous_key=None,
@@ -206,7 +207,7 @@ def run_allcools_seurat(ref_adata:ad.AnnData,
     n_train_cell = kwargs.get('n_train_cell', 100000)
     chunk_size = kwargs.get('chunk_size', 50000)
     rna_cell_type = kwargs.get('rna_cell_type_column', 'supercluster_name')
-    print("RNA Cell Type Column: ", rna_cell_type)
+    logging.info(f"RNA Cell Type Column: {rna_cell_type}")
     save_integrator = kwargs.get("save_integrator", True)
     save_adata_comb = kwargs.get("save_adata_comb", True)
     
@@ -215,7 +216,7 @@ def run_allcools_seurat(ref_adata:ad.AnnData,
     # adata_ref = _downsample_reference(ref_adata, max_cluster_size=max_cluster_size, min_cluster_size=min_cluster_size)
     ### Downsample genes to shared gene space: 
     shared_genes = ref_adata.var.index.intersection(qry_adata.var.index)
-    print(f"Shared genes between reference and query: {len(shared_genes)}")
+    logging.info(f"Shared genes between reference and query: {len(shared_genes)}")
     ref_adata = ref_adata[:, shared_genes].copy()
     qry_adata = qry_adata[:, shared_genes].copy()
 
@@ -232,7 +233,7 @@ def run_allcools_seurat(ref_adata:ad.AnnData,
     pre_cols = set(qry_adata.obs.columns).union(ref_adata.obs.columns)
     post_cols = adata_comb.obs.columns
     cols_to_add = list(set(post_cols) - set(pre_cols))
-    print("Added columns to adata.obs: ", cols_to_add)
+    logging.info(f"Added columns to adata.obs: {cols_to_add}")
     qry_adata.obs[cols_to_add] = adata_comb.obs[cols_to_add].copy()
 
     qry_adata.write_h5ad(qry_path)
@@ -242,7 +243,7 @@ def run_allcools_seurat(ref_adata:ad.AnnData,
         for k, v in integrator.adata_dict.items(): 
             for col, val in v.obs.items(): 
                 if val.dtype == "O": 
-                    print("O", col)
+                    logging.info(f"O: {col}")
                 elif val.dtype == "category": 
                     v.obs[col] = v.obs[col].cat.add_categories(['nan'])
                     v.obs[col] = v.obs[col].fillna('nan').astype(str)
@@ -279,7 +280,7 @@ def allcools_integration_region(exp_name:str,
     to None.
     **kwargs: Additional keyword arguments for ALLCools integration.
     """
-    print("RUNNING ALLCOOLS INTEGRATION, EXPERIMENT %s, REGION %s, PREFIX %s" %(exp_name, reg_name, prefix_name) )
+    logging.info("RUNNING ALLCOOLS INTEGRATION, EXPERIMENT %s, REGION %s, PREFIX %s" %(exp_name, reg_name, prefix_name) )
 
     # # Getting the sdata object (right now from a constant zarr store path)
     zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
@@ -293,7 +294,7 @@ def allcools_integration_region(exp_name:str,
                                 annotations_store_path,
                                 **kwargs)
     
-    print("DONE WITH ALLCOOLS INTEGRATION")
+    logging.info("DONE WITH ALLCOOLS INTEGRATION")
 
 def allcools_integration_experiment(exp_name:str,
                                     prefix_name:str, 

@@ -1,10 +1,8 @@
 
 import os 
-from dotenv import load_dotenv  # type: ignore
-load_dotenv()
-
 import glob
 from pathlib import Path
+import logging
 
 import numpy as np
 import pandas as pd
@@ -13,6 +11,9 @@ from scipy import sparse
 
 from datetime import datetime
 date = datetime.today().strftime("%Y%m%d")
+
+from dotenv import load_dotenv  # type: ignore
+load_dotenv()
 
 
 def _write_empty_adata(ref_path:str, gene_list:list, qout_path:str): 
@@ -74,10 +75,10 @@ def _setup_mmc(ref_path:str,
 
 
     ### Precompute the stats for the reference adata files        
-    print('\n====starting precomputed_stats====\n')
+    logging.info('\n====starting precomputed_stats====\n')
     _temp_path = ref_path.split("/")[-1].split(".")[0]
     precomp_output_path = f"{out_dir}/{_temp_path}_precomputed_stats.h5"
-    print(precomp_output_path)
+    logging.info(f"Precomputation output path: {precomp_output_path}")
 
     # doing the actual calculations
     precomputation_config = {
@@ -92,11 +93,11 @@ def _setup_mmc(ref_path:str,
         args=[], input_data=precomputation_config)
 
     precomputation_runner.run()
-    print('\n====done with precomputed_stats====\n')
+    logging.info('\n====done with precomputed_stats====\n')
 
 
-    # calculating reference markers    
-    print('\n====starting reference_markers====\n')
+    # calculating reference markers
+    logging.info('\n====starting reference_markers====\n')
     reference_config = {
         'precomputed_path_list': [precomp_output_path],
         'n_valid': n_valid,
@@ -109,11 +110,11 @@ def _setup_mmc(ref_path:str,
         args=[], input_data=reference_config)
 
     reference_runner.run()
-    print('\n====done with reference_markers====\n')
+    logging.info('\n====done with reference_markers====\n')
 
 
-    # Downsampling to query markers 
-    print("======starting query markers======\n")    
+    # Downsampling to query markers
+    logging.info("======starting query markers======\n")
     query_config = {
         'output_path': f'{marker_dir}/calc_markers.json',
         'reference_marker_path_list': [f"{marker_dir}/reference_markers.h5"],
@@ -124,7 +125,7 @@ def _setup_mmc(ref_path:str,
     query_runner = QueryMarkerRunner(
         args=[], input_data=query_config)
     query_runner.run()
-    print("======done with query marker downsampling======\n")
+    logging.info("======done with query marker downsampling======\n")
 
     ### TODO: 
     # Save metadata about the map my cells annotation store into a metadtata LIMS store. 
@@ -157,7 +158,7 @@ def _mmc_runner(mmc_store_path:str,
     csv_results_path = f"{output_path}/csv_results.csv"
 
     ### The actual Run
-    print('\n====starting mapping====\n')
+    logging.info('\n====starting mapping====\n')
     config = {
         'precomputed_stats': {
             'path': precomp_path
@@ -181,7 +182,7 @@ def _mmc_runner(mmc_store_path:str,
         args=[], input_data=config)
 
     mapping_runner.run()
-    print('\n====done with mapping====\n')
+    logging.info('\n====done with mapping====\n')
 
     return (extended_results_path, csv_results_path)  # Return paths for further processing or verification
 
@@ -217,7 +218,7 @@ def setup_mmc(ref_path:str,
     Setup function for MapMyCells integration.
     """
 
-    print("START")
+    logging.info("START")
 
     if not mmc_store_path:
         mmc_store_path = os.getenv("MMC_DIR")
@@ -230,13 +231,13 @@ def setup_mmc(ref_path:str,
             raise ValueError("Please provide a codebook path or set the GENE_PANEL_PATH environment variable.")
         codebook_path = glob.glob(f"{gene_panel_path}/*{CODEBOOK}*.csv")[0]
 
-    print("ref_path:", ref_path)
-    print("heirarchy_list:",  heirarchy_list)
-    print("BRAIN_REGION:", BRAIN_REGION)
-    print("CODEBOOK:", CODEBOOK)
-    print("codebook_path:", codebook_path)
-    print("mmc_store_path:", mmc_store_path)
-    print("ref_norm:", ref_norm)
+    logging.info(f"ref_path: {ref_path}")
+    logging.info(f"heirarchy_list: {heirarchy_list}")
+    logging.info(f"BRAIN_REGION: {BRAIN_REGION}")
+    logging.info(f"CODEBOOK: {CODEBOOK}")
+    logging.info(f"codebook_path: {codebook_path}")
+    logging.info(f"mmc_store_path: {mmc_store_path}")
+    logging.info(f"ref_norm: {ref_norm}")
 
     _setup_mmc(ref_path = ref_path,
                mmc_store_path=mmc_store_path, 
@@ -285,16 +286,16 @@ def run_mmc(query_adata:ad.AnnData,
     query_path = f"{anndata_store_path}/{exp}/{seg_name}/adata_{donor}.h5ad"
     output_path = f"{annotations_store_path}/{exp}/{seg_name}/mmc/{donor}"
     Path(output_path).mkdir(parents=True, exist_ok=True)
-    print("Writing query adata to temporary path: %s" % (query_path))
+    logging.info(f"Writing query adata to temporary path: {query_path}")
     Path(query_path).parent.mkdir(parents=True, exist_ok=True)
     query_adata.write_h5ad(query_path)
-    
-    print("Running MMC: ")
-    print("mmc_store_path:", mmc_store_path)
-    print("BRAIN_REGION:", BRAIN_REGION)
-    print("CODEBOOK:", CODEBOOK)
-    print("query path", query_path)
-    print("output_path:", output_path)
+
+    logging.info("Running MMC: ")
+    logging.info(f"mmc_store_path: {mmc_store_path}")
+    logging.info(f"BRAIN_REGION: {BRAIN_REGION}")
+    logging.info(f"CODEBOOK: {CODEBOOK}")
+    logging.info(f"query path: {query_path}")
+    logging.info(f"output_path: {output_path}")
     
 
     res_paths = _mmc_runner(mmc_store_path = mmc_store_path, 
@@ -305,11 +306,11 @@ def run_mmc(query_adata:ad.AnnData,
                             q_norm = "log2CPM",
                             kwargs = kwargs)
 
-    print("Transferring labels to the adata object")
+    logging.info("Transferring labels to the adata object")
     pre_cols = query_adata.obs.columns
     query_adata = _transfer_labels(query_adata, res_paths[1])
     post_cols = query_adata.obs.columns
-    print("Added columns to adata.obs: ", set(post_cols) - set(pre_cols))
+    logging.info(f"Added columns to adata.obs: {set(post_cols) - set(pre_cols)}")
 
     query_adata.write_h5ad(query_path)
     
@@ -352,7 +353,7 @@ def mmc_setup(ref_path:str,
     Setup function for MapMyCells integration.
     """
 
-    print("DONE")
+    logging.info("DONE")
     return 0
 
 
@@ -381,7 +382,7 @@ def mmc_annotation_region(
     annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults to None.
     **kwargs: Additional keyword arguments.
     """
-    print("RUNNING MMC ANNOTATIONS, EXPERIMENT %s, REGION %s, PREFIX %s" %(exp_name, reg_name, prefix_name) )
+    logging.info("RUNNING MMC ANNOTATIONS, EXPERIMENT %s, REGION %s, PREFIX %s" %(exp_name, reg_name, prefix_name) )
 
     # # Getting the sdata object (right now from a constant zarr store path)
     zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")

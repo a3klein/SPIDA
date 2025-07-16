@@ -7,37 +7,28 @@ import sys
 import argparse
 import logging
 from pathlib import Path
-from dotenv import load_dotenv
+import inspect
 
-# Load environment variables
-load_dotenv()
-
-# Import the main functions
-from main import run_segmentation, segment_experiment, align_proseg
-from spida.utilities.script_utils import ParseKwargs, parse_kwargs
+from spida.utilities.script_utils import ParseKwargs
 
 # logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                    format='[%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s - %(message)s',
-                    datefmt="%Y-%m-%dT%H:%M:%S%z")
+import spida.segmentation as S
 
+DESCRIPTION = """ SPIDA Segmentation Pipeline CLI """
+EPILOGUE = """ """
 
-
-def create_parser():
-    """Create the argument parser with subcommands."""
-    parser = argparse.ArgumentParser(
-        description="SPIDA Segmentation Pipeline CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+def setup_logging(**kwargs): 
     
-    subparsers = parser.add_subparsers(
-        dest='command',
-        help='Available commands',
-        metavar='{run,experiment,align}'
-    )
-    
+    logging.basicConfig(level=logging.INFO,
+                       format='[%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s - %(message)s',
+                       datefmt="%Y-%m-%dT%H:%M:%S%z")
+
+
+
+
+def run_segmentation_region_register_subparser(subparser): 
     # Subcommand: run_segmentation
-    run_parser = subparsers.add_parser(
+    run_parser = subparser.add_parser(
         'run',
         help='Run segmentation on a single region',
         description='Run an implemented segmentation algorithm on a given region'
@@ -53,10 +44,11 @@ def create_parser():
     )
     run_parser.add_argument('-k', '--kwargs',nargs='*',action=ParseKwargs,
                             help='Additional keyword arguments to segmentation algorithms in key=value format (e.g., --kwargs param1=value1 param2=value2)')
-    
-    
+    return
+
+def run_segmentation_experiment_register_subparser(subparser):
     # Subcommand: segment_experiment
-    exp_parser = subparsers.add_parser(
+    exp_parser = subparser.add_parser(
         'experiment',
         help='Run segmentation for all regions in an experiment',
         description='Run segmentation for all regions in an experiment'
@@ -69,9 +61,11 @@ def create_parser():
                             help='Configuration file path (for VPT segmentation)')
     exp_parser.add_argument('-k','--kwargs',type=str,nargs='*',
         help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
-    
+    return 
+
+def run_proseg_alignment_register_subparser(subparser):
     # Subcommand: align_proseg
-    align_parser = subparsers.add_parser(
+    align_parser = subparser.add_parser(
         'align',
         help='Align Proseg transcripts to seed transcripts',
         description='Align Proseg transcripts to seed transcripts'
@@ -103,113 +97,168 @@ def create_parser():
                               help='Cell polygons filename (default: merged_cell_polygons.geojson)')
     align_parser.add_argument('-k', '--kwargs',type=str,nargs='*',
                               help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
-    
-    return parser
+    return 
+
 
 
 def main():
     """Main CLI entry point."""
-    parser = create_parser()
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description=DESCRIPTION,
+        epilog=EPILOGUE,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    subparsers = parser.add_subparsers(
+        dest='command',
+        help='Available commands',
+        metavar='{run,experiment,align}'
+    )
+
+    # Adding all the subparsers from above
+    current_module = sys.modules[__name__]
+    for name, register_subparser_func in inspect.getmembers(current_module, inspect.isfunction):
+        if "register_subparser" in name:
+            register_subparser_func(subparsers)
+
+    # initiate args: 
+    args = None
+    if len(sys.argv) > 1: 
+        if sys.argv[1] in ["-v", "--version"]: 
+            print(S.__version__)
+            exit()
+        else: 
+            args = parser.parse_args()
+    else:
+        args = parser.parse_args(['--help'])
+        exit()
     
-    if not args.command:
+    # setup logging here: 
+    if not logging.root.handlers: 
+        setup_logging(stdout=True, quiet=False)
+
+    # collect args
+    args_var = vars(args)
+    for key, value in args_var.items():
+        logging.info(f"Argument: {key} = {value}, Type: {type(value)}")
+
+    from main import run_segmentation, segment_experiment, align_proseg
+    command = args_var.pop("command").lower().replace("_", "-")
+    if command in ["run", "run-segmentation-region"]: 
+        from main import run_segmentation as func
+    elif command in ["experiment", "segment-experiment"]:
+        from main import segment_experiment as func
+    elif command in ["align", "align-proseg"]:
+        from main import align_proseg as func
+    else:
+        logging.error(f"Unknown command: {command}")
         parser.print_help()
         sys.exit(1)
-    
-    try:
-        if args.command == 'run':
-            # Convert input/output dirs to Path if provided
-            input_dir = Path(args.input_dir) if args.input_dir else None
-            output_dir = Path(args.output_dir) if args.output_dir else None
-            
-            kwargs = args.kwargs
-            # Log the KWARGS: 
-            for key, value in kwargs.items():
-                logging.info(f"KWARG: {key} = {value}, Type: {type(value)}")
-            
-            if hasattr(args, 'config_path') and args.config_path:
-                kwargs['config_path'] = args.config_path
-            
-            # # Parse additional kwargs from command line
-            # if hasattr(args, 'kwargs') and args.kwargs:
-            #     additional_kwargs = parse_kwargs(args.kwargs)
-            #     kwargs.update(additional_kwargs)
-            
-            # # Log the KWARGS: 
-            # for key, value in kwargs.items():
-            #     logging.info(f"KWARG: {key} = {value}")
-            
-            run_segmentation(
-                type=args.type,
-                exp_name=args.exp_name,
-                reg_name=args.reg_name,
-                input_dir=input_dir,
-                output_dir=output_dir,
-                **kwargs
-            )
-            
-        elif args.command == 'experiment':
-            # Convert input/output dirs to Path if provided
-            input_dir = Path(args.input_dir) if args.input_dir else None
-            output_dir = Path(args.output_dir) if args.output_dir else None
-            
-            # Prepare kwargs for additional parameters
-            kwargs = {}
-            if hasattr(args, 'config_path') and args.config_path:
-                kwargs['config_path'] = args.config_path
-            
-            # Parse additional kwargs from command line
-            if hasattr(args, 'kwargs') and args.kwargs:
-                additional_kwargs = parse_kwargs(args.kwargs)
-                kwargs.update(additional_kwargs)
-            
-            segment_experiment(
-                type=args.type,
-                exp_name=args.exp_name,
-                input_dir=input_dir,
-                output_dir=output_dir,
-                **kwargs
-            )
-            
-        elif args.command == 'align':
-            # Convert dirs to Path if provided
-            input_dir = Path(args.input_dir) if args.input_dir else None
-            seg_dir = Path(args.seg_dir) if args.seg_dir else None
-            
-            # Parse additional kwargs from command line
-            additional_kwargs = {}
-            if hasattr(args, 'kwargs') and args.kwargs:
-                additional_kwargs = parse_kwargs(args.kwargs)
-            
-            align_proseg(
-                exp_name=args.exp_name,
-                reg_name=args.reg_name,
-                seed_prefix_name=args.seed_prefix_name,
-                prefix_name=args.prefix_name,
-                input_dir=input_dir,
-                seg_dir=seg_dir,
-                x=args.x,
-                y=args.y,
-                z=args.z,
-                cell_column=args.cell_column,
-                barcode_column=args.barcode_column,
-                gene_column=args.gene_column,
-                fov_column=args.fov_column,
-                cell_missing=args.cell_missing,
-                min_jaccard=args.min_jaccard,
-                min_prob=args.min_prob,
-                filter_blank=args.filter_blank,
-                cell_metadata_fname=args.cell_metadata_fname,
-                cell_by_gene_fname=args.cell_by_gene_fname,
-                detected_transcripts_fname=args.detected_transcripts_fname,
-                cell_polygons_fname=args.cell_polygons_fname,
-                **additional_kwargs
-            )
-            
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
 
+    # validate environment (if needed)
+
+    logging.info(f"Running command: {command}")
+    func(**args_var)
+    logging.info(f"Command {command} completed successfully.")
+    return 
+
+
+    # if not args.command:
+    #     parser.print_help()
+    #     sys.exit(1)
+    
+    # try:
+    #     if args.command == 'run':
+    #         # Convert input/output dirs to Path if provided
+    #         input_dir = Path(args.input_dir) if args.input_dir else None
+    #         output_dir = Path(args.output_dir) if args.output_dir else None
+            
+    #         kwargs = args.kwargs
+    #         # Log the KWARGS: 
+    #         for key, value in kwargs.items():
+    #             logging.info(f"KWARG: {key} = {value}, Type: {type(value)}")
+            
+    #         if hasattr(args, 'config_path') and args.config_path:
+    #             kwargs['config_path'] = args.config_path
+            
+    #         # # Parse additional kwargs from command line
+    #         # if hasattr(args, 'kwargs') and args.kwargs:
+    #         #     additional_kwargs = parse_kwargs(args.kwargs)
+    #         #     kwargs.update(additional_kwargs)
+            
+    #         # # Log the KWARGS: 
+    #         # for key, value in kwargs.items():
+    #         #     logging.info(f"KWARG: {key} = {value}")
+            
+    #         run_segmentation(
+    #             type=args.type,
+    #             exp_name=args.exp_name,
+    #             reg_name=args.reg_name,
+    #             input_dir=input_dir,
+    #             output_dir=output_dir,
+    #             **kwargs
+    #         )
+            
+    #     elif args.command == 'experiment':
+    #         # Convert input/output dirs to Path if provided
+    #         input_dir = Path(args.input_dir) if args.input_dir else None
+    #         output_dir = Path(args.output_dir) if args.output_dir else None
+            
+    #         # Prepare kwargs for additional parameters
+    #         kwargs = {}
+    #         if hasattr(args, 'config_path') and args.config_path:
+    #             kwargs['config_path'] = args.config_path
+            
+    #         # Parse additional kwargs from command line
+    #         if hasattr(args, 'kwargs') and args.kwargs:
+    #             additional_kwargs = parse_kwargs(args.kwargs)
+    #             kwargs.update(additional_kwargs)
+            
+    #         segment_experiment(
+    #             type=args.type,
+    #             exp_name=args.exp_name,
+    #             input_dir=input_dir,
+    #             output_dir=output_dir,
+    #             **kwargs
+    #         )
+            
+    #     elif args.command == 'align':
+    #         # Convert dirs to Path if provided
+    #         input_dir = Path(args.input_dir) if args.input_dir else None
+    #         seg_dir = Path(args.seg_dir) if args.seg_dir else None
+            
+    #         # Parse additional kwargs from command line
+    #         additional_kwargs = {}
+    #         if hasattr(args, 'kwargs') and args.kwargs:
+    #             additional_kwargs = parse_kwargs(args.kwargs)
+            
+    #         align_proseg(
+    #             exp_name=args.exp_name,
+    #             reg_name=args.reg_name,
+    #             seed_prefix_name=args.seed_prefix_name,
+    #             prefix_name=args.prefix_name,
+    #             input_dir=input_dir,
+    #             seg_dir=seg_dir,
+    #             x=args.x,
+    #             y=args.y,
+    #             z=args.z,
+    #             cell_column=args.cell_column,
+    #             barcode_column=args.barcode_column,
+    #             gene_column=args.gene_column,
+    #             fov_column=args.fov_column,
+    #             cell_missing=args.cell_missing,
+    #             min_jaccard=args.min_jaccard,
+    #             min_prob=args.min_prob,
+    #             filter_blank=args.filter_blank,
+    #             cell_metadata_fname=args.cell_metadata_fname,
+    #             cell_by_gene_fname=args.cell_by_gene_fname,
+    #             detected_transcripts_fname=args.detected_transcripts_fname,
+    #             cell_polygons_fname=args.cell_polygons_fname,
+    #             **additional_kwargs
+    #         )
+            
+    # except Exception as e:
+    #     print(f"Error: {e}", file=sys.stderr)
+    #     sys.exit(1)
 
 if __name__ == "__main__":
     main()
