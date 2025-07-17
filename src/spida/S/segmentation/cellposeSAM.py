@@ -28,6 +28,7 @@ from shapely.geometry import Polygon
 import geopandas as gpd
 from spida.utilities.tiling import tile_image_with_overlap, merge_tile_polygons, merge_overlapping_polygons
 
+logger = logging.getLogger(__package__)
 
 def _load_image(image_path:Path, image_ext:str='.tif', nuc_stain_name:str='DAPI', cyto_stain_name:str = None): 
     """
@@ -43,7 +44,7 @@ def _load_image(image_path:Path, image_ext:str='.tif', nuc_stain_name:str='DAPI'
     np.ndarray: Loaded image as a numpy array.
     """
     files = natsorted([f for f in image_path.glob("*"+image_ext) if "_masks" not in f.name and "_flows" not in f.name])
-    logging.info(f"Found {len(files)} images in {image_path}")
+    logger.info(f"Found {len(files)} images in {image_path}")
     
     nuc_file = None
     for f in files: 
@@ -54,7 +55,7 @@ def _load_image(image_path:Path, image_ext:str='.tif', nuc_stain_name:str='DAPI'
         raise ValueError(f"No nuclear stain file found with name '{nuc_stain_name}' in {image_path}")
 
     nuc_img = io.imread(nuc_file)
-    logging.info(f"Loaded images: Nuclear - {nuc_file}, Image Shape: {nuc_img.shape}")
+    logger.info(f"Loaded images: Nuclear - {nuc_file}, Image Shape: {nuc_img.shape}")
 
     if cyto_stain_name is not None: 
         for f in files: 
@@ -62,12 +63,12 @@ def _load_image(image_path:Path, image_ext:str='.tif', nuc_stain_name:str='DAPI'
                 cyto_file = f
         
         cyto_img = io.imread(cyto_file)
-        logging.info(f"Loaded images: Cytoplasmic - {cyto_file}, Image Shape: {cyto_img.shape}")
+        logger.info(f"Loaded images: Cytoplasmic - {cyto_file}, Image Shape: {cyto_img.shape}")
         img = np.stack([nuc_img, cyto_img], axis=0)
         return img
 
     else: 
-        logging.info(f"No cytoplasmic stain file found with name '{cyto_stain_name}' in {image_path}, returning nuclear image only.")
+        logger.info(f"No cytoplasmic stain file found with name '{cyto_stain_name}' in {image_path}, returning nuclear image only.")
         return np.expand_dims(nuc_img, axis=0)
 
 def _load_model(model_name: str = "cpsam", **kwargs): 
@@ -111,28 +112,6 @@ def _cellpose_wrapper(img,
                       channel_axis=0,
                       min_size=min_size,
                       normalize={"tile_norm_blocksize": tile_norm_blocksize},)
-
-# ### OLD USING SUPERVISION
-# def _masks_to_geodataframe(masks):
-#     """
-#     Convert Cellpose masks to a GeoDataFrame with polygons.
-#     Parameters:
-#     masks (np.ndarray): Cellpose segmentation masks.
-#     Returns:
-#     gpd.GeoDataFrame: GeoDataFrame containing polygons of the masks.
-#     """
-
-#     polygons = spv.mask_to_polygons(masks)
-#     sh_polygons = [Polygon(p) for p in polygons]
-
-#     gdf = gpd.GeoDataFrame(
-#         {
-#             "Geometry": sh_polygons,
-#             "ID": [i for i in range(len(sh_polygons))],
-#         },
-#         geometry="Geometry",
-#     )
-#     return gdf
 
 
 def convert_mask(mask_id, masks, tolerance=0.5): 
@@ -208,7 +187,7 @@ def masks_to_geodataframe(masks : np.ndarray,
                           ):
     """Convert Cellpose masks to a GeoDataFrame with polygons."""
     tiles, tile_info = tile_image_with_overlap(masks, tile_size=1000, overlap=200)
-    logging.info(f"Generated {len(tiles)} tiles.")
+    logger.info(f"Generated {len(tiles)} tiles.")
 
     parallel_func = partial(
         _masks_to_polygons,
@@ -218,7 +197,7 @@ def masks_to_geodataframe(masks : np.ndarray,
     with mp.Pool(max_cpu) as pool:
         geo_list = list(tqdm(pool.map(parallel_func, tiles), total=len(tiles)))
 
-    logging.info(f"Finished Conversion")
+    logger.info(f"Finished Conversion")
 
     # Merge all tiles into global coordinates
     merged_polygons = merge_tile_polygons(tile_info, geo_list, geom_col="Geometry")
@@ -256,7 +235,7 @@ def run_cellposeSAM(
 
     global max_cpu
     max_cpu = mp.cpu_count()
-    logging.info(f"Max CPU count: {max_cpu}")
+    logger.info(f"Max CPU count: {max_cpu}")
 
     # Ensure the output directory exists
     Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
@@ -271,19 +250,19 @@ def run_cellposeSAM(
                       )
     
     og_shape = img.shape
-    logging.info(f"OG image shape: {og_shape}")
+    logger.info(f"OG image shape: {og_shape}")
 
     downscale = (1,) * (img.ndim - 2) + (scale, scale)
     img = ski.transform.downscale_local_mean(img, downscale)
-    logging.info(f"Image shape after scaling: {img.shape}")
+    logger.info(f"Image shape after scaling: {img.shape}")
 
-    logging.info("STARTING SEGMENTATION")
+    logger.info("STARTING SEGMENTATION")
     masks, flows, styles = _cellpose_wrapper(img, batch_size=16, **kwargs)
-    logging.info("SEGMENTATION COMPLETED")
+    logger.info("SEGMENTATION COMPLETED")
     # ski.io.imsave(f"{output_dir}/{region}/masks.tif", masks.astype(np.uint16))
 
-    logging.info(f"Cellpose segmentation completed for region {region}.")
-    logging.info(f"Number of masks detected: {len(np.unique(masks)) - 1}; mask shape: {masks.shape}")
+    logger.info(f"Cellpose segmentation completed for region {region}.")
+    logger.info(f"Number of masks detected: {len(np.unique(masks)) - 1}; mask shape: {masks.shape}")
 
     # rescaled_masks = cv2.resize(masks, (og_shape[1], og_shape[0]), interpolation=cv2.INTER_NEAREST)
     # print("Rescaled masks shape:", rescaled_masks.shape)
@@ -293,11 +272,11 @@ def run_cellposeSAM(
     gdf.geometry = gdf.geometry.affine_transform([scale, 0, 0, scale, 0, 0]) # upscale polygons to original image size
 
     # Filter out small cells by size < min_size: 
-    logging.info(f"Filtering out cells with area < {min_size}")
+    logger.info(f"Filtering out cells with area < {min_size}")
     n_pre = len(gdf)
     gdf = gdf[gdf.geometry.area > min_size]
     n_post = len(gdf)
-    logging.info(f"Filtered out {n_pre - n_post} cells; remaining cells: {n_post}")
+    logger.info(f"Filtered out {n_pre - n_post} cells; remaining cells: {n_post}")
 
     # Save masks and flows
     with warnings.catch_warnings():

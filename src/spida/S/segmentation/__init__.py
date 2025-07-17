@@ -1,6 +1,1 @@
-try: 
-    from importlib.metadata import version
-except ModuleNotFoundError:
-    from importlib_metadata import version
-
-__version__ = version("spida")
+from .main import (run_segmentation, vpt_on_segmentation, align_proseg)

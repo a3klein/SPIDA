@@ -2,7 +2,6 @@ import os
 import sys
 import glob
 import pathlib
-import fire # type: ignore
 import warnings
 import logging
 
@@ -20,9 +19,8 @@ from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap
 
 from matplotlib.backends.backend_pdf import PdfPages
 
-# Setting Logging for this module 
-import logging
-logging.basicConfig(filename="../../spida.log", level=logging.INFO)
+
+logger = logging.getLogger(__package__)
 
 
 def ingest_region(exp_name:str, 
@@ -43,7 +41,7 @@ def ingest_region(exp_name:str,
 
     """
 
-    logging.info("INGESTING REGION; EXPERIMENT %s, REGION %s " %(exp_name, reg_name) )
+    logger.info("INGESTING REGION; EXPERIMENT %s, REGION %s " %(exp_name, reg_name) )
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
 
     if type == "merscope" and source == "machine":
@@ -88,7 +86,7 @@ def ingest_all(
     source (str): Source of the data (default is "machine").
     """
     
-    logging.info("INGESTING ALL REGIONS; EXPERIMENT %s" %(exp_name) )
+    logger.info("INGESTING ALL REGIONS; EXPERIMENT %s" %(exp_name) )
 
     if type == "merscope" and source == "machine":
         root_path = os.getenv("PROCESSED_ROOT_PATH", "/ceph/cephatlas/merscope_data/processed")
@@ -118,12 +116,12 @@ def load_segmentation_region(
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     """
 
-    logging.info("LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s" %(exp_name, reg_name, type) )
+    logger.info("LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s" %(exp_name, reg_name, type) )
 
 
     zarr_root = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
     zarr_path = f"{zarr_root}/{exp_name}/{reg_name}"
-    logging.info(zarr_path)
+    logger.info(zarr_path)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         sdata = sd.read_zarr(zarr_path)
@@ -176,11 +174,3 @@ def load_segmentation_all(
     for reg_dir in regions: 
         reg_name = reg_dir.split("/")[-1]
         load_segmentation_region(exp_name, reg_name, reg_dir, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
-
-
-if __name__ == "__main__": 
-    fire.Fire({"ingest_region": ingest_region,
-               "ingest_all": ingest_all,
-               "load_segmentation_region" : load_segmentation_region,
-               "load_segmentation_all" : load_segmentation_all,
-    })

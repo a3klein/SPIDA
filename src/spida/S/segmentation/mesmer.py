@@ -14,6 +14,7 @@ from deepcell.applications import Mesmer # type: ignore
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit on image size
 load_dotenv()
+logger = logging.getLogger(__package__)
 
 
 def _load_image(image_path:Path, image_ext:str='.tif', nuc_stain_name:str='DAPI', cyto_stain_name:str='PolyT'): 
@@ -30,7 +31,7 @@ def _load_image(image_path:Path, image_ext:str='.tif', nuc_stain_name:str='DAPI'
     np.ndarray: Loaded image as a numpy array.
     """
     files = natsorted([f for f in image_path.glob("*"+image_ext) if "_masks" not in f.name and "_flows" not in f.name])
-    logging.info(f"Found {len(files)} images in {image_path}")
+    logger.info(f"Found {len(files)} images in {image_path}")
     
     for f in files: 
         if nuc_stain_name in f.name: 
@@ -44,8 +45,8 @@ def _load_image(image_path:Path, image_ext:str='.tif', nuc_stain_name:str='DAPI'
     cyto_img = Image.open(cyto_file)
     cyto_img = np.array(cyto_img) 
 
-    logging.info(f"Loaded images: Nuclear - {nuc_file}, Cytoplasmic - {cyto_file}")
-    logging.info(f"Image shape: Nuclear - {nuc_img.shape}, Cyto - {cyto_img.shape}")
+    logger.info(f"Loaded images: Nuclear - {nuc_file}, Cytoplasmic - {cyto_file}")
+    logger.info(f"Image shape: Nuclear - {nuc_img.shape}, Cyto - {cyto_img.shape}")
 
     img = np.stack([nuc_img, cyto_img], axis=-1)
     return np.expand_dims(img, axis=0)
@@ -108,12 +109,12 @@ def run_mesmer(root_dir:Path, output_dir:Path, region:str, **kwargs):
                       cyto_stain_name=kwargs.get("cyto_stain_name", "PolyT"))
     
     app = Mesmer()
-    logging.info("STARTING SEGMENTATION")
+    logger.info("STARTING SEGMENTATION")
     masks = _mesmer_wrapper(img, app)
-    logging.info("SEGMENTATION COMPLETED")
+    logger.info("SEGMENTATION COMPLETED")
 
-    logging.info(f"Mesmer segmentation completed for region {region}.")
-    logging.info(f"Number of masks detected: {len(np.unique(masks)) - 1}")
+    logger.info(f"Mesmer segmentation completed for region {region}.")
+    logger.info(f"Number of masks detected: {len(np.unique(masks)) - 1}")
 
     # Save masks and flows
     gdf = _masks_to_geodataframe(masks[0, ..., 0])

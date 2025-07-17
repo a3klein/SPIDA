@@ -39,7 +39,8 @@ DEFAULT_PRESET = {"tz_cell_id": "cell",
                                    "gene":GENE_NAME,
                                    "transcript_id":GENE_ID,
                                    "fov":FOV_COL,},
-                "geom_depth_col" : "ZIndex",                
+                "geom_depth_col" : "ZIndex",
+                "METADATA_CELL_KEY" : "EntityID",              
                 }
 
 PROSEG_PRESET = {"tz_cell_id" : None,
