@@ -33,8 +33,7 @@ from spida.utilities.tiling import (
 from spida.utilities.read_raw import read_info
 from spida.S.filters import deconwolf
 
-logger = logging.getLogger("decon_image")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger(__package__)
 
 def project_down_2D(input_file, output_file: str | Path = None): 
     """

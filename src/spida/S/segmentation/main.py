@@ -7,6 +7,7 @@ import glob
 import logging
 
 load_dotenv()
+logger = logging.getLogger(__package__)
 
 # The controller that calls the specified segmentation algorithms 
 def run_segmentation(type:str, exp_name:str, reg_name:str, input_dir:str|Path=None, output_dir:str|Path=None, **kwargs):
@@ -21,9 +22,6 @@ def run_segmentation(type:str, exp_name:str, reg_name:str, input_dir:str|Path=No
     reg_name (str): Name of the region.
     """
 
-    logging.info(f"input_dir before: {input_dir}")
-    logging.info(f"output_dir before: {output_dir}")
-
     if input_dir is None:
         processed_root_path = os.getenv("PROCESSED_ROOT_PATH")
         input_dir = f"{processed_root_path}/{exp_name}/out"
@@ -32,27 +30,27 @@ def run_segmentation(type:str, exp_name:str, reg_name:str, input_dir:str|Path=No
         output_dir = f"{seg_out_path}/{exp_name}/{type}"
 
     # Printing out info # Implement logging here. 
-    logging.info(f"Running segmentation of type {type} on region {reg_name} in experiment {exp_name}.")
-    logging.info(f"Input directory: {input_dir}")
-    logging.info(f"Output directory: {output_dir}")
+    logger.info(f"Running segmentation of type {type} on region {reg_name} in experiment {exp_name}.")
+    logger.info(f"Input directory: {input_dir}")
+    logger.info(f"Output directory: {output_dir}")
 
     if type == "proseg":
-        from proseg import run_proseg
+        from .proseg import run_proseg
         run_proseg(input_dir, output_dir, reg_name, **kwargs)
     elif type == "vpt":
-        from vpt import run_vpt
+        from .vpt import run_vpt
         config_path = kwargs.get("config_path", "/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json")
         run_vpt(input_dir, output_dir, reg_name, config_path=config_path)
     elif type == "cellpose":
-        from cellposeSAM import run_cellposeSAM
-        from vpt import seg_to_vpt
+        from .cellposeSAM import run_cellposeSAM
+        from .vpt import seg_to_vpt
         # TODO: change other segmentation methods to take in the direct image dir
         run_cellposeSAM(input_dir, output_dir, reg_name, **kwargs)
         input_dir_vpt = Path(input_dir).parents[1]
         seg_to_vpt(input_dir_vpt, output_dir, reg_name)
     elif type == "mesmer":
-        from mesmer import run_mesmer
-        from vpt import seg_to_vpt
+        from .mesmer import run_mesmer
+        from .vpt import seg_to_vpt
         run_mesmer(input_dir, output_dir, reg_name, **kwargs)
         seg_to_vpt(input_dir, output_dir, reg_name)
 
@@ -144,7 +142,7 @@ def align_proseg(
     if isinstance(seg_dir, str):
         seg_dir = Path(seg_dir)
 
-    logging.info(f"Aligning Proseg transcripts for region {reg_name} in experiment {exp_name}.")
+    logger.info(f"Aligning Proseg transcripts for region {reg_name} in experiment {exp_name}.")
     # Aligning the proseg transcripts to the seed transcripts
     align_proseg_transcripts(
         exp_name=exp_name,
@@ -168,7 +166,7 @@ def align_proseg(
         save_dir=seg_dir / reg_name,
     )
 
-    logging.info(f"Generating metadata for aligned transcripts in region {reg_name} of experiment {exp_name}.")
+    logger.info(f"Generating metadata for aligned transcripts in region {reg_name} of experiment {exp_name}.")
     # Generating the metadata for the aligned transcripts
     generate_metadata(
         root_dir=input_dir,

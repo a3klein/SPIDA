@@ -17,10 +17,10 @@ with warnings.catch_warnings():
         set_transformation
     )
 
-# spida_path = "/ceph/cephatlas/aklein/spida/src"
-# sys.path.append(spida_path)
 from spida._utilities import _gen_keys, _backup_adata
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
+
+logger = logging.getLogger(__package__)
 
 
 ### TODO: 
@@ -103,7 +103,7 @@ def _cast_multipolygons_to_polygons(sdata, shapes_key, subset_field:list=['Entit
         gdf['area'] = gdf.area # sort by area to remove smaller duplicates
         gdf.sort_values(by="area", ascending=False, inplace=True) 
         index_dup = gdf.index[gdf.index.duplicated()]
-        logging.info(f"{len(index_dup)} duplicated indices found in gdf") # print how many duplicates were found 
+        logger.info(f"{len(index_dup)} duplicated indices found in gdf") # print how many duplicates were found 
         gdf = gdf.drop_duplicates(subset=subset_field)
         sdata[shapes_key] = gdf
     return sdata
@@ -136,7 +136,8 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     """
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        from spatialdata_io.readers.merscope import _get_polygons, _get_points, _get_table
+        from spatialdata_io.readers.merscope import _get_points, _get_table
+    from .read_vpt import _get_polygons
 
     # KEYS
     DEF_KEYS = _gen_keys("default", exp_name, reg_name)
@@ -147,35 +148,35 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     transformations = {'global' : affine}
 
     # getting the shapes (but also the EntityID to regular ID mapping)
-    # boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
-    # pols = _get_polygons(boundaries_path, transformations)
-    # entity_to_id_dict = pols['ID'].to_dict()
-    # assert pols.shape[0] == len(entity_to_id_dict) == np.unique(pols['ID']).shape[0], \
-    #     "The number of polygons does not match the number of unique IDs. Please check the data."
+    boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
+    pols = _get_polygons(boundaries_path, transformations)
+    entity_to_id_dict = pols['ID'].to_dict()
+    assert pols.shape[0] == len(entity_to_id_dict) == np.unique(pols['ID']).shape[0], \
+        "The number of polygons does not match the number of unique IDs. Please check the data."
 
     # Getting the points 
     points = {}
     transcripts_path = f"{vpt_path}/{reg_name}/{detected_transcripts_fname}"
     tz = _get_points(transcripts_path, transformations)
-    # tz['cell_id'] = tz['cell_id'].astype(str).map(entity_to_id_dict).fillna(-1).astype(int).compute()
+    tz['cell_id'] = tz['cell_id'].astype(str).map(entity_to_id_dict).fillna(-1).astype(int) # .compute()
     points[KEYS[POINTS_KEY]] = tz
     
     # Getting the shapes
-    # shapes = {}
-    # pols.set_index("ID", inplace=True)
-    # shapes[KEYS[SHAPES_KEY]] = pols
+    shapes = {}
+    pols.set_index("ID", inplace=True)
+    shapes[KEYS[SHAPES_KEY]] = pols
 
     # # Getting the shapes
-    shapes = {}
-    boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
-    shapes[KEYS[SHAPES_KEY]] = _get_polygons(boundaries_path, transformations)
+    # shapes = {}
+    # boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
+    # shapes[KEYS[SHAPES_KEY]] = _get_polygons(boundaries_path, transformations)
     
     # Getting the table
     tables = {}
     count_path = f"{vpt_path}/{reg_name}/{cell_by_gene_fname}"
     obs_path = f"{vpt_path}/{reg_name}/{cell_metadata_fname}"
     table = _get_table(count_path, obs_path, reg_name, exp_name, f"{exp_name}_{reg_name}", KEYS[SHAPES_KEY])
-    # table.obs.index = table.obs.index.map(entity_to_id_dict)
+    table.obs.index = table.obs.index.map(entity_to_id_dict).astype(str)
     table.obs.index.name = "index"
     tables[KEYS[TABLE_KEY]] = table
 
@@ -183,7 +184,7 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     sdata[KEYS[TABLE_KEY]] = tables[KEYS[TABLE_KEY]]
     sdata[KEYS[POINTS_KEY]] = points[KEYS[POINTS_KEY]]
     sdata[KEYS[SHAPES_KEY]] = shapes[KEYS[SHAPES_KEY]]
-    sdata = _cast_multipolygons_to_polygons(sdata, KEYS[SHAPES_KEY], subset_field=['EntityID'])
+    sdata = _cast_multipolygons_to_polygons(sdata, KEYS[SHAPES_KEY], subset_field=['ID'])
 
     # Doing the transformations: 
     # Setting the pixel space coordinate system
