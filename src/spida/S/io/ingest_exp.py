@@ -1,6 +1,7 @@
 import sys
 import subprocess
 import warnings
+import logging
 
 import numpy as np
 
@@ -102,7 +103,7 @@ def _cast_multipolygons_to_polygons(sdata, shapes_key, subset_field:list=['Entit
         gdf['area'] = gdf.area # sort by area to remove smaller duplicates
         gdf.sort_values(by="area", ascending=False, inplace=True) 
         index_dup = gdf.index[gdf.index.duplicated()]
-        print(len(index_dup), "duplicated indices found in gdf") # print how many duplicates were found 
+        logging.info(f"{len(index_dup)} duplicated indices found in gdf") # print how many duplicates were found 
         gdf = gdf.drop_duplicates(subset=subset_field)
         sdata[shapes_key] = gdf
     return sdata
@@ -230,7 +231,7 @@ def load_proseg_segmentation(sdata:sd.SpatialData,
     cell_polygons_fname (str): The filename for the union polygons data (default is "cell-polygons.geojson.gz").
     """
 
-    from spida.io.read_proseg import _get_polygons, _get_points, _get_table
+    from spida.S.io.read_proseg import _get_polygons, _get_points, _get_table
 
     # KEYS
     DEF_KEYS = _gen_keys("default", exp_name, reg_name)

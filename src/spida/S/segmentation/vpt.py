@@ -1,11 +1,12 @@
 import os
 from pathlib import Path
 import subprocess
+import logging
 
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
-
 import pandas as pd
+
+load_dotenv()
 
 
 def _add_vpt_binary():
@@ -28,8 +29,8 @@ def _add_vpt_binary():
     ret = subprocess.run(segmentation_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
         raise ValueError("VPT failed to run. Check the installation and the PATH variable.")
-    
-    print("VPT binary added to PATH successfully.")
+
+    logging.info("VPT binary added to PATH successfully.")
 
 
 def _cli_segmentation(CONFIG_FILE:str,
@@ -53,6 +54,8 @@ def _cli_segmentation(CONFIG_FILE:str,
             --tile-overlap {tile_overlap} \
             --overwrite
         """
+    logging.info(f"Running VPT segmentation command: {segmentation_command}")
+
     ret = subprocess.run(segmentation_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
         raise ValueError("VPT failed to segment images.")
@@ -82,6 +85,8 @@ def _cli_partition_transcripts(
             --output-transcripts {output_dir}/{region}/{output_transcripts} \
             --overwrite
         """
+    logging.info(f"Running VPT partition transcripts command: {partition_transcripts_command}")
+
     ret = subprocess.run(partition_transcripts_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
         raise ValueError("VPT failed to partition transcripts.")
@@ -110,6 +115,9 @@ def _cli_get_metadata(
             --output-metadata {output_dir}/{region}/{output_metadata} \
             --overwrite
         """
+    
+    logging.info(f"Running VPT derive metadata command: {metadata_command}")
+
     ret = subprocess.run(metadata_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
         raise ValueError("VPT failed to derive entity metadata.")
@@ -125,6 +133,9 @@ def _cli_get_metadata(
             --overwrite
 
         """
+    
+    logging.info(f"Running VPT sum signals command: {sum_signals_command}")
+
     ret = subprocess.run(sum_signals_command.split(), capture_output=True, check=True)
     if ret.returncode != 0: 
         raise ValueError("VPT failed to sum signals.")
@@ -238,7 +249,7 @@ def seg_to_vpt(root_dir:str,
 
     _add_vpt_binary()
 
-    print(f"Converting Geometry for region {region}...")
+    logging.info(f"Converting Geometry for region {region}...")
 
     _convert_geometry(root_dir=root_dir,
                       output_dir=seg_out_dir,
@@ -246,10 +257,10 @@ def seg_to_vpt(root_dir:str,
                       input_boundaries=vpt_filepaths.get("input_boundaries", "polygons.parquet"),
                       output_boundaries=vpt_filepaths.get("output_boundaries", "cellpose_micron_space.parquet"),
                       )
-    
-    print(f"Geometry conversion completed for region {region}.")
-    print(f"Converted geometry saved to {seg_out_dir}/{region}/cellpose_micron_space.parquet.")
-    
+
+    logging.info(f"Geometry conversion completed for region {region}.")
+    logging.info(f"Converted geometry saved to {seg_out_dir}/{region}/cellpose_micron_space.parquet.")
+
     # Run VPT partition transcripts
     _cli_partition_transcripts(root_dir=root_dir,
                               output_dir=seg_out_dir,
@@ -260,8 +271,8 @@ def seg_to_vpt(root_dir:str,
                               output_transcripts=vpt_filepaths.get("output_transcripts", "detected_transcripts.csv"),
                                 )
 
-    print(f"Partitioned transcripts for region {region}.")
-    
+    logging.info(f"Partitioned transcripts for region {region}.")
+
     # Run VPT get metadata
     _cli_get_metadata(root_dir=root_dir,
                       output_dir=seg_out_dir,
@@ -272,18 +283,19 @@ def seg_to_vpt(root_dir:str,
                       output_signals=vpt_filepaths.get("output_signals", "sum_signals.csv"),
                       )
 
-    print(f"Metadata and signals derived for region {region}.")
+    logging.info(f"Metadata and signals derived for region {region}.")
 
 def generate_metadata(root_dir:str,
                       seg_out_dir:str,
                       region:str,
                       input_boundaries:str = "cellpose_micron_space.parquet",
-                      output_boundaries:str = "cellpose_micron_space.parquet",input_entity_by_gene:str = "cell_by_gene.csv",
-                      output_metadata:str = "cell_metadata.csv",
-                      output_signals:str = "sum_signals.csv",
+                      output_boundaries:str = "cellpose_micron_space.parquet",
+                      input_entity_by_gene:str = "cell_by_gene.csv",
+                      output_entity_by_gene:str = "cell_by_gene.csv",
                       input_transcripts:str = "detected_transcripts.parquet",
                       output_transcripts:str = "detected_transcripts.csv",
-                      output_entity_by_gene:str = "cell_by_gene.csv",
+                      output_metadata:str = "cell_metadata.csv",
+                      output_signals:str = "sum_signals.csv",
                       ):
     """
     Generate metadata from the segmented images and partitioned transcripts.
@@ -307,14 +319,19 @@ def generate_metadata(root_dir:str,
                       output_boundaries=output_boundaries,
                       convert_micron=False
                       )
+    logging.info(f"Geometry conversion completed for region {region}.")
+    logging.info(f"Converted geometry saved to {seg_out_dir}/{region}/{output_boundaries}.")
     
-    _cli_partition_transcripts(root_dir=root_dir,
+    _cli_partition_transcripts(root_dir=seg_out_dir,
                               output_dir=seg_out_dir,
                               region=region,
                               input_boundaries=output_boundaries,
+                              input_transcripts=input_transcripts,
                               output_entity_by_gene=output_entity_by_gene,
                               output_transcripts=output_transcripts,
                                 )
+    logging.info(f"Partitioned transcripts for region {region}.")
+    logging.info(f"Partitioned transcripts saved to {seg_out_dir}/{region}/{output_transcripts}.")
 
     _cli_get_metadata(root_dir=root_dir,
                       output_dir=seg_out_dir,
@@ -324,6 +341,7 @@ def generate_metadata(root_dir:str,
                       output_metadata=output_metadata,
                       output_signals=output_signals)
 
+    logging.info(f"Metadata and signals derived for region {region}.")
 
 
 

@@ -1,0 +1,164 @@
+# #!/usr/bin/env python3
+# """
+# CLI interface for SPIDA segmentation pipeline using argparse.
+# """
+# import os
+# import sys
+# import argparse
+# import logging
+# from pathlib import Path
+# import inspect
+
+# from spida.utilities.script_utils import ParseKwargs
+
+# # logger = logging.getLogger(__name__)
+# import spida.S.segmentation as S
+
+# DESCRIPTION = """ SPIDA Segmentation Pipeline CLI """
+# EPILOGUE = """ """
+
+# def setup_logging(**kwargs): 
+    
+#     logging.basicConfig(level=logging.INFO,
+#                        format='[%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s - %(message)s',
+#                        datefmt="%Y-%m-%dT%H:%M:%S%z")
+
+
+
+
+# def run_segmentation_region_register_subparser(subparser): 
+#     # Subcommand: run_segmentation
+#     run_parser = subparser.add_parser(
+#         'run',
+#         help='Run segmentation on a single region',
+#         description='Run an implemented segmentation algorithm on a given region'
+#     )
+#     run_parser.add_argument('type', choices=['proseg', 'vpt', 'cellpose', 'mesmer'], help='Type of segmentation to run')
+#     run_parser.add_argument('exp_name', help='Name of the experiment')
+#     run_parser.add_argument('reg_name', help='Name of the region')
+#     run_parser.add_argument('--input_dir',type=str, help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)')
+#     run_parser.add_argument('--output_dir',type=str,help='Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)')
+#     run_parser.add_argument(
+#         '--config_path',type=str,default="/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json",
+#         help='Configuration file path (for VPT segmentation)'
+#     )
+#     run_parser.add_argument('-k', '--kwargs',nargs='*',action=ParseKwargs,
+#                             help='Additional keyword arguments to segmentation algorithms in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+#     return
+
+# def run_segmentation_experiment_register_subparser(subparser):
+#     # Subcommand: segment_experiment
+#     exp_parser = subparser.add_parser(
+#         'experiment',
+#         help='Run segmentation for all regions in an experiment',
+#         description='Run segmentation for all regions in an experiment'
+#     )
+#     exp_parser.add_argument('type',choices=['proseg', 'vpt', 'cellpose', 'mesmer'],help='Type of segmentation to run')
+#     exp_parser.add_argument('exp_name',help='Name of the experiment')
+#     exp_parser.add_argument('--input_dir',type=str,help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)')
+#     exp_parser.add_argument('--output_dir',type=str,help='Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)')
+#     exp_parser.add_argument('--config_path',type=str,default="/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json",
+#                             help='Configuration file path (for VPT segmentation)')
+#     exp_parser.add_argument('-k','--kwargs',type=str,nargs='*',
+#         help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+#     return 
+
+# def run_proseg_alignment_register_subparser(subparser):
+#     # Subcommand: align_proseg
+#     align_parser = subparser.add_parser(
+#         'align',
+#         help='Align Proseg transcripts to seed transcripts',
+#         description='Align Proseg transcripts to seed transcripts'
+#     )
+#     align_parser.add_argument('exp_name',help='Name of the experiment')
+#     align_parser.add_argument('reg_name',help='Name of the region')
+#     align_parser.add_argument('--seed-prefix-name',type=str,default='default',help='Seed prefix name (default: default)')
+#     align_parser.add_argument('--prefix-name',type=str,default='proseg',help='Prefix name (default: proseg)')
+#     align_parser.add_argument('--input-dir',type=str,help='Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)')
+#     align_parser.add_argument('--seg-dir',type=str,help='Segmentation directory (default: uses SEGMENTATION_OUT_PATH env var)')
+#     align_parser.add_argument('--x',type=str,default='x',help='X coordinate column name (default: x)')
+#     align_parser.add_argument('--y',type=str,default='y',help='Y coordinate column name (default: y)')
+#     align_parser.add_argument('--z',type=str,default='global_z',help='Z coordinate column name (default: global_z)')
+#     align_parser.add_argument('--cell-column',type=str,default='cell_id',help='Cell column name (default: cell_id)')
+#     align_parser.add_argument('--barcode-column',type=str,default='barcode_id',help='Barcode column name (default: barcode_id)')
+#     align_parser.add_argument('--gene-column',type=str,default='gene',help='Gene column name (default: gene)')
+#     align_parser.add_argument('--fov-column',type=str,default='fov',help='FOV column name (default: fov)')
+#     align_parser.add_argument('--cell-missing',type=int,default=-1,help='Cell missing value (default: -1)')
+#     align_parser.add_argument('--min-jaccard',type=float,default=0.4,help='Minimum Jaccard index (default: 0.4)')
+#     align_parser.add_argument('--min-prob',type=float,default=0.5,help='Minimum probability (default: 0.5)')
+#     align_parser.add_argument('--filter-blank',action='store_true',help='Filter blank genes')
+#     align_parser.add_argument('--cell-metadata-fname',type=str,default='merged_cell_metadata.csv',
+#                               help='Cell metadata filename (default: merged_cell_metadata.csv)')
+#     align_parser.add_argument('--cell-by-gene-fname',type=str,default='merged_cell_by_gene.csv',
+#                               help='Cell by gene filename (default: merged_cell_by_gene.csv)')
+#     align_parser.add_argument('--detected-transcripts-fname',type=str,default='merged_transcript_metadata.csv',
+#                               help='Detected transcripts filename (default: merged_transcript_metadata.csv)')
+#     align_parser.add_argument('--cell-polygons-fname',type=str,default='merged_cell_polygons.geojson',
+#                               help='Cell polygons filename (default: merged_cell_polygons.geojson)')
+#     align_parser.add_argument('-k', '--kwargs',type=str,nargs='*',
+#                               help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+#     return 
+
+
+
+# def main():
+#     """Main CLI entry point."""
+#     parser = argparse.ArgumentParser(
+#         description=DESCRIPTION,
+#         epilog=EPILOGUE,
+#         formatter_class=argparse.RawDescriptionHelpFormatter
+#     )
+#     subparsers = parser.add_subparsers(
+#         dest='command',
+#         help='Available commands',
+#         metavar='{run,experiment,align}'
+#     )
+
+#     # Adding all the subparsers from above
+#     current_module = sys.modules[__name__]
+#     for name, register_subparser_func in inspect.getmembers(current_module, inspect.isfunction):
+#         if "register_subparser" in name:
+#             register_subparser_func(subparsers)
+
+#     # initiate args: 
+#     args = None
+#     if len(sys.argv) > 1: 
+#         if sys.argv[1] in ["-v", "--version"]: 
+#             print(S.__version__)
+#             exit()
+#         else: 
+#             args = parser.parse_args()
+#     else:
+#         args = parser.parse_args(['--help'])
+#         exit()
+    
+#     # setup logging here: 
+#     if not logging.root.handlers: 
+#         setup_logging(stdout=True, quiet=False)
+
+#     # collect args
+#     args_var = vars(args)
+#     for key, value in args_var.items():
+#         logging.info(f"Argument: {key} = {value}, Type: {type(value)}")
+
+#     command = args_var.pop("command").lower().replace("_", "-")
+#     if command in ["run", "run-segmentation-region"]: 
+#         from main import run_segmentation as func
+#     elif command in ["experiment", "segment-experiment"]:
+#         from main import segment_experiment as func
+#     elif command in ["align", "align-proseg"]:
+#         from main import align_proseg as func
+#     else:
+#         logging.error(f"Unknown command: {command}")
+#         parser.print_help()
+#         sys.exit(1)
+
+#     # validate environment (if needed)
+
+#     logging.info(f"Running command: {command}")
+#     func(**args_var)
+#     logging.info(f"Command {command} completed successfully.")
+#     return 
+
+# if __name__ == "__main__":
+#     main()

@@ -16,11 +16,16 @@ def plot_images(sdata, IMAGE_KEY, image_scale_keys, image_channels, cs:str="glob
     min_int = sdata[IMAGE_KEY][image_scale_keys[-1]]['image'].min(['x', 'y']).compute().to_dataframe().to_dict()['image']
 
 
-    fig, axes = plt.subplots(1, len(image_channels), figsize=(20, 8))
+    ncols = 4
+    nrows = int(len(image_channels) / ncols) + (len(image_channels) % ncols > 0)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(20, nrows*5), dpi=200)
+    axes = axes.flatten()
 
     for i, channel in enumerate(image_channels):
         norm = Normalize(vmin=min_int[channel], vmax=max_int[channel]*0.5)
-        sdata.pl.render_images(IMAGE_KEY, channel=channel, cmap="grey", norm=norm).pl.show(ax=axes[i], title=channel, coordinate_systems=cs)
+        sdata.pl.render_images(IMAGE_KEY, channel=channel, cmap="grey", norm=norm).pl.show(ax=axes[i], title=channel, coordinate_systems=cs, colorbar=False)
+        
+    plt.tight_layout()
 
     if pdf_file: 
         pdf_file.savefig(fig, bbox_inches='tight')
