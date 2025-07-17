@@ -1,20 +1,12 @@
- 
-import sys
 import json
 
 import polars as pl
 import numpy as np
 import anndata as ad
 
-
-# with warnings.catch_warnings(): 
-#     warnings.filterwarnings("ignore")
-#     import spatialdata as sd
-
-# spida_path = "/ceph/cephatlas/aklein/spida/src"
-# sys.path.append(spida_path)
 from spida._utilities import _validate_adata
-from spida._constants import * # type: ignore
+from spida._constants import (CELL_ID, CELL_X, CELL_Y, CELL_FOV, CELL_VOLUME,
+                            PROSEG_PRESET, DEFAULT_PRESET) # type: ignore
 
 class Filter():
 

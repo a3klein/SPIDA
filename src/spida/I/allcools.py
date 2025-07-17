@@ -1,7 +1,6 @@
 import os
 import glob
 from pathlib import Path
-import warnings
 import logging
 
 # assuming that all genes in the merscope dataset should overlap with the genes in the scRNA dataset. 
@@ -97,7 +96,7 @@ def _allcools_seurat_wrapper(ref_adata, qry_adata, **kwargs):
         qry_adata, batch_categories=["ref", "query"], batch_key="Modality", index_unique=None
     )
 
-    ncell = ref_adata.shape[0] + qry_adata.shape[0]
+    # ncell = ref_adata.shape[0] + qry_adata.shape[0]
     ncc = significant_pc_test(ref_adata, p_cutoff=0.1, update=False, obsm="X_pca")
     ncc = min(50, ncc, ref_adata.shape[0] - 1, qry_adata.shape[0] - 1, ref_adata.shape[1] // 5)
     ncc = max(ncc, 5)
@@ -202,8 +201,8 @@ def run_allcools_seurat(ref_adata:ad.AnnData,
     qry_path = f"{anndata_store_path}/{exp}/{seg_name}/adata_{donor}.h5ad"
     
     # All integration parameters defined here
-    max_cluster_size = kwargs.get('max_cluster_size', 100000)
-    min_cluster_size = kwargs.get('min_cluster_size', 100)
+    # max_cluster_size = kwargs.get('max_cluster_size', 100000)
+    # min_cluster_size = kwargs.get('min_cluster_size', 100)
     n_train_cell = kwargs.get('n_train_cell', 100000)
     chunk_size = kwargs.get('chunk_size', 50000)
     rna_cell_type = kwargs.get('rna_cell_type_column', 'supercluster_name')

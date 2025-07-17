@@ -3,6 +3,7 @@ import os
 import glob
 from pathlib import Path
 import logging
+from dotenv import load_dotenv  # type: ignore
 
 import numpy as np
 import pandas as pd
@@ -11,8 +12,6 @@ from scipy import sparse
 
 from datetime import datetime
 date = datetime.today().strftime("%Y%m%d")
-
-from dotenv import load_dotenv  # type: ignore
 load_dotenv()
 
 

@@ -11,6 +11,7 @@ import numpy as np
 import imageio.v3 as iio
 
 
+### TODO: change from .env pointer to dw config to just having the config params from the .ini file in the .env file
 def _configure_deconwolf():
     """Configure Deconwolf."""
     config = configparser.ConfigParser()
