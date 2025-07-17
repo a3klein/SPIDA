@@ -1,14 +1,10 @@
 import os
-import sys
 import glob
 from pathlib import Path
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
 import fire # type: ignore
 import warnings
-
-
-warnings.filterwarnings('ignore', category=UserWarning, module='zarr')
+import logging
 
 from spida.P.filtering import run_filtering
 from spida.P.setup_adata import run_setup
@@ -18,9 +14,9 @@ from spida._constants import TABLE_KEY # type: ignore
 
 from matplotlib.backends.backend_pdf import PdfPages
 
-# Setting Logging for this module 
-import logging
+load_dotenv()
 logging.basicConfig(filename="../../spida.log", level=logging.INFO)
+warnings.filterwarnings('ignore', category=UserWarning, module='zarr')
 
 class P_cli(): 
     """
@@ -238,6 +234,7 @@ class P_cli():
 
 if __name__ == "__main__": 
     fire.Fire(P_cli)
+    
 
 
 # # P Module Functions

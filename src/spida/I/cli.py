@@ -2,11 +2,10 @@
 """
 CLI interface for SPIDA integration and annotation pipeline using argparse.
 """
-import os
+# import os
 import sys
 import argparse
 import logging
-from pathlib import Path
 import inspect
 
 from spida.utilities.script_utils import ParseKwargs, parse_list, parse_path

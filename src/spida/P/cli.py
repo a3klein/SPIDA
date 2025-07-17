@@ -1,168 +1,52 @@
 #!/usr/bin/env python3
 """
-CLI interface for SPIDA P module (Pipeline) using argparse.
+CLI interface for SPIDA P module (PreProcessing) using argparse.
 """
-import os
 import sys
 import argparse
 import logging
-from pathlib import Path
 import inspect
-import glob
 import warnings
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    # dotenv not available, continue without it
-    pass
-
-warnings.filterwarnings('ignore', category=UserWarning, module='zarr')
-
-from spida.utilities.script_utils import ParseKwargs
-from spida.P.filtering import run_filtering
-from spida.P.setup_adata import run_setup
-from spida.pl import plot_filtering, plot_setup
-from spida._utilities import _gen_keys, _region_to_donor, _write_adata, _backup_adata, _get_adata
-from spida._constants import TABLE_KEY
-from matplotlib.backends.backend_pdf import PdfPages
-
-# logger = logging.getLogger(__name__)
+from spida.utilities.script_utils import ParseKwargs, parse_path, parse_list
 import spida.P as P
 
-DESCRIPTION = """ SPIDA P Module (Pipeline) CLI - Filter cells and setup AnnData objects for BICAN project """
-EPILOGUE = """ """
+# logger = logging.getLogger(__name__)
+warnings.filterwarnings('ignore', category=UserWarning, module='zarr')
+
+DESCRIPTION = """
+    Command line interface for preprocessing pipeline steps of spatial data
+    This interface provides methods to filter spatial data, setup an AnnData object for downstream analysis, 
+    run spatially aware clustering and alignment algorithms, and visualize the results.
+    
+    Methods:
+
+    [Utilities] 
+    write-adata                        - Write AnnData objects to a .h5ad file for a specific experiment and region.
+    
+    [Plotting] 
+    plot-filtering-region              - Plot function for filtering results for a specific region.
+    plot-filtering-experiment          - Plot function for filtering results for an entire experiment. # NOT IMPLEMENTED
+    plot-setup-region                  - Plot function for setup results for a specific region.
+    plot-setup-experiment              - Plot function for setup results for an entire experiment.# NOT IMPLEMENTED
+
+    [Filtering]
+    filter-cells-region               - Filter cells for a specific region in an experiment.
+    filter-cells-all                  - Filter cells for all regions in an experiment.
+    
+    [Setup]
+    setup-adata-region                - Setup the AnnData object for downstream analysis for a specific region.
+    setup-adata-all                   - Setup the AnnData objects for all regions in an experiment.
+    """
+EPILOGUE = """
+Author: Amit Klein
+Documentation:
+"""
 
 def setup_logging(**kwargs): 
     logging.basicConfig(level=logging.INFO,
                        format='[%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s - %(message)s',
                        datefmt="%Y-%m-%dT%H:%M:%S%z")
-
-
-# P Module Functions
-def filter_cells_region(exp_name: str, reg_name: str, prefix_name: str, 
-                       cutoffs_path: str = None, plot: bool = False, 
-                       image_path: str = None):
-    """Filter cells for a specific region in an experiment."""
-    print("FILTERING CELLS, EXPERIMENT %s, REGION %s, PREFIX %s" % (exp_name, reg_name, prefix_name))
-    
-    # default cutoffs path
-    if cutoffs_path is None: 
-        cutoffs_path = os.getenv("DEF_CUTOFFS_PATH", "/ceph/cephatlas/aklein/bican/reference/filtering_cutoffs.json")
-    
-    # determining donor from region name
-    donor_name = _region_to_donor(reg_name)
-    
-    # Get KEYS
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
-    # Get the AnnData object
-    adata = _get_adata(exp_name, reg_name, prefix_name)
-    # Run the filtering 
-    adata = run_filtering(adata, exp_name, reg_name, prefix_name, donor_name, cutoffs_path)
-    # backup the AnnData object
-    _backup_adata(exp_name, reg_name, adata, KEYS[TABLE_KEY])
-    
-    print("DONE")
-    if plot:
-        plot_filtering_region(exp_name, reg_name, prefix_name, image_path=image_path)
-
-
-def plot_filtering_region(exp_name: str, reg_name: str, prefix_name: str, image_path: str = None):
-    """Plot the filtering results for a specific region in an experiment."""
-    adata = _get_adata(exp_name, reg_name, prefix_name)
-
-    if image_path is None: 
-        image_store = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
-        image_path = Path(f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/pixi_filt.pdf")
-        image_path.parent.mkdir(parents=True, exist_ok=True)
-
-    pdf_file = PdfPages(image_path)
-    fig, ax = plot_filtering(adata, exp_name, reg_name, prefix_name)
-    pdf_file.savefig(fig)
-    pdf_file.close()
-
-
-def filter_cells_all(exp_name: str, prefix_name: str, cutoffs_path: str = None, 
-                    plot: bool = False, image_path: str = None):
-    """Filter cells for all regions in an experiment."""
-    # Getting the regions for the experiment
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
-    exp_path = Path(f"{zarr_store}/{exp_name}")
-    regions = glob.glob(f"{exp_path}/region_*")
-    for reg in regions: 
-        reg_name = reg.split("/")[-1]
-        filter_cells_region(exp_name, reg_name, prefix_name, 
-                           cutoffs_path=cutoffs_path, plot=plot, image_path=image_path)
-
-
-def write_adata(exp_name: str, reg_name: str = None, prefix_names: list = None, 
-               output_path: str = "/ceph/cephatlas/aklein/bican/data/anndatas/"):
-    """Write AnnData objects to disk for a specific experiment and region."""
-    print(exp_name, reg_name, prefix_names, output_path)
-    # Iterating over all prefixes
-    for p in prefix_names: 
-        print("PREFIX:", p)
-        # if a specific region is provided, write only that region
-        if reg_name: 
-            fout = f"{output_path}/{exp_name}/{p}"
-            _write_adata(exp_name, reg_name, p, fout)
-        # if no region is provided, write all regions
-        else: 
-            zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
-            region_list = glob.glob(f"{zarr_store}/{exp_name}/region_*")
-            for reg in region_list: 
-                rname = reg.split("/")[-1]
-                fout = f"{output_path}/{exp_name}/{p}"
-                _write_adata(exp_name, rname, p, fout)
-
-
-def setup_adata_region(exp_name: str, reg_name: str, prefix_name: str,
-                      plot: bool = False, image_path: str = None):
-    """Setup the AnnData object for downstream analysis for a specific region."""
-    print("SETTING UP ADATA, EXPERIMENT %s, REGION %s, PREFIX %s" % (exp_name, reg_name, prefix_name))
-
-    # determining donor from region name
-    donor_name = _region_to_donor(reg_name)
-    # Get KEYS
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
-    # Get the AnnData object
-    adata = _get_adata(exp_name, reg_name, prefix_name)
-    # Run the setup
-    adata = run_setup(adata, exp_name, reg_name, prefix_name, donor_name)
-    # backup the adata object
-    _backup_adata(exp_name, reg_name, adata, KEYS[TABLE_KEY])
-    
-    print("DONE SETUP")
-    if plot: 
-        plot_setup_region(exp_name, reg_name, prefix_name, image_path=image_path)
-
-
-def plot_setup_region(exp_name: str, reg_name: str, prefix_name: str, image_path: str = None):
-    """Plot the setup results for a specific region in an experiment."""
-    adata = _get_adata(exp_name, reg_name, prefix_name)
-
-    if image_path is None: 
-        image_store = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
-        image_path = Path(f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/pixi_setup.pdf")
-        image_path.parent.mkdir(parents=True, exist_ok=True)
-
-    pdf_file = PdfPages(image_path)
-    plot_setup(adata, exp_name, reg_name, prefix_name, pdf_file=pdf_file)
-    pdf_file.close()
-
-
-def setup_adata_all(exp_name: str, prefix_name: str, plot: bool = False, image_path: str = None):
-    """Setup the AnnData objects for all regions in an experiment."""
-    # Getting the regions for the experiment
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
-    exp_path = Path(f"{zarr_store}/{exp_name}")
-    regions = glob.glob(f"{exp_path}/region_*")
-    
-    for reg in regions: 
-        reg_name = reg.split("/")[-1]
-        setup_adata_region(exp_name, reg_name, prefix_name, plot=plot, image_path=image_path)
-
 
 # Subparser registration functions
 def filter_cells_region_register_subparser(subparser):
@@ -172,12 +56,12 @@ def filter_cells_region_register_subparser(subparser):
         help='Filter cells for a specific region in an experiment',
         description='Filter cells for a specific region in an experiment'
     )
-    parser.add_argument('exp_name', help='Name of the experiment')
-    parser.add_argument('reg_name', help='Name of the region')
-    parser.add_argument('prefix_name', help='Prefix for the keys in the spatialdata object')
-    parser.add_argument('--cutoffs-path', type=str, help='Path to the cutoffs JSON file')
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('reg_name', type=str, help='Name of the region')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--cutoffs-path', type=parse_path, help='Path to the cutoffs JSON file')
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
-    parser.add_argument('--image-path', type=str, help='Path to save the plot')
+    parser.add_argument('--image-path', type=parse_path, help='Path to save the plot')
     return
 
 
@@ -188,11 +72,11 @@ def filter_cells_all_register_subparser(subparser):
         help='Filter cells for all regions in an experiment',
         description='Filter cells for all regions in an experiment'
     )
-    parser.add_argument('exp_name', help='Name of the experiment')
-    parser.add_argument('prefix_name', help='Prefix for the keys in the spatialdata object')
-    parser.add_argument('--cutoffs-path', type=str, help='Path to the cutoffs JSON file')
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--cutoffs-path', type=parse_path, help='Path to the cutoffs JSON file')
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
-    parser.add_argument('--image-path', type=str, help='Path to save the plot')
+    parser.add_argument('--image-path', type=parse_path, help='Path to save the plot')
     return
 
 
@@ -203,11 +87,11 @@ def write_adata_register_subparser(subparser):
         help='Write AnnData objects to disk',
         description='Write AnnData objects to disk for a specific experiment and region'
     )
-    parser.add_argument('exp_name', help='Name of the experiment')
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
     parser.add_argument('--reg-name', type=str, help='Name of the region (optional, if not provided writes all regions)')
-    parser.add_argument('--prefix-names', type=str, nargs='+', required=True, help='List of prefix names')
-    parser.add_argument('--output-path', type=str, default='/ceph/cephatlas/aklein/bican/data/anndatas/', 
-                       help='Output directory path')
+    parser.add_argument('--prefix-names', type=parse_list, required=True, help='List of prefix names')
+    parser.add_argument('--output-path', type=parse_path, default=None, 
+                       help='Output directory path (default is None)')
     return
 
 
@@ -218,11 +102,11 @@ def setup_adata_region_register_subparser(subparser):
         help='Setup the AnnData object for downstream analysis for a specific region',
         description='Setup the AnnData object for downstream analysis for a specific region'
     )
-    parser.add_argument('exp_name', help='Name of the experiment')
-    parser.add_argument('reg_name', help='Name of the region')
-    parser.add_argument('prefix_name', help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('reg_name', type=str, help='Name of the region')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
-    parser.add_argument('--image-path', type=str, help='Path to save the plot')
+    parser.add_argument('--image-path', type=parse_path, help='Path to save the plot')
     return
 
 
@@ -233,10 +117,10 @@ def setup_adata_all_register_subparser(subparser):
         help='Setup the AnnData objects for all regions in an experiment',
         description='Setup the AnnData objects for all regions in an experiment'
     )
-    parser.add_argument('exp_name', help='Name of the experiment')
-    parser.add_argument('prefix_name', help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
-    parser.add_argument('--image-path', type=str, help='Path to save the plot')
+    parser.add_argument('--image-path', type=parse_path, help='Path to save the plot')
     return
 
 
@@ -247,10 +131,10 @@ def plot_filtering_region_register_subparser(subparser):
         help='Plot the filtering results for a specific region',
         description='Plot the filtering results for a specific region in an experiment'
     )
-    parser.add_argument('exp_name', help='Name of the experiment')
-    parser.add_argument('reg_name', help='Name of the region')
-    parser.add_argument('prefix_name', help='Prefix for the keys in the spatialdata object')
-    parser.add_argument('--image-path', type=str, help='Path to save the plot')
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('reg_name', type=str, help='Name of the region')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--image-path', type=parse_path, help='Path to save the plot')
     return
 
 
@@ -261,12 +145,11 @@ def plot_setup_region_register_subparser(subparser):
         help='Plot the setup results for a specific region',
         description='Plot the setup results for a specific region in an experiment'
     )
-    parser.add_argument('exp_name', help='Name of the experiment')
-    parser.add_argument('reg_name', help='Name of the region')
-    parser.add_argument('prefix_name', help='Prefix for the keys in the spatialdata object')
-    parser.add_argument('--image-path', type=str, help='Path to save the plot')
-    return 
-
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('reg_name', type=str, help='Name of the region')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--image-path', type=parse_path, help='Path to save the plot')
+    return
 
 
 def main():
@@ -310,24 +193,26 @@ def main():
         logging.info(f"Argument: {key} = {value}, Type: {type(value)}")
 
     command = args_var.pop("command").lower().replace("_", "-")
-    
-    # Function mapping
-    function_map = {
-        "filter-cells-region": filter_cells_region,
-        "filter-cells-all": filter_cells_all,
-        "write-adata": write_adata,
-        "setup-adata-region": setup_adata_region,
-        "setup-adata-all": setup_adata_all,
-        "plot-filtering-region": plot_filtering_region,
-        "plot-setup-region": plot_setup_region,
-    }
-    
-    if command in function_map:
-        func = function_map[command]
+    if command in ["filter-cells-region"]: 
+        from main import filter_cells_region as func
+    elif command in ["filter-cells-all"]:
+        from main import filter_cells_all as func
+    elif command in ["write-adata"]:
+        from main import write_adata as func
+    elif command in ["setup-adata-region"]:
+        from main import setup_adata_region as func
+    elif command in ["setup-adata-all"]:
+        from main import setup_adata_all as func
+    elif command in ["plot-filtering-region"]:
+        from main import plot_filtering_region as func
+    elif command in ["plot-setup-region"]:
+        from main import plot_setup_region as func
     else:
         logging.error(f"Unknown command: {command}")
         parser.print_help()
         sys.exit(1)
+
+    # validate environment (if needed)
 
     logging.info(f"Running command: {command}")
     func(**args_var)

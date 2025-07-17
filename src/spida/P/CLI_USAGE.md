@@ -1,10 +1,10 @@
 # SPIDA P Module CLI Usage Guide
 
-The SPIDA P (Pipeline) module provides a command-line interface for filtering cells and setting up AnnData objects in the BICAN project. This CLI tool replaces the previous Fire-based interface with a more structured argparse-based approach.
+The SPIDA P (Preprocessing) module provides a command-line interface for filtering cells and setting up AnnData objects in the BICAN project. This CLI tool replaces the previous Fire-based interface with a more structured argparse-based approach.
 
 ## Installation and Setup
 
-Before using the CLI, ensure you have the SPIDA package installed and the necessary environment variables set:
+Before using the CLI, ensure you have the SPIDA package installed and the necessary environment variables set in your .env file:
 
 - `DEF_CUTOFFS_PATH`: Default path to filtering cutoffs JSON file
 - `ZARR_STORAGE_PATH`: Path to ZARR storage directory
