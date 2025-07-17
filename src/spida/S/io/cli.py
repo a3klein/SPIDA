@@ -39,7 +39,7 @@ class io_cli():
         """
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
-            from spida.io.main import ingest_region as func
+            from spida.S.io.main import ingest_region as func
         func(exp_name, reg_name, type=type, prefix_name=prefix_name, source=source, plot=plot)
 
     def ingest_all(self, 
@@ -60,7 +60,7 @@ class io_cli():
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
-            from spida.io.main import ingest_all as func
+            from spida.S.io.main import ingest_all as func
         func(exp_name, type=type, prefix_name=prefix_name, source=source, plot=plot)
 
 
@@ -85,7 +85,7 @@ class io_cli():
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
-            from spida.io.main import load_segmentation_region as func
+            from spida.S.io.main import load_segmentation_region as func
         func(exp_name, reg_name, seg_dir=seg_dir, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
 
     
@@ -108,7 +108,7 @@ class io_cli():
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
-            from spida.io.main import load_segmentation_all as func
+            from spida.S.io.main import load_segmentation_all as func
         func(exp_name, seg_dir=seg_dir, type=type, prefix_name=prefix_name, plot=plot)
 
 

@@ -1,11 +1,12 @@
 import os
 import sys
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
 from pathlib import Path
 import fire # type: ignore
 import glob
 import logging
+
+load_dotenv()
 
 # The controller that calls the specified segmentation algorithms 
 def run_segmentation(type:str, exp_name:str, reg_name:str, input_dir:str|Path=None, output_dir:str|Path=None, **kwargs):
@@ -123,17 +124,18 @@ def align_proseg(
         cell_by_gene_fname:str="merged_cell_by_gene.csv",
         detected_transcripts_fname:str="merged_transcript_metadata.csv",
         cell_polygons_fname:str="merged_cell_polygons.geojson",
+        **kwargs
         ):
     """
     Align Proseg transcripts to seed transcripts.
     """
 
-    from proseg import align_proseg_transcripts
-    from vpt import generate_metadata, seg_to_vpt
-    from spida.io import load_segmentation_region
-    
-    if input_dir is None: 
-        processed_root_path =  os.getenv("PROCESSED_ROOT_PATH")
+    from .proseg import align_proseg_transcripts
+    from .vpt import generate_metadata, seg_to_vpt
+    # from spida.S.io import load_segmentation_region
+
+    if input_dir is None:
+        processed_root_path = os.getenv("PROCESSED_ROOT_PATH")
         input_dir = f"{processed_root_path}/{exp_name}/out"
 
     if seg_dir is None:
@@ -193,20 +195,20 @@ def align_proseg(
     #     output_signals="merged_sum_signals.csv"
     # )
 
-    logging.info(f"Loading segmentation data for region {reg_name} in experiment {exp_name}.")
-    # Loading the new segmentation data into the spatialdata object 
-    load_segmentation_region(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        seg_dir=seg_dir,
-        type="vpt",
-        prefix_name=out_prefix_name,
-        plot=False,
-        cell_metadata_fname=cell_metadata_fname,
-        cell_by_gene_fname="cell_by_gene.csv", 
-        detected_transcripts_fname="detected_transcripts.csv",
-        cellpose_micron_space_fname="merged_converted_boundaries.parquet",
-        )
+    # logging.info(f"Loading segmentation data for region {reg_name} in experiment {exp_name}.")
+    # # Loading the new segmentation data into the spatialdata object 
+    # load_segmentation_region(
+    #     exp_name=exp_name,
+    #     reg_name=reg_name,
+    #     seg_dir=seg_dir,
+    #     type="vpt",
+    #     prefix_name=out_prefix_name,
+    #     plot=False,
+    #     cell_metadata_fname=cell_metadata_fname,
+    #     cell_by_gene_fname="cell_by_gene.csv", 
+    #     detected_transcripts_fname="detected_transcripts.csv",
+    #     cellpose_micron_space_fname="merged_converted_boundaries.parquet",
+    #     )
 
 
 if __name__ == "__main__":

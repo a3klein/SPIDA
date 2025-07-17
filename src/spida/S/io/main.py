@@ -4,6 +4,7 @@ import glob
 import pathlib
 import fire # type: ignore
 import warnings
+import logging
 
 from dotenv import load_dotenv # type: ignore
 load_dotenv()
@@ -14,7 +15,7 @@ with warnings.catch_warnings():
 
 from spida._utilities import _gen_keys
 from spida._constants import *
-from spida.io.ingest_exp import read_merscope, load_vpt_segmentation, load_proseg_segmentation
+from .ingest_exp import read_merscope, load_vpt_segmentation, load_proseg_segmentation
 from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap
 
 from matplotlib.backends.backend_pdf import PdfPages
@@ -29,7 +30,8 @@ def ingest_region(exp_name:str,
                   type:str="merscope",  
                   prefix_name:str="default", 
                   source:str="machine", 
-                  plot:bool=False):
+                  plot:bool=False, 
+                  **kwargs):
     """
     Entry point for ingesting spatial data / segmentation outputs into spatialdata objects.
 
@@ -41,7 +43,7 @@ def ingest_region(exp_name:str,
 
     """
 
-    print("INGESTING REGION; EXPERIMENT %s, REGION %s " %(exp_name, reg_name) )
+    logging.info("INGESTING REGION; EXPERIMENT %s, REGION %s " %(exp_name, reg_name) )
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
 
     if type == "merscope" and source == "machine":
@@ -55,7 +57,7 @@ def ingest_region(exp_name:str,
         image_channels = sd.models.get_channel_names(sdata[KEYS[IMAGE_KEY]])
         image_scale_keys = list(sdata[KEYS[IMAGE_KEY]].keys())
 
-        print(sdata.tables.keys())
+        logging.info(sdata.tables.keys())
         if plot: 
             image_path = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
             image_path = f"{image_path}/{exp_name}/default/{reg_name}/pixi-ing.pdf"
@@ -74,7 +76,8 @@ def ingest_all(
         type:str="merscope", 
         prefix_name:str="default",
         source:str="machine",
-        plot:bool=False):
+        plot:bool=False, 
+        **kwargs):
     """
     Ingest all regions of an experiment into spatialdata objects.
 
@@ -85,7 +88,7 @@ def ingest_all(
     source (str): Source of the data (default is "machine").
     """
     
-    print("INGESTING ALL REGIONS; EXPERIMENT %s" %(exp_name) )
+    logging.info("INGESTING ALL REGIONS; EXPERIMENT %s" %(exp_name) )
 
     if type == "merscope" and source == "machine":
         root_path = os.getenv("PROCESSED_ROOT_PATH", "/ceph/cephatlas/merscope_data/processed")
@@ -115,12 +118,12 @@ def load_segmentation_region(
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     """
 
-    print("LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s" %(exp_name, reg_name, type) )
+    logging.info("LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s" %(exp_name, reg_name, type) )
 
 
     zarr_root = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
     zarr_path = f"{zarr_root}/{exp_name}/{reg_name}"
-    print(zarr_path)
+    logging.info(zarr_path)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         sdata = sd.read_zarr(zarr_path)
@@ -157,6 +160,7 @@ def load_segmentation_all(
         type:str="vpt", 
         prefix_name:str="default",
         plot:bool=False,
+        **load_kwargs,
         ):
     """
     Load segmentation data for all regions of an experiment into spatialdata objects.
@@ -171,7 +175,7 @@ def load_segmentation_all(
     regions = glob.glob(f"{seg_dir}/region_*")
     for reg_dir in regions: 
         reg_name = reg_dir.split("/")[-1]
-        load_segmentation_region(exp_name, reg_name, reg_dir, type=type, prefix_name=prefix_name, plot=plot)
+        load_segmentation_region(exp_name, reg_name, reg_dir, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
 
 
 if __name__ == "__main__": 
