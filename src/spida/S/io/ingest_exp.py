@@ -134,6 +134,17 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     detected_transcripts_fname (str): The filename for the detected transcripts data (default is "detected_transcripts.csv").
     cellpose_micron_space_fname (str): The filename for the cellpose micron space data (default is "cellpose_micron_space.parquet").
     """
+
+    logger.info(f"cell_metadata_fname={cell_metadata_fname}")
+    logger.info(f"cell_by_gene_fname={cell_by_gene_fname}")
+    logger.info(f"detected_transcripts_fname={detected_transcripts_fname}")
+    logger.info(f"cellpose_micron_space_fname={cellpose_micron_space_fname}")
+    for key, value in kwargs.items():
+        logger.info(f"{key}={value}")
+
+    
+
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         from spatialdata_io.readers.merscope import _get_points, _get_table
@@ -148,35 +159,35 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     transformations = {'global' : affine}
 
     # getting the shapes (but also the EntityID to regular ID mapping)
-    boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
-    pols = _get_polygons(boundaries_path, transformations)
-    entity_to_id_dict = pols['ID'].to_dict()
-    assert pols.shape[0] == len(entity_to_id_dict) == np.unique(pols['ID']).shape[0], \
-        "The number of polygons does not match the number of unique IDs. Please check the data."
+    # boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
+    # pols = _get_polygons(boundaries_path, transformations)
+    # entity_to_id_dict = pols['ID'].to_dict()
+    # assert pols.shape[0] == len(entity_to_id_dict) == np.unique(pols['ID']).shape[0], \
+    #     "The number of polygons does not match the number of unique IDs. Please check the data."
 
     # Getting the points 
     points = {}
     transcripts_path = f"{vpt_path}/{reg_name}/{detected_transcripts_fname}"
     tz = _get_points(transcripts_path, transformations)
-    tz['cell_id'] = tz['cell_id'].astype(str).map(entity_to_id_dict).fillna(-1).astype(int) # .compute()
+    # tz['cell_id'] = tz['cell_id'].astype(str).map(entity_to_id_dict).fillna(-1).astype(int) # .compute()
     points[KEYS[POINTS_KEY]] = tz
     
     # Getting the shapes
-    shapes = {}
-    pols.set_index("ID", inplace=True)
-    shapes[KEYS[SHAPES_KEY]] = pols
+    # shapes = {}
+    # pols.set_index("ID", inplace=True)
+    # shapes[KEYS[SHAPES_KEY]] = pols
 
     # # Getting the shapes
-    # shapes = {}
-    # boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
-    # shapes[KEYS[SHAPES_KEY]] = _get_polygons(boundaries_path, transformations)
+    shapes = {}
+    boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
+    shapes[KEYS[SHAPES_KEY]] = _get_polygons(boundaries_path, transformations)
     
     # Getting the table
     tables = {}
     count_path = f"{vpt_path}/{reg_name}/{cell_by_gene_fname}"
     obs_path = f"{vpt_path}/{reg_name}/{cell_metadata_fname}"
     table = _get_table(count_path, obs_path, reg_name, exp_name, f"{exp_name}_{reg_name}", KEYS[SHAPES_KEY])
-    table.obs.index = table.obs.index.map(entity_to_id_dict).astype(str)
+    # table.obs.index = table.obs.index.map(entity_to_id_dict).astype(str)
     table.obs.index.name = "index"
     tables[KEYS[TABLE_KEY]] = table
 
@@ -184,7 +195,7 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     sdata[KEYS[TABLE_KEY]] = tables[KEYS[TABLE_KEY]]
     sdata[KEYS[POINTS_KEY]] = points[KEYS[POINTS_KEY]]
     sdata[KEYS[SHAPES_KEY]] = shapes[KEYS[SHAPES_KEY]]
-    sdata = _cast_multipolygons_to_polygons(sdata, KEYS[SHAPES_KEY], subset_field=['ID'])
+    sdata = _cast_multipolygons_to_polygons(sdata, KEYS[SHAPES_KEY], subset_field=['EntityID'])
 
     # Doing the transformations: 
     # Setting the pixel space coordinate system

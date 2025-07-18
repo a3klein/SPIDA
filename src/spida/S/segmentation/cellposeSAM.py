@@ -233,6 +233,17 @@ def run_cellposeSAM(
     cyto_stain_name (str): Name of the cytoplasmic stain (default is 'PolyT').
     """
 
+    logger.info(f"root_dir = {root_dir}")
+    logger.info(f"output_dir = {output_dir}")
+    logger.info(f"region = {region}")
+    logger.info(f"scale = {scale}")
+    logger.info(f"min_size = {min_size}")
+    logger.info(f"image_ext = {image_ext}")
+    logger.info(f"nuc_stain_name = {nuc_stain_name}")
+    logger.info(f"cyto_stain_name = {cyto_stain_name}")
+    for key, value in kwargs.items():
+        logger.info(f"Cellpose SAM parameter: {key} = {value}")
+
     global max_cpu
     max_cpu = mp.cpu_count()
     logger.info(f"Max CPU count: {max_cpu}")

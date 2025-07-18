@@ -46,23 +46,23 @@ def _execute_cli_proseg(root_dir:str, output_dir:str, region:str, **proseg_param
     # The proseg command to run
     proseg_run_cmd = f"""
         proseg --merscope \
-        {root_dir}/{region}/detected_transcripts.csv \
-        --output-path {output_dir}/{region} \
-        --output-expected-counts expected-counts.csv.gz \
-        --output-cell-metadata cell-metadata.csv.gz \
-        --output-transcript-metadata transcript-metadata.csv.gz \
-        --output-cell-polygons cell-polygons.geojson.gz \
-        --output-cell-polygon-layers cell-polygons-layers.geojson.gz \
-        --output-union-cell-polygons union-cell-polygons.geojson.gz \
+        {root_dir}/{region}/detected_transcripts.csv \n
+        --output-path {output_dir}/{region} \n
+        --output-expected-counts expected-counts.csv.gz \n
+        --output-cell-metadata cell-metadata.csv.gz \n
+        --output-transcript-metadata transcript-metadata.csv.gz \n
+        --output-cell-polygons cell-polygons.geojson.gz \n
+        --output-cell-polygon-layers cell-polygons-layers.geojson.gz \n
+        --output-union-cell-polygons union-cell-polygons.geojson.gz \n
         """
     for _key, _val in proseg_params.items():
         if _key not in proseg_args:
             continue
         if isinstance(_val, bool):
             if _val:
-                proseg_run_cmd += f"--{_key} "
+                proseg_run_cmd += f"--{_key} \n"
         else:
-            proseg_run_cmd += f"--{_key} {_val} "
+            proseg_run_cmd += f"--{_key} {_val} \n"
 
     # proseg_run_cmd += f"--nthreads {os.cpu_count()} \\\n"
     logger.info(f"Running proseg with command:\n{proseg_run_cmd}")
@@ -81,6 +81,9 @@ def run_proseg(root_dir:str, output_dir:str, region:str, **proseg_params):
     output_dir (str): The directory where the output files will be saved.
     region (str): The name of the region to process.
     """
+
+    for key, value in proseg_params.items():
+        logger.info(f"Proseg parameter: {key} = {value}")
     
     # Ensure the output directory exists
     pathlib.Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)

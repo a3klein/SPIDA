@@ -107,7 +107,12 @@ def load_segmentation_region_register_subparser(subparser):
     parser.add_argument('--type', type=str, default="vpt", help='Type of the segmentation data to load (default: vpt)')
     parser.add_argument('--prefix_name', type=str, default="default", help='Prefix for the keys in the spatialdata object (default: default)')
     parser.add_argument('--plot', action='store_true', help='Plot results after loading segmentation')
-    parser.add_argument('--load_kwargs', type=parse_dict, default={}, help='Additional keyword arguments for loading segmentation data')
+    parser.add_argument('--cell_metadata_fname', type=str, default='cell_metadata.csv')
+    parser.add_argument('--cell_by_gene_fname', type=str, default='cell_by_gene.csv')
+    parser.add_argument('--detected_transcripts_fname', type=str, default='detected_transcripts.csv')
+    parser.add_argument('--cellpose_micron_space_fname', type=str, default='cellpose_micron_space.parquet')
+    # parser.add_argument('-k', '--load_kwargs',nargs='*',action=ParseKwargs,
+    #                         help='Additional keyword arguments for loading functions in key=value format (e.g., --kwargs param1=value1 param2=value2)')
     return
 
 def load_segmentation_all_register_subparser(subparser):
@@ -123,8 +128,13 @@ def load_segmentation_all_register_subparser(subparser):
     parser.add_argument('--type', type=str, default="vpt", help='Type of the segmentation data to load (default: vpt)')
     parser.add_argument('--prefix_name', type=str, default="default", help='Prefix for the keys in the spatialdata object (default: default)')
     parser.add_argument('--plot', action='store_true', help='Plot results after loading segmentation')
-    parser.add_argument('--load_kwargs', type=parse_dict, default={}, help='Additional keyword arguments for loading segmentation data')
-    return 
+    parser.add_argument('--cell_metadata_fname', type=str, default='cell_metadata.csv')
+    parser.add_argument('--cell_by_gene_fname', type=str, default='cell_by_gene.csv')
+    parser.add_argument('--detected_transcripts_fname', type=str, default='detected_transcripts.csv')
+    parser.add_argument('--cellpose_micron_space_fname', type=str, default='cellpose_micron_space.parquet')
+    # parser.add_argument('-k', '--load_kwargs',nargs='*',action=ParseKwargs,
+    #                         help='Additional keyword arguments for loading functions in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+    return
 
 def deconwolf_register_subparser(subparser): 
     """Get parser for decon_image"""
@@ -218,7 +228,7 @@ def run_proseg_alignment_register_subparser(subparser):
     align_parser.add_argument('--barcode_column',type=str,default='barcode_id',help='Barcode column name (default: barcode_id)')
     align_parser.add_argument('--gene_column',type=str,default='gene',help='Gene column name (default: gene)')
     align_parser.add_argument('--fov_column',type=str,default='fov',help='FOV column name (default: fov)')
-    align_parser.add_argument('--cell_missing',type=int,default=-1,help='Cell missing value (default: -1)')
+    align_parser.add_argument('--cell_missing',type=str,default='-1',help='Cell missing value (default: -1)')
     align_parser.add_argument('--min_jaccard',type=float,default=0.4,help='Minimum Jaccard index (default: 0.4)')
     align_parser.add_argument('--min_prob',type=float,default=0.5,help='Minimum probability (default: 0.5)')
     align_parser.add_argument('--filter_blank',action='store_true',help='Filter blank genes')

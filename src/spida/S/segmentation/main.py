@@ -36,7 +36,7 @@ def run_segmentation(type:str, exp_name:str, reg_name:str, input_dir:str|Path=No
 
     if type == "proseg":
         from .proseg import run_proseg
-        run_proseg(input_dir, output_dir, reg_name, **kwargs)
+        run_proseg(input_dir, output_dir, reg_name, **kwargs['kwargs'])
     elif type == "vpt":
         from .vpt import run_vpt
         config_path = kwargs.get("config_path", "/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json")
@@ -45,13 +45,13 @@ def run_segmentation(type:str, exp_name:str, reg_name:str, input_dir:str|Path=No
         from .cellposeSAM import run_cellposeSAM
         from .vpt import seg_to_vpt
         # TODO: change other segmentation methods to take in the direct image dir
-        run_cellposeSAM(input_dir, output_dir, reg_name, **kwargs)
+        run_cellposeSAM(input_dir, output_dir, reg_name, **kwargs['kwargs'])
         input_dir_vpt = Path(input_dir).parents[1]
         seg_to_vpt(input_dir_vpt, output_dir, reg_name)
     elif type == "mesmer":
         from .mesmer import run_mesmer
         from .vpt import seg_to_vpt
-        run_mesmer(input_dir, output_dir, reg_name, **kwargs)
+        run_mesmer(input_dir, output_dir, reg_name, **kwargs['kwargs'])
         seg_to_vpt(input_dir, output_dir, reg_name)
 
     else:
