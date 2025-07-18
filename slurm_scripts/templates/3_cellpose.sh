@@ -4,7 +4,7 @@
 #SBATCH -A mcb130189-gpu
 #SBATCH -J cellpose_{EXP_N}_{REG_N}
 #SBATCH -p gpu
-#SBATCH --time=1:30:00
+#SBATCH --time=1:15:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=64

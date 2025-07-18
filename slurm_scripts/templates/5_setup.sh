@@ -22,35 +22,53 @@ echo "Running Setup - {REG_N} - {EXP_N}"
 
 # FILTERING 
 pixi run -e preprocessing \
-    python spida.P.cli filter_cells_region \
+    python -m spida.P filter_cells_region \
     {EXPERIMENT} \
     {REGION} \
     cellpose_SAM \
-    --plot=True \
-    --cutoffs_path=/home/x-aklein2/projects/aklein/BICAN/data/filtering_cutoffs.json # Set Cutoffs Path
+    --plot \
+    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/data/filtering_cutoffs.json
 
 # SETUP ADATA 
 pixi run -e preprocessing \
-    python spida.P.cli setup_adata_region \
+    python -m spida.P setup_adata_region \
     {EXPERIMENT} \
     {REGION} \
     cellpose_SAM \
-    --plot=True
+    --plot
 
 
 # FILTERING 
 pixi run -e preprocessing \
-    python spida.P.cli filter_cells_region \
+    python -m spida.P filter_cells_region \
     {EXPERIMENT} \
     {REGION} \
     proseg_aligned \
-    --plot=True \
-    --cutoffs_path=/home/x-aklein2/projects/aklein/BICAN/data/filtering_cutoffs.json # Set Cutoffs Path
+    --plot \
+    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/data/filtering_cutoffs.json
 
 # SETUP ADATA 
 pixi run -e preprocessing \
-    python spida.P.cli setup_adata_region \
+    python -m spida.P setup_adata_region \
     {EXPERIMENT} \
     {REGION} \
     proseg_aligned \
-    --plot=True
+    --plot
+
+
+    # FILTERING 
+pixi run -e preprocessing \
+    python -m spida.P filter_cells_region \
+    202506171319_BICAN-4x1-GP-E-05_VMSC31910 \
+    region_UWA7648 \
+    cellpose_SAM \
+    --plot \
+    --cutoffs_path /ceph/cephatlas/aklein/bican/reference/filtering_cutoffs.json
+
+# SETUP ADATA 
+pixi run -e preprocessing \
+    python -m spida.P setup_adata_region \
+    202506171319_BICAN-4x1-GP-E-05_VMSC31910 \
+    region_UWA7648 \
+    cellpose_SAM \
+    --plot
