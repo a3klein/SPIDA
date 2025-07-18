@@ -24,7 +24,7 @@ cd /anvil/projects/x-mcb130189/aklein/SPIDA
 echo "Running Cellpose SAM on Region {REG_N} of Experiment {EXP_N}"
 
 pixi run -e cellpose \
-    python -m spida.S.cli run \
+    python -m spida.S run \
     cellpose \
     {EXPERIMENT} \
     {REGION} \
@@ -42,11 +42,11 @@ pixi run -e cellpose \
 
 # Loading in the segmentation into the zarr store
 pixi run -e preprocessing \
-    python spida.S.io load_segmentation_region \
+    python spida.S load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
     /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose \
-    --plot=True \
-    --type=vpt \
-    --prefix_name=cellpose_SAM
+    --type vpt \
+    --prefix_name cellpose_SAM \
+    --plot
 
