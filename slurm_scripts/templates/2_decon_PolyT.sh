@@ -4,7 +4,7 @@
 #SBATCH -A mcb130189-gpu
 #SBATCH -J decon_{EXP_N}_{REG_N}_P
 #SBATCH -p gpu
-#SBATCH --time=8:00:00
+#SBATCH --time=6:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=4

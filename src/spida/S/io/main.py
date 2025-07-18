@@ -134,7 +134,7 @@ def load_segmentation_region(
     if plot: 
         # plot params
         KEYS = _gen_keys(prefix_name, exp_name, reg_name)
-        image_channels = sd.models.get_channel_names(sdata[KEYS[IMAGE_KEY]])
+        # image_channels = sd.models.get_channel_names(sdata[KEYS[IMAGE_KEY]])
         image_scale_keys = list(sdata[KEYS[IMAGE_KEY]].keys())
         
         # define plot pdf
@@ -146,7 +146,7 @@ def load_segmentation_region(
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             with PdfPages(image_path) as pdf:
-                plot_images(sdata, KEYS[IMAGE_KEY], image_scale_keys, image_channels, cs="global", pdf_file=pdf)
+                # plot_images(sdata, KEYS[IMAGE_KEY], image_scale_keys, image_channels, cs="global", pdf_file=pdf)
                 plot_shapes(sdata, KEYS[SHAPES_KEY], table_name=KEYS[TABLE_KEY], cs="pixel", pdf_file=pdf)
                 plot_points(sdata, KEYS[POINTS_KEY], KEYS[TABLE_KEY], cs="pixel", cmap="tab10", pdf_file=pdf)
                 plot_overlap(sdata, KEYS[IMAGE_KEY], KEYS[SHAPES_KEY], KEYS[POINTS_KEY], KEYS[TABLE_KEY], image_scale_keys, cs="pixel", pdf_file=pdf)

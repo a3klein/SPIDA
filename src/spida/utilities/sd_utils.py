@@ -5,11 +5,14 @@ load_dotenv()
 import sys
 import warnings
 from pathlib import Path
+import logging
 
 import anndata as ad
 
 from spida._constants import *
 
+# Set up logging
+logger = logging.getLogger(__name__)
 
 def _gen_keys(prefix_name, exp_name, reg_name): 
     """
@@ -138,7 +141,7 @@ def _write_adata(exp_name, reg_name, prefix_name, output_path:Path):
     adata.write_h5ad(Path(f"{output_path}/adata_{donor_name}.h5ad"))
 
 
-def _get_adata(exp_name:str, reg_name:str, prefix_name:str) -> ad.AnnData:
+def _get_adata(exp_name:str, reg_name:str, prefix_name:str, suffix:str="") -> ad.AnnData:
     """
     Retrieve the AnnData object from a spatialdata object based on the experiment and region names.
     Parameters:
@@ -155,10 +158,41 @@ def _get_adata(exp_name:str, reg_name:str, prefix_name:str) -> ad.AnnData:
 
     # Get KEYS
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    full_name = f"{KEYS[TABLE_KEY]}{suffix}"
     
     # Getting the sdata object (right now from a constant zarr store path)
     zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     sdata = sd.read_zarr(zarr_path)
-    adata = sdata[KEYS[TABLE_KEY]].copy()
+    adata = sdata[full_name].copy()
     return adata
+
+def _assign_new_table(exp_name:str, reg_name:str, element:ad.AnnData, element_name:str, suffix:str=""): 
+    """
+    Backup the current state of a spatialdata element before modifying it.
+    This function deletes the existing element from disk and writes the new element to the spatialdata object.
+    Parameters:
+    sdata (sd.SpatialData): The spatialdata object to modify.
+    element: The new element to write to the spatialdata object.
+    element_name (str): The name of the element in the spatialdata object.
+    suffix (str): Suffix to append to the element name for the new table.
+    """
+    
+    ### TODO: Verify this works correctly for all element types (Points / Shapes / Tables)
+    # Main use case is going to be for tables
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        import spatialdata as sd
+
+    # Getting the sdata object (right now from a constant zarr store path)
+    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
+    sdata = sd.read_zarr(zarr_path)
+
+    full_name = f"{element_name}{suffix}"
+
+    if f"tables/{full_name}" not in sdata.elements_paths_on_disk():
+            sdata[full_name] = element
+            sdata.write_element(full_name)
+    else:
+        logger.warning(f"Element {full_name} already exists in the spatialdata object. Skipping write operation.")
