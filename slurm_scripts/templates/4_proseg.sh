@@ -44,7 +44,6 @@ pixi run -e preprocessing \
     max-transcript-nucleus-distance=10 \
     nuclear-reassignment-prob=0.01 \
 
-
 # LOAD PROSEG SEGMENTATION
 pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
@@ -71,18 +70,6 @@ pixi run -e preprocessing \
     {EXPERIMENT} \
     {REGION} \
     /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
-    --plot=True \
-    --type=vpt \
-    --prefix_name=proseg_aligned \
-    --cell_metadata_fname=merged_cell_metadata.csv \
-    --cell_by_gene_fname=cell_by_gene.csv \
-    --cellpose_micron_space_fname=merged_converted_boundaries.parquet \
-    --detected_transcripts_fname=detected_transcripts.csv
-
-pixi run -e preprocessing \
-    python -m spida.S load_segmentation_region \
-    202506171319_BICAN-4x1-GP-E-05_VMSC31910 region_UWA7648 \
-    /ceph/cephatlas/aklein/bican/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/proseg_SAM \
     --plot \
     --type vpt \
     --prefix_name proseg_aligned \
@@ -90,12 +77,3 @@ pixi run -e preprocessing \
     --cell_by_gene_fname cell_by_gene.csv \
     --cellpose_micron_space_fname merged_converted_boundaries.parquet \
     --detected_transcripts_fname detected_transcripts.csv
-
-
-pixi run -e preprocessing \
-    python -m spida.S align-proseg \
-    202506171319_BICAN-4x1-GP-E-05_VMSC31910 region_UWA7648 \
-    --seed_prefix_name cellpose_SAM \
-    --prefix_name proseg_SAM \
-    --out_prefix_name proseg_aligned \
-    --seg_dir /ceph/cephatlas/aklein/bican/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/proseg_SAM

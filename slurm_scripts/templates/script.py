@@ -24,7 +24,7 @@ print(f"Experiment Name: {exp_n}")
 print(f"Region Name: {reg_n}")
 
 #SET OUTPUT DIRECTORY 
-template_path = Path("/anvil/projects/x-mcb130189/aklein/BICAN/image_processing/templates")
+template_path = Path("/anvil/projects/x-mcb130189/aklein/SPIDA/slurm_scripts/templates")
 output_dir = Path(f"/anvil/projects/x-mcb130189/aklein/BICAN/image_processing/{exp_n}/{reg_n}")
 output_dir.mkdir(parents=True, exist_ok=True)
 print("Output directory created at:", output_dir)
