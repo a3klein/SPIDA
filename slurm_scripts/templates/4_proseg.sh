@@ -23,7 +23,7 @@ echo "Running ProSeg - {REG_N} - {EXP_N}"
 
 # SEGMENTATION
 pixi run -e preprocessing \
-    python -m spida.S.cli run \
+    python -m spida.S run \
     proseg \
     {EXPERIMENT} \
     {REGION} \
@@ -47,36 +47,55 @@ pixi run -e preprocessing \
 
 # LOAD PROSEG SEGMENTATION
 pixi run -e preprocessing \
-    python -m spida.S.cli load_segmentation_region \
+    python -m spida.S load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
     /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
-    --plot False \
     --type proseg \
-    --prefix-name proseg_SAM
-
+    --prefix_name proseg_SAM \
+    --plot
 
 # Align PROSEG Transcripts # Remove loading from here?
 pixi run -e preprocessing \
-    python -m spida.S.cli align-proseg \
+    python -m spida.S align-proseg \
     {EXPERIMENT} \
     {REGION} \
-    --seed-prefix-name cellpose_SAM \
-    --prefix-name proseg_SAM \
-    --out-prefix-name proseg_aligned \
-    --seg-dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM
-
+    --seed_prefix_name cellpose_SAM \
+    --prefix_name proseg_SAM \
+    --out_prefix_name proseg_aligned \
+    --seg_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM
 
 # # Fixing Loading proseg_aligned of there was an error in the above script
-# pixi run -e preprocessing \
-#     python src/spida/io/cli.py load_segmentation_region \
-#     {EXPERIMENT} \
-#     {REGION} \
-#     /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
-#     --plot=True \
-#     --type=vpt \
-#     --prefix_name=proseg_aligned \
-#     --cell_metadata_fname=merged_cell_metadata.csv \
-#     --cell_by_gene_fname=cell_by_gene.csv \
-#     --cellpose_micron_space_fname=merged_converted_boundaries.parquet \
-#     --detected_transcripts_fname=detected_transcripts.csv
+pixi run -e preprocessing \
+    python -m spida.S load_segmentation_region \
+    {EXPERIMENT} \
+    {REGION} \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
+    --plot=True \
+    --type=vpt \
+    --prefix_name=proseg_aligned \
+    --cell_metadata_fname=merged_cell_metadata.csv \
+    --cell_by_gene_fname=cell_by_gene.csv \
+    --cellpose_micron_space_fname=merged_converted_boundaries.parquet \
+    --detected_transcripts_fname=detected_transcripts.csv
+
+pixi run -e preprocessing \
+    python -m spida.S load_segmentation_region \
+    202506171319_BICAN-4x1-GP-E-05_VMSC31910 region_UWA7648 \
+    /ceph/cephatlas/aklein/bican/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/proseg_SAM \
+    --plot \
+    --type vpt \
+    --prefix_name proseg_aligned \
+    --cell_metadata_fname merged_cell_metadata.csv \
+    --cell_by_gene_fname cell_by_gene.csv \
+    --cellpose_micron_space_fname merged_converted_boundaries.parquet \
+    --detected_transcripts_fname detected_transcripts.csv
+
+
+pixi run -e preprocessing \
+    python -m spida.S align-proseg \
+    202506171319_BICAN-4x1-GP-E-05_VMSC31910 region_UWA7648 \
+    --seed_prefix_name cellpose_SAM \
+    --prefix_name proseg_SAM \
+    --out_prefix_name proseg_aligned \
+    --seg_dir /ceph/cephatlas/aklein/bican/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/proseg_SAM

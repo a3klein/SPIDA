@@ -45,14 +45,14 @@ def _cli_segmentation(CONFIG_FILE:str,
     """
     
     segmentation_command = f"""
-        vpt --verbose --processes 8 \
-            run-segmentation \
-            --segmentation-algorithm {CONFIG_FILE} \
-            --input-images {root_dir}/{region}/images/ \
-            --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv \
-            --output-path {output_dir}/{region} \
-            --tile-size {tile_size} \
-            --tile-overlap {tile_overlap} \
+        vpt --verbose --processes 16 \n
+            run-segmentation \n
+            --segmentation-algorithm {CONFIG_FILE} \n
+            --input-images {root_dir}/{region}/images/ \n
+            --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv \n
+            --output-path {output_dir}/{region} \n
+            --tile-size {tile_size} \n
+            --tile-overlap {tile_overlap} \n
             --overwrite
         """
     logger.info(f"Running VPT segmentation command: {segmentation_command}")
@@ -78,12 +78,12 @@ def _cli_partition_transcripts(
 
     ### VPT command to partition transcripts
     partition_transcripts_command = f"""
-        vpt --verbose --processes 8 \
-            partition-transcripts \
-            --input-boundaries {output_dir}/{region}/{input_boundaries} \
-            --input-transcripts {root_dir}/{region}/{input_transcripts} \
-            --output-entity-by-gene {output_dir}/{region}/{output_entity_by_gene} \
-            --output-transcripts {output_dir}/{region}/{output_transcripts} \
+        vpt --verbose --processes 16 \n
+            partition-transcripts \n
+            --input-boundaries {output_dir}/{region}/{input_boundaries} \n
+            --input-transcripts {root_dir}/{region}/{input_transcripts} \n
+            --output-entity-by-gene {output_dir}/{region}/{output_entity_by_gene} \n
+            --output-transcripts {output_dir}/{region}/{output_transcripts} \n
             --overwrite
         """
     logger.info(f"Running VPT partition transcripts command: {partition_transcripts_command}")
@@ -109,11 +109,11 @@ def _cli_get_metadata(
     """    
 
     metadata_command = f"""
-        vpt --verbose --processes 8 \
-            derive-entity-metadata \
-            --input-boundaries {output_dir}/{region}/{input_boundaries} \
-            --input-entity-by-gene {output_dir}/{region}/{input_entity_by_gene} \
-            --output-metadata {output_dir}/{region}/{output_metadata} \
+        vpt --verbose --processes 16 \n
+            derive-entity-metadata \n
+            --input-boundaries {output_dir}/{region}/{input_boundaries} \n
+            --input-entity-by-gene {output_dir}/{region}/{input_entity_by_gene} \n
+            --output-metadata {output_dir}/{region}/{output_metadata} \n
             --overwrite
         """
     
@@ -125,12 +125,12 @@ def _cli_get_metadata(
 
     ### VPT sum the signals
     sum_signals_command = f"""
-        vpt --verbose --processes 8 \
-            sum-signals \
-            --input-images {root_dir}/{region}/images/ \
-            --input-boundaries {output_dir}/{region}/{input_boundaries} \
-            --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv \
-            --output-csv {output_dir}/{region}/{output_signals} \
+        vpt --verbose --processes 16 \n
+            sum-signals \n
+            --input-images {root_dir}/{region}/images/ \n
+            --input-boundaries {output_dir}/{region}/{input_boundaries} \n
+            --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv \n
+            --output-csv {output_dir}/{region}/{output_signals} \n
             --overwrite
 
         """
@@ -208,14 +208,14 @@ def _convert_geometry(
 
     ### VPT command to convert the geometry
     convert_geometry_command = f"""
-        vpt --verbose --processes 8 \
-            convert-geometry \
-            --input-boundaries {output_dir}/{region}/{input_boundaries} \
-            --output-boundaries {output_dir}/{region}/{output_boundaries} \
-            --convert-to-3D \
-            --number-z-planes 7 \
-            --spacing-z-planes 1.5 \
-            --overwrite \
+        vpt --verbose --processes 16 \n
+            convert-geometry \n
+            --input-boundaries {output_dir}/{region}/{input_boundaries} \n
+            --output-boundaries {output_dir}/{region}/{output_boundaries} \n
+            --convert-to-3D \n
+            --number-z-planes 7 \n
+            --spacing-z-planes 1.5 \n
+            --overwrite \n
         """
     
     if convert_micron:
