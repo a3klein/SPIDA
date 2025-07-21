@@ -6,6 +6,7 @@ import os
 import sys
 import argparse
 import logging
+import warnings
 from pathlib import Path
 import inspect
 
@@ -25,6 +26,7 @@ DESCRIPTION = """
 
     [Utilities] 
     decon-image                        - Deconvolve large image files in tiles using DeconWolf algorithm.
+    load-decon-images                  - Load deconvolved images into spatialdata objects.
 
     [Segmentations] 
     run / run-segmentation-region      - Run segmentation on a single region using specified algorithm.
@@ -44,6 +46,19 @@ EPILOGUE = """
 Author: Amit Klein
 Documentation:
 """
+
+def config_warnings(): 
+    """
+    Turning off warnings for some internal libraries that are not relevant for the user.
+    """
+    warnings.filterwarnings('ignore', category=UserWarning, module='zarr')
+    warnings.filterwarnings('ignore', category=UserWarning, module='anndata')
+    warnings.filterwarnings('ignore', category=FutureWarning, module='anndata')
+    warnings.filterwarnings('ignore', category=UserWarning, module='scanpy')
+    warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
+    warnings.filterwarnings('ignore', category=UserWarning, module='xarray_schema')
+    warnings.filterwarnings('ignore', category=FutureWarning, module='dask')
+    warnings.filterwarnings('ignore', category=UserWarning, module='spatialdata')
 
 def setup_logging(stdout=False, quiet=False, **kwargs):     
     
@@ -78,6 +93,8 @@ def ingest_region_register_subparser(subparser):
     parser.add_argument('--plot', action='store_true', help='Plot results after ingestion')
     return parser
 
+### Subparser Registers
+
 def ingest_all_register_subparser(subparser):
     """Register subparser for ingest-all command."""
     parser = subparser.add_parser(
@@ -107,12 +124,12 @@ def load_segmentation_region_register_subparser(subparser):
     parser.add_argument('--type', type=str, default="vpt", help='Type of the segmentation data to load (default: vpt)')
     parser.add_argument('--prefix_name', type=str, default="default", help='Prefix for the keys in the spatialdata object (default: default)')
     parser.add_argument('--plot', action='store_true', help='Plot results after loading segmentation')
-    parser.add_argument('--cell_metadata_fname', type=str, default='cell_metadata.csv')
-    parser.add_argument('--cell_by_gene_fname', type=str, default='cell_by_gene.csv')
-    parser.add_argument('--detected_transcripts_fname', type=str, default='detected_transcripts.csv')
-    parser.add_argument('--cellpose_micron_space_fname', type=str, default='cellpose_micron_space.parquet')
-    # parser.add_argument('-k', '--load_kwargs',nargs='*',action=ParseKwargs,
-    #                         help='Additional keyword arguments for loading functions in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+    # parser.add_argument('--cell_metadata_fname', type=str, default='cell_metadata.csv')
+    # parser.add_argument('--cell_by_gene_fname', type=str, default='cell_by_gene.csv')
+    # parser.add_argument('--detected_transcripts_fname', type=str, default='detected_transcripts.csv')
+    # parser.add_argument('--cellpose_micron_space_fname', type=str, default='cellpose_micron_space.parquet')
+    parser.add_argument('-k', '--load_kwargs',nargs='*',action=ParseKwargs, default={},
+                            help='Additional keyword arguments for loading functions in key=value format (e.g., --kwargs param1=value1 param2=value2)')
     return
 
 def load_segmentation_all_register_subparser(subparser):
@@ -128,12 +145,8 @@ def load_segmentation_all_register_subparser(subparser):
     parser.add_argument('--type', type=str, default="vpt", help='Type of the segmentation data to load (default: vpt)')
     parser.add_argument('--prefix_name', type=str, default="default", help='Prefix for the keys in the spatialdata object (default: default)')
     parser.add_argument('--plot', action='store_true', help='Plot results after loading segmentation')
-    parser.add_argument('--cell_metadata_fname', type=str, default='cell_metadata.csv')
-    parser.add_argument('--cell_by_gene_fname', type=str, default='cell_by_gene.csv')
-    parser.add_argument('--detected_transcripts_fname', type=str, default='detected_transcripts.csv')
-    parser.add_argument('--cellpose_micron_space_fname', type=str, default='cellpose_micron_space.parquet')
-    # parser.add_argument('-k', '--load_kwargs',nargs='*',action=ParseKwargs,
-    #                         help='Additional keyword arguments for loading functions in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+    parser.add_argument('-k', '--load_kwargs',nargs='*',action=ParseKwargs, default={},
+                            help='Additional keyword arguments for loading functions in key=value format (e.g., --kwargs param1=value1 param2=value2)')
     return
 
 def deconwolf_register_subparser(subparser): 
@@ -164,7 +177,26 @@ def deconwolf_register_subparser(subparser):
     parser.add_argument("--gpu", type=bool, default=False, help="Use GPU")
     parser.add_argument("--continue_stalled", type=bool, default=False, help="Continue processing if some tiles already processed")
     parser.add_argument("--plot_thr", type=bool, default=False, help="Plot thresholding histogram")
+    parser.add_argument("--match_pre", type=bool, default=False, help="Match deconvolved tile intensity histogram to pre-deconvolved tiles")
     return
+
+def load_decon_images_register_subparser(subparser):
+    """Register subparser for loading deconvolved images."""
+    parser = subparser.add_parser(
+        'load-decon-images',
+        aliases=['load_decon_images'],
+        help='Load deconvolved images into spatialdata objects',
+        description='Load deconvolved images into spatialdata objects'
+    )
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('reg_name', type=str, help='Name of the region')
+    parser.add_argument('--image_dir', type=parse_path, default=None, help='Directory containing deconvolved images (default: None)')
+    parser.add_argument('--image_name', type=str, default="decon_images", help='Name of the deconvolved images in the spatialdata object(default: decon_images)')
+    parser.add_argument('--suffix', type=str, default=".decon.tif", help='Suffix of the deconvolved images (default: .decon.tif)')
+    parser.add_argument('--plot', action='store_true', help='Plot results')
+    parser.add_argument('--load_kwargs', nargs='*', action=ParseKwargs, default={},
+                        help='Additional keyword arguments for loading functions in key=value format (e.g., --kwargs param1=value1 param2=value2)')
+    return parser
 
 
 def run_segmentation_region_register_subparser(subparser): 
@@ -210,7 +242,7 @@ def run_proseg_alignment_register_subparser(subparser):
     # Subcommand: align_proseg
     align_parser = subparser.add_parser(
         'align',
-        aliases=['align_proseg'],
+        aliases=['align_proseg', 'align-proseg'],
         help='Align Proseg transcripts to seed transcripts',
         description='Align Proseg transcripts to seed transcripts'
     )
@@ -246,6 +278,7 @@ def run_proseg_alignment_register_subparser(subparser):
 
 
 
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -277,6 +310,8 @@ def main():
         args = parser.parse_args(['--help'])
         exit()
     
+    config_warnings()
+
     # setup logging here: 
     if not logging.root.handlers: 
         setup_logging(stdout=True, quiet=False)
@@ -297,6 +332,8 @@ def main():
         from .io.main import load_segmentation_all as func
     elif command in ["decon-image"]:
         from .decon_script import decon_image as func
+    elif command in ["load-decon-images"]:
+        from .io.main import load_deconvolution_region as func
     elif command in ["run", "run-segmentation-region"]: 
         from .segmentation.main import run_segmentation as func
     elif command in ["experiment", "segment-experiment"]:

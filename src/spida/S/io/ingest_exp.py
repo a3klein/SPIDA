@@ -2,6 +2,7 @@ import sys
 import subprocess
 import warnings
 import logging
+from pathlib import Path
 
 import numpy as np
 
@@ -17,7 +18,7 @@ with warnings.catch_warnings():
         set_transformation
     )
 
-from spida._utilities import _gen_keys, _backup_adata
+from ...utilities.sd_utils import _gen_keys, _backup_adata, _backup_element
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 
 logger = logging.getLogger(__package__)
@@ -142,8 +143,6 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     for key, value in kwargs.items():
         logger.info(f"{key}={value}")
 
-    
-
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
@@ -161,6 +160,7 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     # getting the shapes (but also the EntityID to regular ID mapping)
     # boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
     # pols = _get_polygons(boundaries_path, transformations)
+    # pols['ID'] = pols['ID'] + 1
     # entity_to_id_dict = pols['ID'].to_dict()
     # assert pols.shape[0] == len(entity_to_id_dict) == np.unique(pols['ID']).shape[0], \
     #     "The number of polygons does not match the number of unique IDs. Please check the data."
@@ -169,7 +169,7 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     points = {}
     transcripts_path = f"{vpt_path}/{reg_name}/{detected_transcripts_fname}"
     tz = _get_points(transcripts_path, transformations)
-    # tz['cell_id'] = tz['cell_id'].astype(str).map(entity_to_id_dict).fillna(-1).astype(int) # .compute()
+    # tz['cell_id'] = tz['cell_id'].astype(str).map(entity_to_id_dict).fillna(0).astype(int) # .compute()
     points[KEYS[POINTS_KEY]] = tz
     
     # Getting the shapes
@@ -203,15 +203,24 @@ def load_vpt_segmentation(sdata:sd.SpatialData,
     set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
 
     # saving data to disk
+    # saving points
     if f"points/{KEYS[POINTS_KEY]}" not in sdata.elements_paths_on_disk(): 
         sdata.write_element(KEYS[POINTS_KEY])
+    else: 
+        logger.warning(f"Points {KEYS[POINTS_KEY]} already exists in the spatialdata object. Not overwriting it.")
+    
+    # saving shapes
     if f"shapes/{KEYS[SHAPES_KEY]}" not in sdata.elements_paths_on_disk():
         sdata.write_element(KEYS[SHAPES_KEY])
+    else: 
+        logger.warning(f"Shapes {KEYS[SHAPES_KEY]} already exists in the spatialdata object. Not overwriting it.")
+    
+    # saving table
     if f"tables/{KEYS[TABLE_KEY]}" not in sdata.elements_paths_on_disk():
         sdata.write_element(KEYS[TABLE_KEY])
-    else: 
-        _backup_adata(exp_name, reg_name, tables[KEYS[TABLE_KEY]], element_name=KEYS[TABLE_KEY])
-    
+    else:
+        logger.warning(f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it.")
+
     sd.save_transformations(sdata)
     
     return sdata
@@ -282,13 +291,88 @@ def load_proseg_segmentation(sdata:sd.SpatialData,
     set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
 
     # saving data to disk
+    # saving data to disk
+    # saving points
     if f"points/{KEYS[POINTS_KEY]}" not in sdata.elements_paths_on_disk(): 
         sdata.write_element(KEYS[POINTS_KEY])
+    else: 
+        logger.warning(f"Points {KEYS[POINTS_KEY]} already exists in the spatialdata object. Not overwriting it.")
+    
+    # saving shapes
     if f"shapes/{KEYS[SHAPES_KEY]}" not in sdata.elements_paths_on_disk():
         sdata.write_element(KEYS[SHAPES_KEY])
+    else: 
+        logger.warning(f"Shapes {KEYS[SHAPES_KEY]} already exists in the spatialdata object. Not overwriting it.")
+    
+    # saving table
     if f"tables/{KEYS[TABLE_KEY]}" not in sdata.elements_paths_on_disk():
         sdata.write_element(KEYS[TABLE_KEY])
+    else:
+        logger.warning(f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it.")
     
     sd.save_transformations(sdata)
     
     return sdata
+
+
+def load_decon_images(sdata:sd.SpatialData,
+                      image_dir:str|Path, 
+                      image_name:str="decon_images",
+                      suffix:str=".decon.tif",
+                      **image_models_kwargs): 
+    
+    """
+    Load deconvolution images into the spatialdata object.
+
+    Parameters:
+    sdata (spatialdata.SpatialData): The spatialdata object to load the images into.
+    exp_name (str): The name of the experiment.
+    reg_name (str): The name of the region.
+    image_path (str|Path): The path to the deconvolution images.
+    """
+
+    image_models_kwargs = {}
+    image_models_kwargs['chunks'] = (1, 4906, 4906)
+    image_models_kwargs["scale_factors"] = [2, 2, 2, 2]
+
+    sdata[image_name] = _read_decon_images(image_dir, suffix=suffix, **image_models_kwargs)
+    if f"images/{image_name}" not in sdata.elements_paths_on_disk(): 
+        sdata.write_element(image_name)
+    else: 
+        logger.warning(f"Images {image_name} already exists in the spatialdata object. Not overwriting it.")
+        
+    return sdata
+
+
+def _read_decon_images(image_dir, suffix:str=".decon.tif", **image_models_kwargs): 
+    """
+    Read deconvolution images from the specified directory.
+
+    Parameters:
+    image_dir (str|Path): The directory containing the deconvolution images.
+    **image_models_kwargs: Additional keyword arguments for the image model.
+
+    Returns:
+    Image2DModel: The parsed image model.
+    """
+    from spatialdata.models import Image2DModel
+    from dask import array as da
+    from dask_image.imread import imread
+
+    if isinstance(image_dir, str):
+        image_dir = Path(image_dir)
+    z_layer=3
+    stainings = ["DAPI", "PolyT"]
+    im = da.stack(
+        [imread(image_dir / f"mosaic_{stain}_z{z_layer}{suffix}").squeeze() for stain in stainings],
+        axis=0,
+    )
+
+    return Image2DModel.parse(
+        im,
+        dims=("c", "y", "x"),
+        c_coords=stainings,
+        rgb=None,
+        **image_models_kwargs
+    )
+    

@@ -14,8 +14,8 @@ with warnings.catch_warnings():
 
 from spida._utilities import _gen_keys
 from spida._constants import *
-from .ingest_exp import read_merscope, load_vpt_segmentation, load_proseg_segmentation
-from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap
+from .ingest_exp import read_merscope, load_vpt_segmentation, load_proseg_segmentation, load_decon_images
+from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
 
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -115,6 +115,11 @@ def load_segmentation_region(
     type (str): Type of the segmentation data to load (default is "vpt").
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     """
+    if load_kwargs is None: 
+        load_kwargs = {}
+        print("here")
+    else: 
+        load_kwargs = load_kwargs['load_kwargs']
 
     logger.info("LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s" %(exp_name, reg_name, type) )
 
@@ -148,8 +153,10 @@ def load_segmentation_region(
             with PdfPages(image_path) as pdf:
                 # plot_images(sdata, KEYS[IMAGE_KEY], image_scale_keys, image_channels, cs="global", pdf_file=pdf)
                 plot_shapes(sdata, KEYS[SHAPES_KEY], table_name=KEYS[TABLE_KEY], cs="pixel", pdf_file=pdf)
-                plot_points(sdata, KEYS[POINTS_KEY], KEYS[TABLE_KEY], cs="pixel", cmap="tab10", pdf_file=pdf)
+                plot_seg_load(sdata, KEYS[IMAGE_KEY], KEYS[SHAPES_KEY], cs="global", pdf_file=pdf)
+                # plot_points(sdata, KEYS[POINTS_KEY], KEYS[TABLE_KEY], cs="pixel", cmap="tab10", pdf_file=pdf)
                 plot_overlap(sdata, KEYS[IMAGE_KEY], KEYS[SHAPES_KEY], KEYS[POINTS_KEY], KEYS[TABLE_KEY], image_scale_keys, cs="pixel", pdf_file=pdf)
+                
 
 
 def load_segmentation_all(
@@ -174,3 +181,51 @@ def load_segmentation_all(
     for reg_dir in regions: 
         reg_name = reg_dir.split("/")[-1]
         load_segmentation_region(exp_name, reg_name, reg_dir, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
+
+
+def load_deconvolution_region(
+        exp_name:str, 
+        reg_name:str,
+        image_dir:str,
+        image_name:str="decon_image",
+        suffix:str=".decon.tif",
+        plot:bool=False,
+        **load_kwargs):
+    """
+    Load deconvolution images into spatialdata objects.
+
+    Parameters:
+    exp_name (str): Name of the experiment.
+    reg_name (str): Name of the region.
+    image_dir (str|Path): Directory containing the deconvolution images.
+    prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
+    """
+    
+    logger.info("LOADING DECONVOLUTION IMAGES; EXPERIMENT %s, REGION %s" %(exp_name, reg_name) )
+    
+    if image_dir is None: 
+        image_dir = os.getenv("PROCESSED_ROOT_PATH", "/ceph/cephatlas/aklein/bican/images")
+    image_dir = f"{image_dir}/{exp_name}/out/{reg_name}/images"
+    logger.info(f"Loading deconvolution images from {image_dir}")
+    
+    zarr_root = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    zarr_path = f"{zarr_root}/{exp_name}/{reg_name}"
+    logger.info(zarr_path)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        sdata = sd.read_zarr(zarr_path)
+
+    sdata = load_decon_images(sdata, image_dir, image_name, suffix, **load_kwargs)
+
+    if plot: 
+        image_channels = sd.models.get_channel_names(sdata[image_name])
+        image_scale_keys = list(sdata[image_name].keys())
+
+        image_path = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
+        image_path = f"{image_path}/{exp_name}/default/{reg_name}/pixi-decon.pdf"
+        pathlib.Path(image_path).parent.mkdir(parents=True, exist_ok=True)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            with PdfPages(image_path) as pdf:
+                plot_images(sdata, image_name, image_scale_keys, image_channels, cs="global", pdf_file=pdf)
+

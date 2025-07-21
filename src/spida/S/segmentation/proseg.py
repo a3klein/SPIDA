@@ -30,11 +30,12 @@ def _add_proseg_binary():
     # Extract the options from the proseg output
     global proseg_args
     escaped_start = re.escape("--")
-    escaped_end = re.escape(" ")
+    escaped_end = re.escape("\n")
     pattern = f"{escaped_start}(.*?){escaped_end}"
     proseg_args = re.findall(pattern, proseg_options.strip())
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     proseg_args = [ansi_escape.sub('', arg) for arg in proseg_args]
+    proseg_args = [arg.split()[0] for arg in proseg_args]
     
     logger.info("proseg binary added to PATH successfully.")
 
@@ -57,11 +58,14 @@ def _execute_cli_proseg(root_dir:str, output_dir:str, region:str, **proseg_param
         """
     for _key, _val in proseg_params.items():
         if _key not in proseg_args:
+            logger.info("skipping unknown proseg parameter: %s" % _key)
             continue
         if isinstance(_val, bool):
             if _val:
+                logger.info(f"Adding boolean proseg parameter: --{_key}")
                 proseg_run_cmd += f"--{_key} \n"
         else:
+            logger.info(f"Adding proseg parameter: --{_key} {_val}")
             proseg_run_cmd += f"--{_key} {_val} \n"
 
     # proseg_run_cmd += f"--nthreads {os.cpu_count()} \\\n"
