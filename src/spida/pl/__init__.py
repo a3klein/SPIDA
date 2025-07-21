@@ -1,3 +1,3 @@
 from .cluster_plots import plot_scatter
-from .ingest import plot_images, plot_shapes, plot_points, plot_overlap
+from .ingest import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
 from .P_plots import plot_filtering, plot_setup

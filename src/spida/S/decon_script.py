@@ -1,5 +1,6 @@
 import os
 import sys 
+from dotenv import load_dotenv # type: ignore
 
 import argparse
 import logging
@@ -33,6 +34,7 @@ from spida.utilities.tiling import (
 from spida.utilities.read_raw import read_info
 from spida.S.filters import deconwolf
 
+load_dotenv()
 logger = logging.getLogger(__package__)
 
 def project_down_2D(input_file, output_file: str | Path = None): 
@@ -99,34 +101,6 @@ def fresh_run(_file, **filter_args):
     return projected_file
 
 
-# def get_parser():
-#     """Get parser for decon_image"""
-#     parser = argparse.ArgumentParser(add_help=False)
-#     parser.add_argument("-i", "--image_path", type=parse_path, required=True, help="Path to the image file or directory")
-#     parser.add_argument("--data_org_path", type=str, required=True, help="Path to data organization file")
-#     parser.add_argument(
-#         "-o", "--output_dir", type=parse_path, default="tiles_output", help="Output directory for tiles"
-#     )
-#     parser.add_argument(
-#         "--channels", type=parse_list, required=True, help="Channel for segmentation (e.g., DAPI or PolyT,DAPI)"
-#     )
-#     parser.add_argument("-ts", "--tile_size", type=int, default=2960, help="Tile size in pixels (default: 2960)")
-#     parser.add_argument("--overlap", type=int, default=100, help="Overlap between tiles in pixels (default: 100)")
-#     parser.add_argument("--visualize_grid", action="store_true", help="Visualize the tiling grid")
-    
-    
-#     parser.add_argument("--z_step", type=float, default=1.5, help="axial(z) step size in micrometers")
-#     parser.add_argument("--filter", type=str, default=None, help="Filter to apply to the image before segmentation")
-#     parser.add_argument(
-#         "--filter_args", type=parse_dict, default={}, help="Additional filter arguments (e.g., key1=val1,key2=val2)"
-#     )
-#     parser.add_argument("--gpu", type=bool, default=False, help="Use GPU")
-#     parser.add_argument("--continue_stalled", type=bool, default=False, help="Continue processing if some tiles already processed")
-#     parser.add_argument("--plot_thr", type=bool, default=False, help="Plot thresholding histogram")
-#     parser.set_defaults(func=decon_image)
-#     return parser
-
-
 def decon_image(
     image_path: str | Path,
     data_org_path: str | Path = "{input}/dataorganization.csv",
@@ -140,6 +114,7 @@ def decon_image(
     z_step: float = 1.5,
     continue_stalled : bool = False,
     plot_thr : bool = False, 
+    match_pre: bool = False,
     **kwargs
 ):
     """
@@ -193,7 +168,9 @@ def decon_image(
         logger.info(f"Filtered tiles to {len(tiles)} with max intensity above threshold: {thr}")
 
         # plotting threshold decision 
-        if plot_thr: 
+        if plot_thr:
+            # image_path = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
+            # image_path = f"{image_path}/plot_thr/_"
             logger.info("Plotting thresholding histogram and tile grid visualizations")
             fig, ax = plt.subplots(figsize=(10, 10), dpi=200)
             sns.histplot(tile_maxes, bins=100, kde=True, ax=ax)
@@ -274,7 +251,8 @@ def decon_image(
             output_dir=output_dir, 
             tile_info=sub_tile_info, 
             original_shape=large_img.shape,
-            suffix=".decon.2d"
+            suffix=".decon.2d",
+            match_pre=match_pre
         )
         logger.info(f"Reconstructed deconvolved image with shape: {deconed_image.shape}")
 

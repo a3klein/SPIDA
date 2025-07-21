@@ -346,8 +346,7 @@ def save_tiles(tiles, tile_info, output_dir, prefix="tile", format="tif", func :
     
     return saved_files
 
-
-def reconstruct_image_from_tile_files(output_dir, tile_info, original_shape, overlap_strategy='average', prefix="tile", format="tif", suffix=None):
+def reconstruct_image_from_tile_files(output_dir, tile_info, original_shape, overlap_strategy='average', prefix="tile", format="tif", suffix=None, match_pre:bool=False):
     """
     Reconstruct the original image from tiles stored in a directory.
     
@@ -392,9 +391,12 @@ def reconstruct_image_from_tile_files(output_dir, tile_info, original_shape, ove
             filename = f"{prefix}_{tile_id:04d}_d{pos[0]}_r{pos[1]}_c{pos[2]}_col{col}"
         
         # Add suffix if provided
+        input_filename = filename
         if suffix:
             filename += suffix
         
+        input_filename += f".{format}"
+        input_filepath = output_dir / input_filename
         filename += f".{format}"
         filepath = output_dir / filename
         
@@ -405,7 +407,15 @@ def reconstruct_image_from_tile_files(output_dir, tile_info, original_shape, ove
         
         # Load tile
         tile = iio.imread(filepath)
-        
+
+        # If adjusting the tile color histogram
+        if match_pre:
+            input_tile = iio.imread(input_filepath)
+            input_tile = input_tile.mean(axis=0).astype("int16")
+            input_tile[input_tile < 0] = 0  # Ensure no negative values
+            tile = ski.exposure.match_histograms(tile, input_tile, channel_axis=None)
+            del input_tile  # clear memory 
+
         # Initialize arrays on first tile to get dtype
         if reconstructed is None:
             reconstructed = np.zeros(original_shape, dtype=tile.dtype)
@@ -437,8 +447,8 @@ def reconstruct_image_from_tile_files(output_dir, tile_info, original_shape, ove
         # TODO: For max strategy, we need to reconstruct differently
         pass  # Implementation would be more complex
     
+    reconstructed[reconstructed < 0] = 0 # Making sure no negative values! 
     return reconstructed.astype(reconstructed.dtype)
-
 
 def reconstruct_image_from_tiles(tiles, tile_info, original_shape, overlap_strategy='average'):
     """

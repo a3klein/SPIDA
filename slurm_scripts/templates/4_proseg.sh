@@ -30,12 +30,6 @@ pixi run -e preprocessing \
     --input_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose/ \
     --output_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
     --kwargs \
-    x-column=global_x \
-    y-column=global_y \
-    z-column=global_z \
-    gene-column=barcode_id \
-    cell-id-column=cell_id \
-    cell-id-unassigned=0 \
     detect-layers=True \
     voxel-layers=3 \
     ncomponents=10 \
@@ -73,7 +67,8 @@ pixi run -e preprocessing \
     --plot \
     --type vpt \
     --prefix_name proseg_aligned \
-    --cell_metadata_fname merged_cell_metadata.csv \
-    --cell_by_gene_fname cell_by_gene.csv \
-    --cellpose_micron_space_fname merged_converted_boundaries.parquet \
-    --detected_transcripts_fname detected_transcripts.csv
+    --load_kwargs \
+    cell_metadata_fname=merged_cell_metadata.csv \
+    cell_by_gene_fname=cell_by_gene.csv \
+    cellpose_micron_space_fname=merged_converted_boundaries.parquet \
+    detected_transcripts_fname=detected_transcripts.csv

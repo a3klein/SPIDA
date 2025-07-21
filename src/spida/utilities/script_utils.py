@@ -61,9 +61,10 @@ def parse_rotation(arg: str) -> float:
 class ParseKwargs(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         setattr(namespace, self.dest, dict())
+        getattr(namespace, self.dest)["key"] = "value" # to make sure that it is never empty!
+
         for value in values:
             key, val = value.split('=')
-            
             # Try to convert to appropriate types
             if val.lower() in ('true', 'false'):
                 getattr(namespace, self.dest)[key] = val.lower() == 'true'

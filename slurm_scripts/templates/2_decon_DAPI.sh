@@ -29,7 +29,7 @@ cd /anvil/projects/x-mcb130189/aklein/SPIDA
 echo "Running whole image deconvolution - DAPI - {REG_N} - {EXP_N}"
 
 pixi run -e preprocessing \
-    python -m spida.S.cli decon_image \
+    python -m spida.S decon_image \
     -i /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/raw/dataorganization.csv \
     -o /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/analysis/{REGION}/tile_images \
