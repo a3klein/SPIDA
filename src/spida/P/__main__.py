@@ -163,6 +163,7 @@ def remove_doublets_region_register_subparser(subparser):
     parser.add_argument('reg_name', type=str, help='Name of the region')
     parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
     parser.add_argument('--threshold', type=float, default=0.5, help="Threshold for doublet detection (default: 0.5)")
+    parser.add_argument('--suffix', type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
     parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
     return
@@ -178,6 +179,7 @@ def remove_doublets_all_register_subparser(subparser):
     parser.add_argument('exp_name', type=str, help='Name of the experiment')
     parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
     parser.add_argument('--threshold', type=float, default=0.5, help="Threshold for doublet detection (default: 0.5)")
+    parser.add_argument('--suffix', type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
     parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
     return
