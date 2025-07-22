@@ -37,6 +37,8 @@ DESCRIPTION = """
     [Setup]
     setup-adata-region                - Setup the AnnData object for downstream analysis for a specific region.
     setup-adata-all                   - Setup the AnnData objects for all regions in an experiment.
+    remove-doublets-region            - Remove doublets from the AnnData object.
+    remove-doublets-all               - Remove doublets from all AnnData objects in an experiment.
     """
 EPILOGUE = """
 Author: Amit Klein
@@ -149,6 +151,36 @@ def setup_adata_all_register_subparser(subparser):
     parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
     return
 
+def remove_doublets_region_register_subparser(subparser):
+    """Register subparser for remove-doublets-region command."""
+    parser = subparser.add_parser(
+        'remove-doublets-region',
+        aliases=['remove_doublets_region'],
+        help='Remove doublets from the AnnData object for a specific region',
+        description='Remove doublets from the AnnData object for a specific region'
+    )
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('reg_name', type=str, help='Name of the region')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--threshold', type=float, default=0.5, help="Threshold for doublet detection (default: 0.5)")
+    parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
+    parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
+    return
+
+def remove_doublets_all_register_subparser(subparser):
+    """Register subparser for remove-doublets-all command."""
+    parser = subparser.add_parser(
+        'remove-doublets-all',
+        aliases=['remove_doublets_all'],
+        help='Remove doublets from all AnnData objects in an experiment',
+        description='Remove doublets from all AnnData objects in an experiment'
+    )
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--threshold', type=float, default=0.5, help="Threshold for doublet detection (default: 0.5)")
+    parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
+    parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
+    return
 
 def plot_filtering_region_register_subparser(subparser):
     """Register subparser for plot-filtering-region command."""
@@ -233,6 +265,10 @@ def main():
         from .main import setup_adata_region as func
     elif command in ["setup-adata-all"]:
         from .main import setup_adata_all as func
+    elif command in ["remove-doublets-region"]:
+        from .main import remove_doublets_region as func
+    elif command in ["remove-doublets-all"]:
+        from .main import remove_doublets_all as func
     elif command in ["plot-filtering-region"]:
         from .main import plot_filtering_region as func
     elif command in ["plot-setup-region"]:
