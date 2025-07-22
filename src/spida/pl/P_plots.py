@@ -107,3 +107,25 @@ def plot_setup(adata:ad.AnnData, exp_name:str, reg_name:str, prefix_name:str, pd
     # Plot the spatial coordinates 
     plot_scatter(adata, title=f"{donor} - UMAP", colors=['volume', 'nCount_RNA', 'leiden'], ncols=3,
                 coord_base='spatial', pdf_file=pdf_file)
+    
+
+def plot_doublets(adata, save_file):
+
+    arr = adata.obsm['X_spatial'] if 'X_spatial' in adata.obsm else adata.obsm['spatial']
+    ds = min(200000/adata.shape[0], 4)  # the point size to use for plotting
+
+    filt_palette = {True : "#ff0000", False : "#cccccc"}
+
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=300, constrained_layout=True)
+    sns.scatterplot(x=arr[:,0], y=arr[:,1], s=ds, hue=adata.obs['doublet_bool'], marker='.', ax=ax,
+                            palette=filt_palette, linewidth=0, alpha=0.9, legend=False, rasterized=True)
+    ax.set_aspect('equal')
+    ax.set_title('Doublet Prediction')
+    ax.axis('off')
+
+    if save_file: 
+        fig.savefig(save_file, bbox_inches="tight")
+        plt.close(fig)
+    else: 
+        plt.show()
+        plt.close()

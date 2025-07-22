@@ -26,12 +26,6 @@ def remove_doublets(adata):
     adata.obs.drop(columns=['doublet_score', 'doublet_bool'], inplace=True)
     return adata
 
-# Move to pl
-def plot_doublets(adata):
-    sc.pl.spatial(adata, color='doublet_bool', spot_size=30, title='Doublet Prediction',
-                  frameon=False, cmap='Greens', legend_loc='right margin')
-
-
 def resolvi_cluster(adata): 
     # SCVI stores spatial coordinates in 'X_spatial'
     adata.obsm['X_spatial'] = adata.obsm['spatial']

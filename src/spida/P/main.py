@@ -7,8 +7,7 @@ import logging
 
 from spida.P.filtering import run_filtering
 from spida.P.setup_adata import run_setup
-from spida.P.scvi_toolkit import identify_doublets, remove_doublets, plot_doublets
-from spida.pl import plot_filtering, plot_setup
+from spida.pl import plot_filtering, plot_setup, plot_doublets
 from spida.utilities.sd_utils import _gen_keys, _region_to_donor, _write_adata, _backup_adata, _get_adata, _assign_new_table
 from spida._constants import TABLE_KEY # type: ignore
 
@@ -219,6 +218,7 @@ def remove_doublets_region(exp_name:str,
                             reg_name:str, 
                             prefix_name:str, 
                             threshold:float=0.5, 
+                            suffix:str="",
                             plot:bool=False, 
                             image_path:Path=None): 
         """
@@ -231,13 +231,14 @@ def remove_doublets_region(exp_name:str,
         threshold (float, optional): Threshold for doublet detection. Defaults to 0.5.
         plot (bool, optional): Whether to plot the results. Defaults to False.
         """
+        from spida.P.scvi_toolkit import identify_doublets, remove_doublets
     
         logger.info("REMOVING DOUBLETS, EXPERIMENT %s, REGION %s, PREFIX %s" %(exp_name, reg_name, prefix_name) )
     
         # Get KEYS
         KEYS = _gen_keys(prefix_name, exp_name, reg_name)
         # Get the AnnData object
-        adata = _get_adata(exp_name, reg_name, prefix_name)
+        adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix)  # Use the filtered data if available
         
         # Identify doublets
         adata = identify_doublets(adata, threshold=threshold)
@@ -247,16 +248,22 @@ def remove_doublets_region(exp_name:str,
         adata = remove_doublets(adata)
         
         # backup the adata object
-        _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}_filt")
+        _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
         
         logger.info("DONE REMOVING DOUBLETS")
         
         if plot:
-            plot_doublets(exp_name, reg_name, prefix_name, image_path=image_path)
+            if image_path is None: 
+                image_store = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
+                image_path = Path(f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/SOLO_doublets.png")
+                image_path.parent.mkdir(parents=True, exist_ok=True)
+
+            plot_doublets(adata, image_path)
 
 def remove_doublets_all(exp_name:str,
                         prefix_name:str,
                         threshold:float=0.5,
+                        suffix:str="",
                         plot:bool=False,
                         image_path:Path=None):
     """
@@ -276,4 +283,4 @@ def remove_doublets_all(exp_name:str,
     
     for reg in regions: 
         reg_name = reg.split("/")[-1]
-        remove_doublets_region(exp_name, reg_name, prefix_name, threshold=threshold, plot=plot, image_path=image_path)
+        remove_doublets_region(exp_name, reg_name, prefix_name, threshold=threshold, plot=plot, image_path=image_path, suffix=suffix)
