@@ -33,6 +33,8 @@ ruff = "*"
 spida = { path = "." }
 
 # Defining Features
+[feature.preprocessing.system-requirements]
+cuda = "12.0"
 [feature.preprocessing.dependencies]
 spatialdata = "*"
 spatialdata-io = "*"
@@ -40,8 +42,9 @@ spatialdata-plot = "*"
 polars = "*"
 opentsne = "*"
 pynndescent = "*"
-scvi-tools = "*"
 statsmodels = "*"
+pytorch-gpu = "*"
+scvi-tools = "*"
 scanpy = "*"
 leidenalg = "*"
 scikit-learn = "1.6.0.*"
@@ -49,11 +52,9 @@ scikit-learn = "1.6.0.*"
 allcools = { git = "https://github.com/DingWB/ALLCools" }
 imblearn = "*"
 opencv-python = "*"
+jax = "*"
 # PyQt6 = "*"
 # pym3c = { git = "https://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@github.com/DingWB/pym3c"}
-
-[feature.proseg.dependencies]
-rust = "*"
 
 [feature.deepcell.pypi-dependencies]
 deepcell = "==0.12.6"
@@ -84,153 +85,18 @@ cell_type_mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" 
 # Setting environment names for all the features 
 [environments]
 preprocessing = ['preprocessing']
-proseg = ["proseg"]
 deepcell = ["deepcell"]
 cellpose = ["cellpose"]
 mapmycells = ["mapmycells"]
 
 # Preprocssing Tasks 
 [feature.preprocessing.tasks]
-ingest-help = {cmd = "python main.py ingest_region --help | echo", cwd = "src/spida/io"}
-io-help = {cmd = "python main.py --help | echo", cwd = "src/spida/io"}
-filter-help = {cmd = "python main.py filter_cells_region --help | echo", cwd = "src/spida/P"}
-setup-help = {cmd = "python main.py setup_adata --help | echo", cwd = "src/spida/P" }
-P-help = {cmd = "python main.py --help | echo", cwd = "src/spida/P"}
-
-[feature.preprocessing.tasks.ingest_region]
-args = [
-	"exp",
-	"reg",
-	{ "arg" = "plot", "default" = "False" },
-	{ "arg" = "type", "default" = "merscope"} , 
-	{ "arg" = "source", "default" = "machine"}, 
-	{ "arg" = "prefix_name", "default" = "default"},
-]
-cmd = "python main.py ingest_region {{exp}} {{reg}} --type={{type}} --source={{source}} --prefix_name={{prefix_name}} --plot={{plot}}"
-cwd = "src/spida/io"
-
-[feature.preprocessing.tasks.ingest_all]
-args = [
-	"exp",
-	{ "arg" = "plot", "default" = "False" },
-	{ "arg" = "type", "default" = "merscope"} , 
-	{ "arg" = "source", "default" = "machine"}, 
-	{ "arg" = "prefix_name", "default" = "default"},
-]
-cmd = "python main.py ingest_all {{exp}} --type={{type}} --source={{source}} --prefix_name={{prefix_name}} --plot={{plot}}"
-cwd = "src/spida/io"
-
-[feature.preprocessing.tasks.load_seg_region]
-args = [
-	"exp", "reg", "seg_dir",
-	{ "arg" = "plot", "default" = "False" },
-	{ "arg" = "type", "default" = "merscope"} , 
-	{ "arg" = "prefix_name", "default" = "default"},
-]
-cmd = "python main.py load_segmentation_region {{exp}} {{reg}} {{seg_dir}} --type={{type}} --prefix_name={{prefix_name}} --plot={{plot}}"
-cwd = "src/spida/io"
-
-[feature.preprocessing.tasks.load_seg_all]
-args = [
-	"exp", "seg_dir",
-	{ "arg" = "plot", "default" = "False" },
-	{ "arg" = "type", "default" = "merscope"} , 
-	{ "arg" = "prefix_name", "default" = "default"},
-]
-cmd = "python main.py load_segmentation_all {{exp}} {{seg_dir}} --type={{type}} --prefix_name={{prefix_name}} --plot={{plot}}"
-cwd = "src/spida/io"
-
-[feature.preprocessing.tasks.filter_cells_region]
-args = [
-	"exp", "reg",
-	{ "arg" = "prefix_name", "default" = "default"},
-	{ "arg" = "plot" , "default" = "False"},
-	{ "arg" = "cutoffs_path", "default" = "None"},
-]
-cmd = "python main.py filter_cells_region {{exp}} {{reg}} {{prefix_name}} --cutoffs_path={{cutoffs_path}} --plot={{plot}}"
-cwd = "src/spida/P"
-
-[feature.preprocessing.tasks.filter_cells_all]
-args = [
-	"exp",
-	{ "arg" = "prefix_name", "default" = "default"},
-	{ "arg" = "plot" , "default" = "False"},
-	{ "arg" = "cutoffs_path", "default" = "None"},
-]
-cmd = "python main.py filter_cells_all {{exp}} {{prefix_name}} --cutoffs_path={{cutoffs_path}} --plot={{plot}}"
-cwd = "src/spida/P"
-
-[feature.preprocessing.tasks.setup_adata_region]
-args = [
-	"exp", "reg", 
-	{ "arg" = "prefix_name", "default" = "default"},
-	{ "arg" = "plot" , "default" = "False"},
-]
-cmd = "python main.py setup_adata_region {{exp}} {{reg}} {{prefix_name}} --plot={{plot}}"
-cwd = "src/spida/P"
-
-[feature.preprocessing.tasks.setup_adata_all]
-args = [
-	"exp",
-	{ "arg" = "prefix_name", "default" = "default"},
-	{ "arg" = "plot" , "default" = "False"},
-]
-cmd = "python main.py setup_adata_all {{exp}} {{prefix_name}} --plot={{plot}}"
-cwd = "src/spida/P"
-
-[feature.preprocessing.tasks.segment_region]
-args = [
-	"type", "exp", "reg", 
-	{ "arg" = "input_dir", "default" = "None"},
-	{ "arg" = "output_dir", "default" = "None"},
-]
-cmd = "python main.py run_segmentation {{type}} {{exp}} {{reg}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
-cwd = "src/spida/segmentation"
-
-[feature.preprocessing.tasks.segment_all]
-args = [
-	"type", "exp",
-	{ "arg" = "input_dir", "default" = "None"},
-	{ "arg" = "output_dir", "default" = "None"},
-]
-cmd = "python main.py segment_experiment {{type}} {{exp}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
-cwd = "src/spida/segmentation"
-
-[feature.cellpose.tasks.segment_cellpose_region]
-args = [
-	"exp", "reg",
-	{ "arg" = "input_dir", "default" = "None"},
-	{ "arg" = "output_dir", "default" = "None"},
-]
-cmd = "python main.py run_segmentation cellpose {{exp}} {{reg}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
-cwd = "src/spida/segmentation"
-
-[feature.cellpose.tasks.segment_cellpose_all]
-args = [
-	"exp",
-	{ "arg" = "input_dir", "default" = "None"},
-	{ "arg" = "output_dir", "default" = "None"},
-]
-cmd = "python main.py segment_experiment cellpose {{exp}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
-cwd = "src/spida/segmentation"
-
-[feature.deepcell.tasks.segment_mesmer_region]
-args = [
-	"exp", "reg",
-	{ "arg" = "input_dir", "default" = "None"},
-	{ "arg" = "output_dir", "default" = "None"},
-]
-cmd = "python main.py run_segmentation mesmer {{exp}} {{reg}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
-cwd = "src/spida/segmentation"
-
-[feature.deepcell.tasks.segment_mesmer_all]
-args = [
-	"exp",
-	{ "arg" = "input_dir", "default" = "None"},
-	{ "arg" = "output_dir", "default" = "None"},
-]
-cmd = "python main.py segment_experiment mesmer {{exp}} --input_dir={{input_dir}} --output_dir={{output_dir}}"
-cwd = "src/spida/segmentation"
+# S.help = {cmd = "python main.py ingest_region --help | echo", cwd = "src/spida/io"}
+# I.help = {cmd = "python main.py --help | echo", cwd = "src/spida/io"}
+# P.help = {cmd = "python main.py filter_cells_region --help | echo", cwd = "src/spida/P"}
+spida-S = {cmd = "python -m spida.S"}
+spida-P = {cmd = "python -m spida.P"}
+spida-I = {cmd = "python -m spida.I"}
 
 [tasks]
 lint-fast = "ruff --fix src/"

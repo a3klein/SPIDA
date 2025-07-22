@@ -4,6 +4,10 @@ import seaborn as sns
 
 def plot_scatter(adata, title="", colors=['volume', 'nCount_RNA'], ncols=2, 
               coord_base="umap", pdf_file=None):
+    
+    # Set rcparam
+    plt.rcParams['axes.facecolor'] = 'white'
+
     ds = min(200000/adata.shape[0], 4) # the point size to use for plotting
     nrows = 1
 
