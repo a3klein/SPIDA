@@ -32,6 +32,17 @@ pixi-kernel = ">=0.6.4,<0.7"
 ruff = "*"
 spida = { path = "." }
 
+[feature.gpu.system-requirements]
+cuda = "12.0"
+[feature.gpu.dependencies]
+cuda-version = "12.*"
+pytorch-gpu = "*"
+[feature.gpu.pypi-dependencies]
+jax = "*"
+
+[feature.cpu.dependencies]
+pytorch-cpu = "*"
+
 # Defining Features
 [feature.preprocessing.dependencies]
 spatialdata = "*"
@@ -41,7 +52,6 @@ polars = "*"
 opentsne = "*"
 pynndescent = "*"
 statsmodels = "*"
-pytorch-gpu = "*"
 scvi-tools = "*"
 scanpy = "*"
 leidenalg = "*"
@@ -50,9 +60,6 @@ scikit-learn = "1.6.0.*"
 allcools = { git = "https://github.com/DingWB/ALLCools" }
 imblearn = "*"
 opencv-python = "*"
-# jax = "*"
-# PyQt6 = "*"
-# pym3c = { git = "https://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@github.com/DingWB/pym3c"}
 
 [feature.deepcell.pypi-dependencies]
 deepcell = "==0.12.6"
@@ -82,7 +89,8 @@ cell_type_mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" 
 
 # Setting environment names for all the features 
 [environments]
-preprocessing = ['preprocessing']
+preprocessing-gpu = ['preprocessing', 'gpu']
+preprocessing = ['preprocessing', 'cpu']
 deepcell = ["deepcell"]
 cellpose = ["cellpose"]
 mapmycells = ["mapmycells"]
