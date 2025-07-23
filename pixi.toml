@@ -1,6 +1,6 @@
 [workspace]
 authors = ["Amit Klein <a3klein@ucsd.edu>"]
-channels = ["conda-forge", "pypi"]
+channels = ["conda-forge", "pypi", "pytorch", "nvidia"]
 name = "spida"
 platforms = ["linux-64"]
 version = "0.1.0"
@@ -38,6 +38,7 @@ cuda = "12.0"
 cuda-version = "12.*"
 pytorch-gpu = "*"
 [feature.gpu.pypi-dependencies]
+triton = "*"
 jax = "*"
 
 [feature.cpu.dependencies]
@@ -106,3 +107,7 @@ spida-I = {cmd = "python -m spida.I"}
 
 [tasks]
 lint-fast = "ruff --fix src/"
+
+# [feature.gpu.tasks.install-triton]
+# cmd = "pip install triton==2.1.0 --foce-reinstall --no-cache-dir"
+# depends-on = ["install"]
