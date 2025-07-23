@@ -276,15 +276,15 @@ def main():
     elif command in ["plot-setup-region"]:
         from .main import plot_setup_region as func
     else:
-        logging.error(f"Unknown command: {command}")
+        logger.error(f"Unknown command: {command}")
         parser.print_help()
         sys.exit(1)
 
     # validate environment (if needed)
 
-    logging.info(f"Running command: {command}")
+    logger.info(f"Running command: {command}")
     func(**args_var)
-    logging.info(f"Command {command} completed successfully.")
+    logger.info(f"Command {command} completed successfully.")
     return
 
 if __name__ == "__main__":

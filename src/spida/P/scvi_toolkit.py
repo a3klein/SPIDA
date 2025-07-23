@@ -11,6 +11,8 @@ import scvi
 
 # For doublet detection and removal using SOLO
 def identify_doublets(adata, threshold=0.5): 
+    if 'raw' not in adata.layers:
+        adata.layers['raw'] = adata.X.copy()
     scvi.model.SCVI.setup_anndata(adata, layer='raw')
     vae = scvi.model.SCVI(adata)
     vae.train()
