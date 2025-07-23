@@ -254,7 +254,7 @@ def main():
     # collect args
     args_var = vars(args)
     for key, value in args_var.items():
-        logging.info(f"Argument: {key} = {value}, Type: {type(value)}")
+        logger.info(f"Argument: {key} = {value}, Type: {type(value)}")
 
     command = args_var.pop("command").lower().replace("_", "-")
     if command in ["filter-cells-region"]: 
