@@ -1,0 +1,114 @@
+[workspace]
+authors = ["Amit Klein <a3klein@ucsd.edu>"]
+channels = ["conda-forge", "pypi"]
+name = "spida"
+platforms = ["linux-64"]
+version = "0.1.0"
+preview = ['pixi-build']
+
+[package.host-dependencies]
+hatchling = "*"
+
+[package.build]
+backend = { name = "pixi-build-python", version = "0.1*" } 
+channels = [
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/conda-forge",
+]
+
+
+# Global dependencies 
+[dependencies]
+fire = ">=0.7.0,<0.8"
+python-dotenv = ">=1.1.0,<2"
+python = ">=3.10"
+ipython = "8.*"
+ipywidgets = "8.*"
+jupyterlab = "4.*"
+ipykernel = "*"
+pixi-kernel = ">=0.6.4,<0.7"
+
+[pypi-dependencies]
+ruff = "*"
+spida = { path = "." }
+
+[feature.gpu.system-requirements]
+cuda = "12.0"
+[feature.gpu.dependencies]
+cuda-version = "12.*"
+pytorch-gpu = "*"
+[feature.gpu.pypi-dependencies]
+jax = "*"
+
+[feature.cpu.dependencies]
+pytorch-cpu = "*"
+
+# Defining Features
+[feature.preprocessing.dependencies]
+spatialdata = "*"
+spatialdata-io = "*"
+spatialdata-plot = "*"
+polars = "*"
+opentsne = "*"
+pynndescent = "*"
+statsmodels = "*"
+scvi-tools = "*"
+scanpy = "*"
+leidenalg = "*"
+scikit-learn = "1.6.0.*"
+[feature.preprocessing.pypi-dependencies] 
+allcools = { git = "https://github.com/DingWB/ALLCools" }
+imblearn = "*"
+opencv-python = "*"
+<<<<<<< HEAD
+jax = "*"
+# PyQt6 = "*"
+# pym3c = { git = "https://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@github.com/DingWB/pym3c"}
+=======
+>>>>>>> 1f8f10649abea5d34db421df0646c8c279a55cb1
+
+[feature.deepcell.pypi-dependencies]
+deepcell = "==0.12.6"
+shapely = "*"
+supervision = "*"
+geopandas = "*"
+natsort = "*"
+pyarrow = "*" 
+[feature.deepcell.dependencies]
+python = "<=3.10,>3.8"
+
+[feature.cellpose.dependencies]
+python = "3.11.*"
+shapely = "*"
+geopandas = "*"
+supervision = "*"
+pyarrow = "*"
+scikit-image = "*"
+[feature.cellpose.pypi-dependencies]
+cellpose = "==4.0.4"
+
+[feature.mapmycells.dependencies]
+python="3.10.*"
+zarr = "*"
+[feature.mapmycells.pypi-dependencies]
+cell_type_mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" }
+
+# Setting environment names for all the features 
+[environments]
+preprocessing-gpu = ['preprocessing', 'gpu']
+preprocessing = ['preprocessing', 'cpu']
+deepcell = ["deepcell"]
+cellpose = ["cellpose"]
+mapmycells = ["mapmycells"]
+
+# Preprocssing Tasks 
+[feature.preprocessing.tasks]
+# S.help = {cmd = "python main.py ingest_region --help | echo", cwd = "src/spida/io"}
+# I.help = {cmd = "python main.py --help | echo", cwd = "src/spida/io"}
+# P.help = {cmd = "python main.py filter_cells_region --help | echo", cwd = "src/spida/P"}
+spida-S = {cmd = "python -m spida.S"}
+spida-P = {cmd = "python -m spida.P"}
+spida-I = {cmd = "python -m spida.I"}
+
+[tasks]
+lint-fast = "ruff --fix src/"

@@ -244,14 +244,6 @@ def remove_doublets_region(exp_name:str,
         adata = identify_doublets(adata, threshold=threshold)
         logger.info(f"Doublets identified: {adata.obs['doublet_bool'].sum()} out of {adata.n_obs} total cells")
 
-        # Remove doublets
-        adata = remove_doublets(adata)
-        
-        # backup the adata object
-        _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
-        
-        logger.info("DONE REMOVING DOUBLETS")
-        
         if plot:
             if image_path is None: 
                 image_store = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
@@ -259,6 +251,14 @@ def remove_doublets_region(exp_name:str,
                 image_path.parent.mkdir(parents=True, exist_ok=True)
 
             plot_doublets(adata, image_path)
+
+        # Remove doublets
+        # adata = remove_doublets(adata)
+        
+        # backup the adata object
+        _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+        
+        logger.info("DONE REMOVING DOUBLETS")
 
 def remove_doublets_all(exp_name:str,
                         prefix_name:str,
@@ -280,7 +280,10 @@ def remove_doublets_all(exp_name:str,
     zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
     exp_path = Path(f"{zarr_store}/{exp_name}")
     regions = glob.glob(f"{exp_path}/region_*")
-    
+
+    logger.info("REMOVING DOUBLETS FOR ALL REGIONS IN EXPERIMENT %s" % exp_name)
+    logger.info("ZARR_PATH: %s" % zarr_store)
+
     for reg in regions: 
         reg_name = reg.split("/")[-1]
         remove_doublets_region(exp_name, reg_name, prefix_name, threshold=threshold, plot=plot, image_path=image_path, suffix=suffix)

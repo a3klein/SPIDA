@@ -1051,7 +1051,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/0a/4b/ab615fea52e34579d5c6c7dba86b4f9d7f3cdb6a170b348ec49f34cf4355/anndata-0.11.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e9/43/91c96e0b69f86c7076989ef97bc1687ed427ddacd1dd1c7010b5c330d611/argschema-3.0.4.tar.gz
       - pypi: https://files.pythonhosted.org/packages/e0/b1/0542e0cab6f49f151a2d7a42400f84f706fc0b64e85dc1f56708b2e9fd37/array_api_compat-1.12.0-py3-none-any.whl
-      - pypi: git+https://github.com/AllenInstitute/cell_type_mapper#9769eaf16a94622f547c1d2bc3672be3900b8565
+      - pypi: git+https://github.com/AllenInstitute/cell_type_mapper#d79f2a5a0780170be392da3ba0e7d0eb86a36238
       - pypi: https://files.pythonhosted.org/packages/32/5c/1ee32d1c7956923202f00cf8d2a14a62ed7517bdc0ee1e55301227fc273c/contourpy-1.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/43/09/2aea36ff60d16dd8879bdb2f5b3ee0ba8d08cbbdcdfe870e695ce3784385/execnet-2.1.1-py3-none-any.whl
@@ -3447,9 +3447,9 @@ packages:
   purls: []
   size: 978114
   timestamp: 1741554591855
-- pypi: git+https://github.com/AllenInstitute/cell_type_mapper#9769eaf16a94622f547c1d2bc3672be3900b8565
+- pypi: git+https://github.com/AllenInstitute/cell_type_mapper#d79f2a5a0780170be392da3ba0e7d0eb86a36238
   name: cell-type-mapper
-  version: 1.5.4
+  version: 1.5.5
   requires_dist:
   - anndata>=0.11.0
   - argschema
