@@ -19,7 +19,7 @@ pixi run -e {environment} {command}.
 
 The command is composed of multiple parts: 
 ```
-python spida.{module}.cli {command} {args}
+python -m spida.{module} {command} {args}
 ```
 
 ## .env file
