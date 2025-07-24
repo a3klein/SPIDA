@@ -46,9 +46,12 @@ class Filter():
         """
         Load metadata from an AnnData object and return it as a Polars DataFrame.
         """
-        df_obs = pl.DataFrame(self.adata.obs.copy()).rename(self.PRESET['meta_map'])
+        try: 
+            df_obs = pl.DataFrame(self.adata.obs).rename(self.PRESET['meta_map'], strict=True)
+        except pl.exceptions.ColumnNotFoundError as e: 
+            df_obs = pl.DataFrame(self.adata.obs)
+        
         df_meta = df_obs.select([CELL_ID, CELL_X, CELL_Y, CELL_FOV, CELL_VOLUME])
-        # df_meta = df_obs.rename({"index" : CELL_ID})
         df_meta = self.load_info(df_meta)
         return df_meta 
 
@@ -58,8 +61,10 @@ class Filter():
         Load cell-by-gene data from an AnnData object and return it as a Polars DataFrame.
         """        
         df_cbg = pl.DataFrame(self.adata.X.copy()).sum_horizontal().to_frame()
-        df_cbg = df_cbg.with_columns(pl.DataFrame(self.adata.obs.index.copy().to_frame()))
-        df_cbg = df_cbg.rename({"index" : CELL_ID, "sum" : "nCount_RNA"} )
+        cell_ids = self.adata.obs.index.str.split('.', n=1, expand=True).get_level_values(0).to_frame(name="index")
+        df_cbg = df_cbg.with_columns(pl.DataFrame(cell_ids)) # Need to use CELL_ID not index as the new index
+        # 2 Indexes renaming because capitalization was not consistent in the past
+        df_cbg = df_cbg.rename({"index" : CELL_ID, "Index" : CELL_ID, "sum" : "nCount_RNA"}, strict=False )
         df_cbg = df_cbg.with_columns(nFeature_RNA=(pl.DataFrame(self.adata.X.copy()) != 0).sum_horizontal())
         df_cbg = df_cbg.with_columns(nBlank=pl.DataFrame(self.adata.copy().obsm['blank']).sum_horizontal())
         df_cbg = self.load_info(df_cbg)
@@ -96,11 +101,15 @@ class Filter():
         ncpv_min_quantile=cutoffs['ncpv_min_quantile']
         ncpv_max_quantile=cutoffs['ncpv_max_quantile']
 
-        vol_max_mult = cutoffs['vol_max_mult']
-        max_vol_by_median = cutoffs['max_vol_by_median']
+        vol_max_mult = cutoffs.get('vol_max_mult', 3)
+        max_vol_by_median = cutoffs.get('max_vol_by_median', False)
+        count_max_mult = cutoffs.get('count_max_mult', 3)
+        max_count_by_median = cutoffs.get('max_count_by_median', False)
 
         if max_vol_by_median: 
-            volume_max = df_feature['volume'].median() * vol_max_mult
+            volume_max = max(df_feature['volume'].median() * vol_max_mult, volume_max)
+        if max_count_by_median: 
+            n_count_max = max(df_feature['nCount_RNA'].median() * count_max_mult, n_count_max)
         n_count_per_volume = df_feature['nCount_RNA_per_Volume'].to_numpy()
         qMax = np.quantile(n_count_per_volume, ncpv_max_quantile)
         qMin = np.quantile(n_count_per_volume, ncpv_min_quantile)
