@@ -1,14 +1,10 @@
-import os
-import sys 
 from dotenv import load_dotenv # type: ignore
 
-import argparse
 import logging
 from pathlib import Path
 from tqdm import tqdm
 
 import multiprocessing as mp
-import warnings
 from functools import partial
 
 import matplotlib.pyplot as plt
@@ -197,7 +193,8 @@ def decon_image(
             del diff, reconstructed
 
         # Save Tiles (applying 7 slice expansion): 
-        to_3D = lambda x: np.asarray([x]*7)
+        def to_3D(x):
+            return np.asarray([x]*7)
         saved_files = save_tiles(tiles, sub_tile_info, output_dir, func=to_3D)
         logger.info(f"Saved {len(saved_files)} tiles to {output_dir}")
 
@@ -211,7 +208,7 @@ def decon_image(
         filter_args['iter'] = 100
         filter_args['gpu'] = gpu
 
-        l = mp.Lock() # for locking the deconwolf subprocesses
+        # l = mp.Lock() # for locking the deconwolf subprocesses
         
         if continue_stalled:
             logger.info("Continuing stalled run...")
@@ -244,7 +241,7 @@ def decon_image(
                 with mp.Pool(mp.cpu_count()) as pool:
                     deconed_paths = list(tqdm(pool.imap_unordered(parallel_func, saved_files), total=len(saved_files)))
     
-        logger.info(f"Completed deconvolution and 2D projection for all tiles.")
+        logger.info("Completed deconvolution and 2D projection for all tiles.")
 
         # Reconstruct deconvolved image from saved 2D tiles
         deconed_image = reconstruct_image_from_tile_files(

@@ -1,10 +1,7 @@
-import sys
 import subprocess
 import warnings
 import logging
 from pathlib import Path
-
-import numpy as np
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
@@ -18,7 +15,7 @@ with warnings.catch_warnings():
         set_transformation
     )
 
-from ...utilities.sd_utils import _gen_keys, _backup_adata, _backup_element
+from ...utilities.sd_utils import _gen_keys
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 
 logger = logging.getLogger(__package__)

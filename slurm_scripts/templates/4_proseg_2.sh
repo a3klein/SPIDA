@@ -59,7 +59,20 @@ pixi run -e preprocessing \
     --seg_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM
 
 # # Fixing Loading proseg_aligned of there was an error in the above script
-# This loading function is used after re-running transcript assignment on the proseg shapes
+# This loading function is used with the cellpose_SAM shapes but with the direct proseg output cell_by_gene
+cp /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose/{REGION}/cell_metadata.csv \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_metadata.csv
+cp /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose/{REGION}/cellpose_micron_space.parquet \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_polygons.parquet
+
+# Fixing index mismatching + naming schemes 
+pixi run -e preprocessing \
+    python -m spida.S filt-to-ids \
+    --meta_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_metadata.csv \
+    --tz_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/merged_transcript_metadata.csv \
+    --cbg_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/merged_cell_by_gene.csv \
+    --geom_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_polygons.parquet
+
 pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
     {EXPERIMENT} \
@@ -69,7 +82,12 @@ pixi run -e preprocessing \
     --type vpt \
     --prefix_name proseg_aligned \
     --load_kwargs \
-    cell_metadata_fname=merged_cell_metadata.csv \
-    cell_by_gene_fname=cell_by_gene.csv \
-    cellpose_micron_space_fname=merged_converted_boundaries.parquet \
-    detected_transcripts_fname=detected_transcripts.csv
+    cell_metadata_fname=cellpose_metadata.csv \
+    cell_by_gene_fname=merged_cell_by_gene.csv \
+    cellpose_micron_space_fname=cellpose_polygons.parquet \
+    detected_transcripts_fname=merged_transcript_metadata.csv
+    
+    # cell_metadata_fname=merged_cell_metadata.csv \
+    # cell_by_gene_fname=cell_by_gene.csv \
+    # cellpose_micron_space_fname=merged_converted_boundaries.parquet \
+    # detected_transcripts_fname=detected_transcripts.csv

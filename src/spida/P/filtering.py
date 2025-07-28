@@ -48,7 +48,7 @@ class Filter():
         """
         try: 
             df_obs = pl.DataFrame(self.adata.obs).rename(self.PRESET['meta_map'], strict=True)
-        except pl.exceptions.ColumnNotFoundError as e: 
+        except pl.exceptions.PolarsError: 
             df_obs = pl.DataFrame(self.adata.obs)
         
         df_meta = df_obs.select([CELL_ID, CELL_X, CELL_Y, CELL_FOV, CELL_VOLUME])
@@ -103,8 +103,8 @@ class Filter():
 
         vol_max_mult = cutoffs.get('vol_max_mult', 3)
         max_vol_by_median = cutoffs.get('max_vol_by_median', False)
-        count_max_mult = cutoffs.get('count_max_mult', 3)
-        max_count_by_median = cutoffs.get('max_count_by_median', False)
+        count_max_mult = cutoffs.get('n_count_max_mult', 3)
+        max_count_by_median = cutoffs.get('n_count_by_median', False)
 
         if max_vol_by_median: 
             volume_max = max(df_feature['volume'].median() * vol_max_mult, volume_max)
@@ -118,6 +118,7 @@ class Filter():
 
         # Store cutoffs in the AnnData object for reference
         self.adata.uns['cutoffs']['volume_max'] = volume_max  
+        self.adata.uns['cutoffs']['n_count_max'] = n_count_max
         self.adata.uns['cutoffs']['n_count_per_volume_min'] = n_count_per_volume_min
         self.adata.uns['cutoffs']['n_count_per_volume_max'] = n_count_per_volume_max
         
@@ -178,7 +179,20 @@ def run_filtering(adata:ad.AnnData,
     # Perform the filtering 
     filtered_features = filter_instance.filter_cells(cutoffs)
 
-    adata.obs = filtered_features.to_pandas().set_index("Index").join(adata.obs.drop(columns=['region', 'fov', 'volume']), on=CELL_ID, how='inner')
+    # To handle both the new filtering and refiltering cases
+    try: 
+        ff = adata.obs.reset_index().set_index(CELL_ID)
+    except (KeyError, ValueError):
+        ff = adata.obs.copy()
+
+    # Performing Merging
+    res = filtered_features.to_pandas().set_index("Index").join(ff, on=CELL_ID, how='inner', lsuffix="", rsuffix="_old")
+    # Removing duplicate columns
+    to_delete = []
+    for c in res.columns: 
+        if "_old" in c: 
+            to_delete.append(c)
+    adata.obs = res.drop(columns=to_delete)
     adata = _validate_adata(adata)  # Validate the AnnData object
     
     return adata.copy()

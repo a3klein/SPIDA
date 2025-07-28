@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
 
 import logging
 import warnings
@@ -8,6 +7,7 @@ import pathlib
 import subprocess
 import re
 
+load_dotenv()
 logger = logging.getLogger(__package__)
 
 def _add_proseg_binary(): 
@@ -283,3 +283,33 @@ def align_proseg_transcripts(
     counts.to_csv(save_dir / merged_cell_by_gene_fname)
     merge_polygons.to_file(save_dir / merged_cell_polygons_fname, driver="GeoJSON")
     merge_transcripts.to_csv(save_dir / merged_transcripts_fname)
+
+def filt_to_ids(
+    meta_path,
+    geom_path,
+    tz_path,
+    cbg_path
+    ):
+    """
+    Filter metadata and geometry to only include cells with IDs in the provided list.
+    Additionally rename the index of the merged_cell_by_gene 
+    """
+    from pathlib import Path
+    import pandas as pd
+    import geopandas as gpd
+
+    cbg = pd.read_csv(cbg_path, index_col=0)
+    transcripts = pd.read_csv(tz_path, index_col=0)
+    meta = pd.read_csv(meta_path)
+    geom = gpd.read_parquet(geom_path)
+    ids = transcripts['cell_id'].unique()
+    meta_filt = meta[meta['EntityID'].isin(ids)]
+    geom_filt = geom[geom['EntityID'].isin(ids)]
+    cbg.index = cbg.index.astype(str)
+    cbg.index.name = "cell"
+
+    meta_filt.to_csv(meta_path, index=False)
+    geom_filt.to_parquet(geom_path, index=False)
+    cbg.to_csv(cbg_path)
+    logger.info(f"Filtered metadata and geometry to {len(meta_filt)} cells with IDs in {len(ids)} unique IDs.")
+    logger.info(f"Metadata shape: {meta_filt.shape}, Geometry shape: {geom_filt.shape}, CBG shape: {cbg.shape}")

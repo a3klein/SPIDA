@@ -1,15 +1,12 @@
 import os 
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
-
-import sys
 import warnings
 from pathlib import Path
 
 import anndata as ad
-
 from spida._constants import *
 
+load_dotenv()
 
 def _gen_keys(prefix_name, exp_name, reg_name): 
     """

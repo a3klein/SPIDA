@@ -1,8 +1,6 @@
 import os 
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
 
-import sys
 import warnings
 from pathlib import Path
 import logging
@@ -11,6 +9,7 @@ import anndata as ad
 
 from spida._constants import *
 
+load_dotenv()
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -116,6 +115,11 @@ def _backup_adata(exp_name:str, reg_name:str, element:ad.AnnData, element_name:s
     zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     sdata = sd.read_zarr(zarr_path)
+
+    
+    if element.raw: 
+        logger.info("Removing Raw data from AnnData object before writing to disk.")
+        del element.raw
 
     sdata.delete_element_from_disk(element_name)  # Remove the old table from disk
     sdata[element_name] = element
@@ -224,4 +228,4 @@ def _assign_new_table(exp_name:str, reg_name:str, element:ad.AnnData, element_na
             sdata[full_name] = element
             sdata.write_element(full_name)
     else:
-        logger.warning(f"Element {full_name} already exists in the spatialdata object. Skipping write operation.")
+        raise ValueError(f"Element {full_name} already exists in the spatialdata object. Skipping write operation.")

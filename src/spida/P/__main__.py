@@ -37,8 +37,10 @@ DESCRIPTION = """
     [Setup]
     setup-adata-region                - Setup the AnnData object for downstream analysis for a specific region.
     setup-adata-all                   - Setup the AnnData objects for all regions in an experiment.
-    remove-doublets-region            - Remove doublets from the AnnData object.
-    remove-doublets-all               - Remove doublets from all AnnData objects in an experiment.
+    remove-doublets-region            - Remove doublets from the AnnData object. (gpu required)
+    remove-doublets-all               - Remove doublets from all AnnData objects in an experiment. (gpu required)
+    resolvi-region                    - Run the Resolvi algorithm for a specific region. (gpu required)
+    resolvi-all                       - Run the Resolvi algorithm for all regions in an experiment. (gpu required)
     """
 EPILOGUE = """
 Author: Amit Klein
@@ -120,7 +122,6 @@ def write_adata_register_subparser(subparser):
                        help='Output directory path (default is None)')
     return
 
-
 def setup_adata_region_register_subparser(subparser):
     """Register subparser for setup-adata-region command."""
     parser = subparser.add_parser(
@@ -132,6 +133,7 @@ def setup_adata_region_register_subparser(subparser):
     parser.add_argument('exp_name', type=str, help='Name of the experiment')
     parser.add_argument('reg_name', type=str, help='Name of the region')
     parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--suffix', type=str, default="_filt", help="Suffix for the output table key in the spatialdata object (default: '_filt')")
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
     parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
     return
@@ -147,8 +149,45 @@ def setup_adata_all_register_subparser(subparser):
     )
     parser.add_argument('exp_name', type=str, help='Name of the experiment')
     parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--suffix', type=str, default="_filt", help="Suffix for the output table key in the spatialdata object (default: '_filt')")
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
     parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
+    return
+
+def resolvi_region_register_subparser(subparser):
+    """Register subparser for resolvi-region command."""
+    parser = subparser.add_parser(
+        'resolvi-region',
+        aliases=['resolvi_region'],
+        help='Run the Resolvi algorithm for a specific region',
+        description='Run the Resolvi algorithm for a specific region'
+    )
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('reg_name', type=str, help='Name of the region')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--suffix', type=str, default="_filt", help="Suffix for the table key in the spatialdata object (default: '_filt')")
+    parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
+    parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
+    parser.add_argument('--model_kwargs', nargs='*', action=ParseKwargs, default={},
+                        help='Additional keyword arguments for the Resolvi model (default: {})')
+    return
+
+
+def resolvi_all_register_subparser(subparser):
+    """Register subparser for resolvi-all command."""
+    parser = subparser.add_parser(
+        'resolvi-all',
+        aliases=['resolvi_all'],
+        help='Run the Resolvi algorithm for all regions in an experiment',
+        description='Run the Resolvi algorithm for all regions in an experiment'
+    )
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('--suffix', type=str, default="_filt", help="Suffix for the table key in the spatialdata object (default: '_filt')")
+    parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
+    parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
+    parser.add_argument('-k', '--model_kwargs', nargs='*', action=ParseKwargs, default={},
+                        help='Additional keyword arguments for the Resolvi model (default: {})')
     return
 
 def remove_doublets_region_register_subparser(subparser):
@@ -166,6 +205,8 @@ def remove_doublets_region_register_subparser(subparser):
     parser.add_argument('--suffix', type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
     parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
+    parser.add_argument('--model_kwargs', nargs='*', action=ParseKwargs, default={},
+                        help='Additional keyword arguments for the SOLO model (default: {})')
     return
 
 def remove_doublets_all_register_subparser(subparser):
@@ -182,6 +223,8 @@ def remove_doublets_all_register_subparser(subparser):
     parser.add_argument('--suffix', type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
     parser.add_argument('--plot', action='store_true', help='Whether to plot the results')
     parser.add_argument('--image_path', type=parse_path, help='Path to save the plot')
+    parser.add_argument('--model_kwargs', nargs='*', action=ParseKwargs, default={},
+                        help='Additional keyword arguments for the SOLO model (default: {})')
     return
 
 def plot_filtering_region_register_subparser(subparser):
@@ -267,6 +310,10 @@ def main():
         from .main import setup_adata_region as func
     elif command in ["setup-adata-all"]:
         from .main import setup_adata_all as func
+    elif command in ["resolvi-region"]:
+        from .main import resolvi_cluster_region as func
+    elif command in ["resolvi-all"]:
+        from .main import resolvi_cluster_all as func
     elif command in ["remove-doublets-region"]:
         from .main import remove_doublets_region as func
     elif command in ["remove-doublets-all"]:

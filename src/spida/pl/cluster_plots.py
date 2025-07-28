@@ -16,7 +16,7 @@ def plot_scatter(adata, title="", colors=['volume', 'nCount_RNA'], ncols=2,
     elif 'X_' + coord_base in adata.obsm:
         arr = adata.obsm['X_' + coord_base]
     else: 
-        raise ValueError(f"Coordinate base '{coord_base}' not found in adata.obsm. Available keys: {list(adata.obsm.keys())}")
+        raise ValueError(f"Coordinate base {coord_base} not found in adata.obsm. Available keys: {list(adata.obsm.keys())}")
 
     fig, axes = plt.subplots(nrows, ncols, figsize = (ncols*5, nrows*3), # gridspec_kw={"width_ratios": [4, 1, 4, 1, 4, 1]},
                              dpi=300, constrained_layout=True,)
