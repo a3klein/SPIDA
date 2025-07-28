@@ -1,7 +1,7 @@
 ### Github CoPilot generated code to generate random boxes within a specified frame.
 import random
 import numpy as np
-from typing import Tuple, Union, Optional
+from typing import Tuple, Optional
 
 def generate_random_box(frame_width: int, frame_height: int, 
                        box_width: int, box_height: int,

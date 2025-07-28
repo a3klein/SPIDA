@@ -1,5 +1,4 @@
 import os
-import sys
 from dotenv import load_dotenv # type: ignore
 from pathlib import Path
 import fire # type: ignore
@@ -129,7 +128,7 @@ def align_proseg(
     """
 
     from .proseg import align_proseg_transcripts
-    from .vpt import generate_metadata, seg_to_vpt
+    from .vpt import generate_metadata # , seg_to_vpt
     # from spida.S.io import load_segmentation_region
 
     if input_dir is None:

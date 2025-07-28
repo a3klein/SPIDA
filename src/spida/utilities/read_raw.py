@@ -1,4 +1,3 @@
-import os 
 import zipfile
 from pathlib import Path
 
@@ -176,7 +175,7 @@ def read_fov(
     attrs = []
 
     if isinstance(z_slices, int): 
-        z_sclices = [z_slices]
+        z_slices = [z_slices]
         
     path = Path(path)
     # getting the frames to read 

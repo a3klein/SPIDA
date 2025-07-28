@@ -31,8 +31,10 @@ def run_setup(adata:ad.AnnData,
     AnnData: The modified AnnData object.
     """
         
-    # filtering for QC'd cells
+    # filtering for QC'd cells + doublet cells
     adata = adata[adata.obs['pass_qc']].copy()
+    if "doublet_bool" in adata.obs.columns:
+        adata = adata[~adata.obs['doublet_bool']].copy()
     # Set metadata
     adata.uns['experiment'] = exp_name
     adata.uns['region'] = reg_name

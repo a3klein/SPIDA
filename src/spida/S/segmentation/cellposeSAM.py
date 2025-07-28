@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
 
 import numpy as np
 from pathlib import Path
@@ -13,20 +12,18 @@ from tqdm import tqdm
 import itertools
 
 from natsort import natsorted
-# import cv2
+import skimage as ski
+from shapely.geometry import Polygon
+import geopandas as gpd
+from spida.utilities.tiling import tile_image_with_overlap, merge_tile_polygons #, merge_overlapping_polygons
 
 from cellpose import models, core, io # type: ignore
 
-io.logger_setup
+io.logger_setup()
+load_dotenv()
 
-if core.use_gpu()==False: 
+if not core.use_gpu(): 
     raise ImportError("No GPU access")
-
-import skimage as ski
-# import supervision as spv
-from shapely.geometry import Polygon
-import geopandas as gpd
-from spida.utilities.tiling import tile_image_with_overlap, merge_tile_polygons, merge_overlapping_polygons
 
 logger = logging.getLogger(__package__)
 
@@ -135,15 +132,15 @@ def convert_mask(mask_id, masks, tolerance=0.5):
     layers = []
     mask = masks == mask_id
     # Do this across all z layers
-    for l in np.where(mask.any(axis=(1, 2)))[0]:
+    for m in np.where(mask.any(axis=(1, 2)))[0]:
         # Pad mask to ensure contours are closed
-        padded_mask = np.pad(mask[l], 1, mode="constant")
+        padded_mask = np.pad(mask[m], 1, mode="constant")
         contours = ski.measure.find_contours(padded_mask, 0.5)
         contours = [contour - 1 for contour in contours]
         if len(contours[0]) > 3:
             polygons.append(Polygon(contours[0]).simplify(tolerance=tolerance, preserve_topology=True))
             cells.append(mask_id)
-            layers.append(l)
+            layers.append(m)
     return polygons, cells, layers
 
 def _masks_to_polygons(masks: np.ndarray, 
@@ -197,7 +194,7 @@ def masks_to_geodataframe(masks : np.ndarray,
     with mp.Pool(max_cpu) as pool:
         geo_list = list(tqdm(pool.map(parallel_func, tiles), total=len(tiles)))
 
-    logger.info(f"Finished Conversion")
+    logger.info("Finished Conversion")
 
     # Merge all tiles into global coordinates
     merged_polygons = merge_tile_polygons(tile_info, geo_list, geom_col="Geometry")

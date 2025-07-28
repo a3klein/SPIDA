@@ -1,7 +1,5 @@
 import os
-import sys
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
 
 import configparser
 import subprocess
@@ -9,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import imageio.v3 as iio
+
+load_dotenv()
 
 
 ### TODO: change from .env pointer to dw config to just having the config params from the .ini file in the .env file

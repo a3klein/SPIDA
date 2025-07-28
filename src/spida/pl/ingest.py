@@ -5,10 +5,10 @@ with warnings.catch_warnings():
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+import spatialdata_plot # type: ignore
+
+
 plt.rcParams['axes.facecolor'] = 'black'
-
-import spatialdata_plot
-
 
  
 def plot_images(sdata, IMAGE_KEY, image_scale_keys, image_channels, cs:str="global", pdf_file:str=None): 
@@ -137,3 +137,58 @@ def plot_seg_load(sdata, image_key, shapes_key, cs="global", pdf_file=None):
         fig.show()
 
     
+def plot_example_doublets(sdata, image_key, shapes_key, table_key, cs="global", pdf_file=None): 
+    from spida.pl import plot_doublets
+    # Subsetting for faster cropping
+    sub_sdata = sdata.subset([image_key, shapes_key, table_key])
+    adata = sub_sdata[table_key]
+    doublet_cells = adata.obs[adata.obs['doublet_bool']].sample(10).index
+    
+    cs = "pixel"
+    # Generating image metadata
+    image_scale_keys = list(sub_sdata[image_key].keys())
+    max_int = sub_sdata[image_key][image_scale_keys[-1]]['image'].max(['x', 'y']).compute().to_dataframe().to_dict()['image']
+    min_int = sub_sdata[image_key][image_scale_keys[-1]]['image'].min(['x', 'y']).compute().to_dataframe().to_dict()['image']
+    norm = Normalize(vmin=min_int["DAPI"], vmax=max_int["DAPI"]*0.5)
+
+    
+    # plotting
+    fig, axes = plt.subplots(2, 5, figsize=(20, 10), dpi=200)
+    axes = axes.flatten()
+
+    # First plot is the total doublet prediction
+    plot_doublets(adata, save_file=False, ax=axes[0])
+
+    # Iterating for 9 example fovs
+    plot_counter = 1
+    for cell in doublet_cells: 
+        if plot_counter >= len(axes):
+            break  # Avoid index error if there are more cells than subplots
+        bbox = adata.obs.loc[cell, ['min_x', 'max_x', 'min_y', 'max_y']]
+        try: 
+            cropped_sdata = sub_sdata.query.bounding_box(
+                axes=["x", "y"],
+                min_coordinate=[bbox['min_x'] - 10, bbox['min_y'] - 10],
+                max_coordinate=[bbox['max_x'] + 10, bbox['max_y'] + 10],
+                target_coordinate_system=cs,
+            )
+        except Exception as e:
+            print(f"Error cropping data: {e}")
+            continue
+        if shapes_key not in cropped_sdata:
+            print(f"Shapes key {shapes_key} not found in cropped_sdata")
+            continue
+                
+        # cropped_sdata[table_key].obs['temp_id'] = cropped_sdata[table_key].obs.index.astype("category")
+        ax = axes[plot_counter]
+        plot_counter += 1
+        pp = cropped_sdata.pl.render_images(image_key, channel="DAPI", cmap="grey", norm=norm)
+        pp = pp.pl.render_shapes(shapes_key, fill_alpha=0, cmap="jet", outline_alpha=1, outline_color="red")
+        pp.pl.show(ax=ax, title="Shapes", coordinate_systems=cs, colorbar=False)
+        ax.axis('off')
+        ax.set_title("Shapes - " + str(plot_counter))
+
+    if pdf_file: 
+        pdf_file.savefig(fig, bbox_inches='tight')
+    else: 
+        fig.show()

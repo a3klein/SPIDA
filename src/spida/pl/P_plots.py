@@ -1,6 +1,3 @@
-import os
-import sys
-
 import pandas as pd
 import anndata as ad
 
@@ -109,14 +106,39 @@ def plot_setup(adata:ad.AnnData, exp_name:str, reg_name:str, prefix_name:str, pd
                 coord_base='spatial', pdf_file=pdf_file)
     
 
-def plot_doublets(adata, save_file):
+def plot_resolvi(adata:ad.AnnData, exp_name:str, reg_name:str, prefix_name:str, pdf_file=None):
+    """
+    Plot the results of the RESOLVI clustering.
+    Parameters:
+    adata (anndata.AnnData): The AnnData object containing the RESOLVI clustering results.
+    exp_name (str): Name of the experiment.
+    reg_name (str): Name of the region.
+    prefix_name (str): Prefix for the keys in the spatialdata object.
+    pdf_file (str, optional): Path to save the plot as a PDF file. Defaults to None.
+    """
+    plt.rcParams['axes.facecolor'] = 'white'
+    donor = _region_to_donor(reg_name)
+    # Plot the UMAP embeddings 
+    plot_scatter(adata, title=f"{donor} - UMAP", colors=['volume', 'nCount_RNA', 'leiden_resolvi'], ncols=3,
+                coord_base='umap', pdf_file=pdf_file)
+        # Plot the TSNE embeddings 
+    plot_scatter(adata, title=f"{donor} - UMAP", colors=['volume', 'nCount_RNA', 'leiden_resolvi'], ncols=3,
+                coord_base='tsne', pdf_file=pdf_file)
+    # Plot the spatial coordinates 
+    plot_scatter(adata, title=f"{donor} - UMAP", colors=['volume', 'nCount_RNA', 'leiden_resolvi'], ncols=3,
+                coord_base='spatial', pdf_file=pdf_file)
+
+    
+
+def plot_doublets(adata, save_file, ax=None):
 
     arr = adata.obsm['X_spatial'] if 'X_spatial' in adata.obsm else adata.obsm['spatial']
     ds = min(200000/adata.shape[0], 4)  # the point size to use for plotting
 
     filt_palette = {True : "#ff0000", False : "#cccccc"}
 
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=300, constrained_layout=True)
+    if not ax: 
+        fig, ax = plt.subplots(figsize=(8, 8), dpi=300, constrained_layout=True)
     sns.scatterplot(x=arr[:,0], y=arr[:,1], s=ds, hue=adata.obs['doublet_bool'], marker='.', ax=ax,
                             palette=filt_palette, linewidth=0, alpha=0.9, legend=False, rasterized=True)
     ax.set_aspect('equal')
@@ -127,5 +149,4 @@ def plot_doublets(adata, save_file):
         fig.savefig(save_file, bbox_inches="tight")
         plt.close(fig)
     else: 
-        plt.show()
-        plt.close()
+        return ax

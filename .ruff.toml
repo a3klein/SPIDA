@@ -1,0 +1,27 @@
+exclude = [
+    ".direnv",
+    ".git",
+    "__init__.py",
+    ".vscode",
+]
+
+
+# same as black
+line-length = 88
+indent-width = 4
+
+# assume python 3.12
+target-version = "py312"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["F405", "F403"]
+
+fixable = ["ALL"]
+unfixable = []
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

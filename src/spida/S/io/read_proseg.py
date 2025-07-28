@@ -1,4 +1,3 @@
-import sys
 import gzip
 from pathlib import Path
 import warnings

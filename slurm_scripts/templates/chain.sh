@@ -17,10 +17,10 @@ echo "Submitted PolyT deconvolution script with job ID: $jid3"
 jid4=$(sbatch --dependency=afterok:$jid1:$jid2:$jid3 3_cellpose.sh | awk '{{print $4}}')
 echo "Submitted Cellpose segmentation script with job ID: $jid4"
 
-jid5=$(sbatch --dependency=afterok:$jid4 4_proseg.sh | awk '{{print $4}}')
+jid5=$(sbatch --dependency=afterok:$jid4 4_proseg_2.sh | awk '{{print $4}}')
 echo "Submitted PROSEG segmentation script with job ID: $jid5"
 
-jid6=$(sbatch --dependency=afterok:$jid5 5_setup.sh | awk '{{print $4}}')
+jid6=$(sbatch --dependency=afterok:$jid5 5_setup_2.sh | awk '{{print $4}}')
 echo "Submitted setup script with job ID: $jid6"
 
 echo "Processing chain for Experiment {EXP_N} and Region {REG_N} has been initiated."

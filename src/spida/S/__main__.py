@@ -2,12 +2,10 @@
 """
 CLI interface for SPIDA segmentation pipeline using argparse.
 """
-import os
 import sys
 import argparse
 import logging
 import warnings
-from pathlib import Path
 import inspect
 
 from spida.utilities.script_utils import ParseKwargs, parse_path, parse_list, parse_dict
@@ -276,6 +274,20 @@ def run_proseg_alignment_register_subparser(subparser):
                               help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
     return 
 
+def filter_to_ids_register_subparser(subparser):
+    # Subcommand: filt-to-ids
+    parser = subparser.add_parser(
+        'filt-to-ids',
+        aliases=['filt_to_ids', 'filter-to-ids', 'filter_to_ids'],
+        help='Filter cellpose segmentation outputs to aligned proseg segmentation outputs',
+        description='Filter cellpose segmentation outputs to aligned proseg segmentation outputs'
+    )
+    parser.add_argument('--meta_path',type=parse_path,required=True,help='Path to the metadata file')
+    parser.add_argument('--geom_path',type=parse_path,required=True,help='Path to the geometry file')
+    parser.add_argument('--tz_path',type=parse_path,required=True,help='Path to the time zone file')
+    parser.add_argument('--cbg_path',type=parse_path,required=True,help='Path to the cell by gene file')
+    return
+
 
 
 
@@ -340,6 +352,8 @@ def main():
         from .segmentation.main import segment_experiment as func
     elif command in ["align", "align-proseg"]:
         from .segmentation.main import align_proseg as func
+    elif command in ["filt-to-ids"]: 
+        from .segmentation.proseg import filt_to_ids as func
     else:
         logger.error(f"Unknown command: {command}")
         parser.print_help()

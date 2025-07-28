@@ -1,23 +1,23 @@
+from spida._utilities import _gen_keys
+from spida._constants import *
+from .ingest_exp import read_merscope, load_vpt_segmentation, load_proseg_segmentation, load_decon_images
+from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
+
 import os
-import sys
 import glob
 import pathlib
 import warnings
 import logging
 
 from dotenv import load_dotenv # type: ignore
-load_dotenv()
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     import spatialdata as sd
 
-from spida._utilities import _gen_keys
-from spida._constants import *
-from .ingest_exp import read_merscope, load_vpt_segmentation, load_proseg_segmentation, load_decon_images
-from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
-
 from matplotlib.backends.backend_pdf import PdfPages
+
+load_dotenv()
 
 
 logger = logging.getLogger(__package__)

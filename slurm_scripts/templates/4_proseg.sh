@@ -59,6 +59,7 @@ pixi run -e preprocessing \
     --seg_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM
 
 # # Fixing Loading proseg_aligned of there was an error in the above script
+# This loading function is used after re-running transcript assignment on the proseg shapes
 pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
     {EXPERIMENT} \

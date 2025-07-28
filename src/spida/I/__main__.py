@@ -168,8 +168,11 @@ def moscot_integration_register_subparser(subparser):
         help='Placeholder for MOSCOT integration (not implemented yet)',
         description='Placeholder for MOSCOT integration (not implemented yet)'
     )
+    parser.add_argument('exp_name', type=str, help='Name of the experiment')
+    parser.add_argument('prefix_name', type=str, help='Prefix for the keys in the spatialdata object')
+    parser.add_argument('brain_region', type=str, help='Brain region for the annotation')
+    parser.add_argument('--ref-norm', type=str, default='log2CPM', help='Normalization method for the reference AnnData.X (default: log2CPM)')
     return 
-
 
 
 def main():
