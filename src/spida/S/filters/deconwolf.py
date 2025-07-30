@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv # type: ignore
+from dotenv import load_dotenv  # type: ignore
 
 import configparser
 import subprocess
@@ -15,9 +15,16 @@ load_dotenv()
 def _configure_deconwolf():
     """Configure Deconwolf."""
     config = configparser.ConfigParser()
-    config_path = Path(os.getenv("DECONWOLF_CONFIG", "/anvil/projects/x-mcb130189/aklein/BICAN/fish_supp/.config.ini"))
+    config_path = Path(
+        os.getenv(
+            "DECONWOLF_CONFIG",
+            "/anvil/projects/x-mcb130189/aklein/BICAN/fish_supp/.config.ini",
+        )
+    )
     if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found at {config_path}. Please create a .config.ini file.")
+        raise FileNotFoundError(
+            f"Config file not found at {config_path}. Please create a .config.ini file."
+        )
     config.read(str(config_path))
     dw_path = Path(config.get("Paths", "dw_path"))
     if not dw_path.exists():
@@ -34,13 +41,13 @@ def _configure_deconwolf():
 
 def deconwolf(
     img_path: str | Path,
-    colors: list | np.ndarray | int, #TODO: This runs on only one color at a time. 
+    colors: list | np.ndarray | int,  # TODO: This runs on only one color at a time.
     decon_path: str | Path = None,
     z_step: float = 0.6,
     iter: int = 100,
     gpu: bool = False,
     tilesize: int = None,
-    lock = None,
+    lock=None,
 ) -> np.ndarray:
     """Deconwolf deconvolution.
 
@@ -71,10 +78,10 @@ def deconwolf(
     img = iio.imread(img_path)
     if decon_path is None:
         decon_path = img_path.with_suffix(".decon.tif")
-    
+
     has_channels = len(img.shape) == 4
     if not has_channels:
-        img = np.expand_dims(img, axis=0)        
+        img = np.expand_dims(img, axis=0)
 
     if isinstance(colors, int):
         colors = [colors]
@@ -82,16 +89,18 @@ def deconwolf(
     gpu = "--gpu" if gpu else ""
     tile = f"--tilesize {tilesize}" if tilesize else ""
     for i, color in enumerate(colors):
-        color_psf = psf_path / f"{color}_z{int(z_step*1000)}_psf.tiff"
+        color_psf = psf_path / f"{color}_z{int(z_step * 1000)}_psf.tiff"
         if not color_psf.exists():
-            raise FileNotFoundError(f"PSF for color {color} and z_step {z_step} not found at {color_psf}.")
+            raise FileNotFoundError(
+                f"PSF for color {color} and z_step {z_step} not found at {color_psf}."
+            )
 
         command = f"{dw_path} --out {decon_path} --iter {iter} {tile} {gpu} {img_path} {color_psf} --verbose 0"
         # if "lock" in globals():
         if lock is not None:
-            with lock: 
+            with lock:
                 subprocess.run(command, check=True, shell=True)
-        else: 
+        else:
             subprocess.run(command, check=True, shell=True)
 
     return decon_path

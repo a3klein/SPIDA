@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 import logging
 
-from dotenv import load_dotenv # type: ignore
+from dotenv import load_dotenv  # type: ignore
 import pandas as pd
 
 load_dotenv()
@@ -16,34 +16,42 @@ def _add_vpt_binary():
     This is necessary to ensure that the vpt command can be found when running the script.
     """
     # Check if the vpt binary exists
-    vpt_path = os.getenv("VPT_BIN_PATH", "/gale/netapp/home2/aklein/miniconda3/envs/vpt/bin")
+    vpt_path = os.getenv(
+        "VPT_BIN_PATH", "/gale/netapp/home2/aklein/miniconda3/envs/vpt/bin"
+    )
     if not os.path.exists(vpt_path):
-        raise FileNotFoundError(f"VPT binary not found at {vpt_path}. Please check the installation.")
+        raise FileNotFoundError(
+            f"VPT binary not found at {vpt_path}. Please check the installation."
+        )
 
     # Need to add the vpt path to the PATH variable
-    os.environ['PATH'] += os.pathsep + vpt_path
+    os.environ["PATH"] += os.pathsep + vpt_path
 
     # Testing VPT works
     segmentation_command = """
         vpt --help
         """
     ret = subprocess.run(segmentation_command.split(), capture_output=True, check=True)
-    if ret.returncode != 0: 
-        raise ValueError("VPT failed to run. Check the installation and the PATH variable.")
+    if ret.returncode != 0:
+        raise ValueError(
+            "VPT failed to run. Check the installation and the PATH variable."
+        )
 
     logger.info("VPT binary added to PATH successfully.")
 
 
-def _cli_segmentation(CONFIG_FILE:str,
-                      root_dir:str,
-                      output_dir:str, 
-                      region:str,
-                      tile_size:int=2400,
-                      tile_overlap:int=200):
+def _cli_segmentation(
+    CONFIG_FILE: str,
+    root_dir: str,
+    output_dir: str,
+    region: str,
+    tile_size: int = 2400,
+    tile_overlap: int = 200,
+):
     """
     Run the VPT command to segment images in a specified region.
     """
-    
+
     segmentation_command = f"""
         vpt --verbose --processes 16 \n
             run-segmentation \n
@@ -58,20 +66,20 @@ def _cli_segmentation(CONFIG_FILE:str,
     logger.info(f"Running VPT segmentation command: {segmentation_command}")
 
     ret = subprocess.run(segmentation_command.split(), capture_output=True, check=True)
-    if ret.returncode != 0: 
+    if ret.returncode != 0:
         raise ValueError("VPT failed to segment images.")
     return ret
-    
+
 
 def _cli_partition_transcripts(
-        root_dir:str,
-        output_dir:str,
-        region:str,
-        input_boundaries:str = "cellpose_micron_space.parquet",
-        input_transcripts:str = "detected_transcripts.parquet",
-        output_entity_by_gene:str = "cell_by_gene.csv",
-        output_transcripts:str = "detected_transcripts.csv"
-        ):                  
+    root_dir: str,
+    output_dir: str,
+    region: str,
+    input_boundaries: str = "cellpose_micron_space.parquet",
+    input_transcripts: str = "detected_transcripts.parquet",
+    output_entity_by_gene: str = "cell_by_gene.csv",
+    output_transcripts: str = "detected_transcripts.csv",
+):
     """
     Run the VPT command to partition transcripts in a specified region.
     """
@@ -86,27 +94,30 @@ def _cli_partition_transcripts(
             --output-transcripts {output_dir}/{region}/{output_transcripts} \n
             --overwrite
         """
-    logger.info(f"Running VPT partition transcripts command: {partition_transcripts_command}")
+    logger.info(
+        f"Running VPT partition transcripts command: {partition_transcripts_command}"
+    )
 
-    ret = subprocess.run(partition_transcripts_command.split(), capture_output=True, check=True)
-    if ret.returncode != 0: 
+    ret = subprocess.run(
+        partition_transcripts_command.split(), capture_output=True, check=True
+    )
+    if ret.returncode != 0:
         raise ValueError("VPT failed to partition transcripts.")
     return ret
-        
-    
-def _cli_get_metadata(
-        root_dir:str,
-        output_dir:str,
-        region:str, 
-        input_boundaries:str = "cellpose_micron_space.parquet",
-        input_entity_by_gene:str = "cell_by_gene.csv",
-        output_metadata:str = "cell_metadata.csv",
-        output_signals:str = "sum_signals.csv",
 
-        ):
+
+def _cli_get_metadata(
+    root_dir: str,
+    output_dir: str,
+    region: str,
+    input_boundaries: str = "cellpose_micron_space.parquet",
+    input_entity_by_gene: str = "cell_by_gene.csv",
+    output_metadata: str = "cell_metadata.csv",
+    output_signals: str = "sum_signals.csv",
+):
     """
     Run the VPT command to derive metadata from the segmented images and partitioned transcripts.
-    """    
+    """
 
     metadata_command = f"""
         vpt --verbose --processes 16 \n
@@ -116,11 +127,11 @@ def _cli_get_metadata(
             --output-metadata {output_dir}/{region}/{output_metadata} \n
             --overwrite
         """
-    
+
     logger.info(f"Running VPT derive metadata command: {metadata_command}")
 
     ret = subprocess.run(metadata_command.split(), capture_output=True, check=True)
-    if ret.returncode != 0: 
+    if ret.returncode != 0:
         raise ValueError("VPT failed to derive entity metadata.")
 
     ### VPT sum the signals
@@ -134,24 +145,25 @@ def _cli_get_metadata(
             --overwrite
 
         """
-    
+
     logger.info(f"Running VPT sum signals command: {sum_signals_command}")
 
     ret = subprocess.run(sum_signals_command.split(), capture_output=True, check=True)
-    if ret.returncode != 0: 
+    if ret.returncode != 0:
         raise ValueError("VPT failed to sum signals.")
-    
+
     #### COMBINE METADATA AND SIGNALS
     metadata = pd.read_csv(f"{output_dir}/{region}/{output_metadata}", index_col=0)
     signals = pd.read_csv(f"{output_dir}/{region}/{output_signals}", index_col=0)
     signals.index.name = "EntityID"
-    pd.merge(metadata, signals, left_on="EntityID", right_on="EntityID").to_csv(f"{output_dir}/{region}/{output_metadata}", index=True)
+    pd.merge(metadata, signals, left_on="EntityID", right_on="EntityID").to_csv(
+        f"{output_dir}/{region}/{output_metadata}", index=True
+    )
 
-def run_vpt(root_dir:str,
-            output_dir:str,
-            region:str,
-            config_path:Path,
-            **vpt_filepaths):
+
+def run_vpt(
+    root_dir: str, output_dir: str, region: str, config_path: Path, **vpt_filepaths
+):
     """
     Run the VPT command to process detected transcripts in a specified region.
 
@@ -168,7 +180,7 @@ def run_vpt(root_dir:str,
                     - output_metadata
                     - output_signals
     """
-    
+
     # Ensure the output directory exists
     Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
 
@@ -176,32 +188,31 @@ def run_vpt(root_dir:str,
     _add_vpt_binary()
 
     # Run VPT segmentation
-    _cli_segmentation(CONFIG_FILE=config_path,
-                      root_dir=root_dir,
-                      output_dir=output_dir,
-                      region=region,
-                      **vpt_filepaths)
-    
-    _cli_partition_transcripts(root_dir=root_dir,
-                              output_dir=output_dir,
-                              region=region,
-                              **vpt_filepaths)
-    
-    _cli_get_metadata(root_dir=root_dir,
-                      output_dir=output_dir,
-                      region=region,
-                      **vpt_filepaths)
-    
+    _cli_segmentation(
+        CONFIG_FILE=config_path,
+        root_dir=root_dir,
+        output_dir=output_dir,
+        region=region,
+        **vpt_filepaths,
+    )
+
+    _cli_partition_transcripts(
+        root_dir=root_dir, output_dir=output_dir, region=region, **vpt_filepaths
+    )
+
+    _cli_get_metadata(
+        root_dir=root_dir, output_dir=output_dir, region=region, **vpt_filepaths
+    )
 
 
 def _convert_geometry(
-        root_dir:str,
-        output_dir:str,
-        region:str,
-        input_boundaries:str = "polygons.parquet",
-        output_boundaries:str = "cellpose_micron_space.parquet",
-        convert_micron:bool = True,
-        ):
+    root_dir: str,
+    output_dir: str,
+    region: str,
+    input_boundaries: str = "polygons.parquet",
+    output_boundaries: str = "cellpose_micron_space.parquet",
+    convert_micron: bool = True,
+):
     """
     Convert the geometry of the segmented images to VPT format.
     """
@@ -217,19 +228,18 @@ def _convert_geometry(
             --spacing-z-planes 1.5 \n
             --overwrite \n
         """
-    
+
     if convert_micron:
         convert_geometry_command += f" --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv"
 
-
-    ret = subprocess.run(convert_geometry_command.split(), capture_output=True, check=True)
-    if ret.returncode != 0: 
+    ret = subprocess.run(
+        convert_geometry_command.split(), capture_output=True, check=True
+    )
+    if ret.returncode != 0:
         raise ValueError("VPT failed to convert geometry.")
 
-def seg_to_vpt(root_dir:str, 
-               seg_out_dir:str,
-               region:str,
-               **vpt_filepaths): 
+
+def seg_to_vpt(root_dir: str, seg_out_dir: str, region: str, **vpt_filepaths):
     """
     Convert other segmentation outputs to VPT format.
     Parameters:
@@ -246,58 +256,81 @@ def seg_to_vpt(root_dir:str,
 
     """
 
-    assert Path(f"{seg_out_dir}/{region}/{vpt_filepaths.get('input_boundaries', 'polygons.parquet')}").exists(), "polygons.parquet file does not exist in the specified directory."
+    assert Path(
+        f"{seg_out_dir}/{region}/{vpt_filepaths.get('input_boundaries', 'polygons.parquet')}"
+    ).exists(), "polygons.parquet file does not exist in the specified directory."
 
     _add_vpt_binary()
 
     logger.info(f"Converting Geometry for region {region}...")
 
-    _convert_geometry(root_dir=root_dir,
-                      output_dir=seg_out_dir,
-                      region=region,
-                      input_boundaries=vpt_filepaths.get("input_boundaries", "polygons.parquet"),
-                      output_boundaries=vpt_filepaths.get("output_boundaries", "cellpose_micron_space.parquet"),
-                      )
+    _convert_geometry(
+        root_dir=root_dir,
+        output_dir=seg_out_dir,
+        region=region,
+        input_boundaries=vpt_filepaths.get("input_boundaries", "polygons.parquet"),
+        output_boundaries=vpt_filepaths.get(
+            "output_boundaries", "cellpose_micron_space.parquet"
+        ),
+    )
 
     logger.info(f"Geometry conversion completed for region {region}.")
-    logger.info(f"Converted geometry saved to {seg_out_dir}/{region}/cellpose_micron_space.parquet.")
+    logger.info(
+        f"Converted geometry saved to {seg_out_dir}/{region}/cellpose_micron_space.parquet."
+    )
 
     # Run VPT partition transcripts
-    _cli_partition_transcripts(root_dir=root_dir,
-                              output_dir=seg_out_dir,
-                              region=region,
-                              input_boundaries=vpt_filepaths.get("output_boundaries", "cellpose_micron_space.parquet"),
-                              input_transcripts=vpt_filepaths.get("input_transcripts", "detected_transcripts.parquet"),
-                              output_entity_by_gene=vpt_filepaths.get("output_entity_by_gene", "cell_by_gene.csv"),
-                              output_transcripts=vpt_filepaths.get("output_transcripts", "detected_transcripts.csv"),
-                                )
+    _cli_partition_transcripts(
+        root_dir=root_dir,
+        output_dir=seg_out_dir,
+        region=region,
+        input_boundaries=vpt_filepaths.get(
+            "output_boundaries", "cellpose_micron_space.parquet"
+        ),
+        input_transcripts=vpt_filepaths.get(
+            "input_transcripts", "detected_transcripts.parquet"
+        ),
+        output_entity_by_gene=vpt_filepaths.get(
+            "output_entity_by_gene", "cell_by_gene.csv"
+        ),
+        output_transcripts=vpt_filepaths.get(
+            "output_transcripts", "detected_transcripts.csv"
+        ),
+    )
 
     logger.info(f"Partitioned transcripts for region {region}.")
 
     # Run VPT get metadata
-    _cli_get_metadata(root_dir=root_dir,
-                      output_dir=seg_out_dir,
-                      region=region,
-                      input_boundaries=vpt_filepaths.get("output_boundaries", "cellpose_micron_space.parquet"),
-                      input_entity_by_gene=vpt_filepaths.get("output_entity_by_gene", "cell_by_gene.csv"),
-                      output_metadata=vpt_filepaths.get("output_metadata", "cell_metadata.csv"),
-                      output_signals=vpt_filepaths.get("output_signals", "sum_signals.csv"),
-                      )
+    _cli_get_metadata(
+        root_dir=root_dir,
+        output_dir=seg_out_dir,
+        region=region,
+        input_boundaries=vpt_filepaths.get(
+            "output_boundaries", "cellpose_micron_space.parquet"
+        ),
+        input_entity_by_gene=vpt_filepaths.get(
+            "output_entity_by_gene", "cell_by_gene.csv"
+        ),
+        output_metadata=vpt_filepaths.get("output_metadata", "cell_metadata.csv"),
+        output_signals=vpt_filepaths.get("output_signals", "sum_signals.csv"),
+    )
 
     logger.info(f"Metadata and signals derived for region {region}.")
 
-def generate_metadata(root_dir:str,
-                      seg_out_dir:str,
-                      region:str,
-                      input_boundaries:str = "cellpose_micron_space.parquet",
-                      output_boundaries:str = "cellpose_micron_space.parquet",
-                      input_entity_by_gene:str = "cell_by_gene.csv",
-                      output_entity_by_gene:str = "cell_by_gene.csv",
-                      input_transcripts:str = "detected_transcripts.parquet",
-                      output_transcripts:str = "detected_transcripts.csv",
-                      output_metadata:str = "cell_metadata.csv",
-                      output_signals:str = "sum_signals.csv",
-                      ):
+
+def generate_metadata(
+    root_dir: str,
+    seg_out_dir: str,
+    region: str,
+    input_boundaries: str = "cellpose_micron_space.parquet",
+    output_boundaries: str = "cellpose_micron_space.parquet",
+    input_entity_by_gene: str = "cell_by_gene.csv",
+    output_entity_by_gene: str = "cell_by_gene.csv",
+    input_transcripts: str = "detected_transcripts.parquet",
+    output_transcripts: str = "detected_transcripts.csv",
+    output_metadata: str = "cell_metadata.csv",
+    output_signals: str = "sum_signals.csv",
+):
     """
     Generate metadata from the segmented images and partitioned transcripts.
     Parameters:
@@ -313,44 +346,41 @@ def generate_metadata(root_dir:str,
 
     _add_vpt_binary()
 
-    _convert_geometry(root_dir=root_dir,
-                      output_dir=seg_out_dir,
-                      region=region,
-                      input_boundaries=input_boundaries,
-                      output_boundaries=output_boundaries,
-                      convert_micron=False
-                      )
+    _convert_geometry(
+        root_dir=root_dir,
+        output_dir=seg_out_dir,
+        region=region,
+        input_boundaries=input_boundaries,
+        output_boundaries=output_boundaries,
+        convert_micron=False,
+    )
     logger.info(f"Geometry conversion completed for region {region}.")
-    logger.info(f"Converted geometry saved to {seg_out_dir}/{region}/{output_boundaries}.")
-    
-    _cli_partition_transcripts(root_dir=seg_out_dir,
-                              output_dir=seg_out_dir,
-                              region=region,
-                              input_boundaries=output_boundaries,
-                              input_transcripts=input_transcripts,
-                              output_entity_by_gene=output_entity_by_gene,
-                              output_transcripts=output_transcripts,
-                                )
-    logger.info(f"Partitioned transcripts for region {region}.")
-    logger.info(f"Partitioned transcripts saved to {seg_out_dir}/{region}/{output_transcripts}.")
+    logger.info(
+        f"Converted geometry saved to {seg_out_dir}/{region}/{output_boundaries}."
+    )
 
-    _cli_get_metadata(root_dir=root_dir,
-                      output_dir=seg_out_dir,
-                      region=region,
-                      input_boundaries=output_boundaries,
-                      input_entity_by_gene=input_entity_by_gene,
-                      output_metadata=output_metadata,
-                      output_signals=output_signals)
+    _cli_partition_transcripts(
+        root_dir=seg_out_dir,
+        output_dir=seg_out_dir,
+        region=region,
+        input_boundaries=output_boundaries,
+        input_transcripts=input_transcripts,
+        output_entity_by_gene=output_entity_by_gene,
+        output_transcripts=output_transcripts,
+    )
+    logger.info(f"Partitioned transcripts for region {region}.")
+    logger.info(
+        f"Partitioned transcripts saved to {seg_out_dir}/{region}/{output_transcripts}."
+    )
+
+    _cli_get_metadata(
+        root_dir=root_dir,
+        output_dir=seg_out_dir,
+        region=region,
+        input_boundaries=output_boundaries,
+        input_entity_by_gene=input_entity_by_gene,
+        output_metadata=output_metadata,
+        output_signals=output_signals,
+    )
 
     logger.info(f"Metadata and signals derived for region {region}.")
-
-
-
-    
-
-
-
-
-
-
-    

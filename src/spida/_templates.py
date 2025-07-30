@@ -1,5 +1,4 @@
-
-def load_def_template(): 
+def load_def_template():
     template = """    
     # DEFAULT 
     # pixi run ingest_all {EXPERIMENT} {LOAD_PLOT} 
@@ -14,7 +13,8 @@ def load_def_template():
     pixi run -e preprocessing python src/spida/cli.py P setup_adata_all {EXPERIMENT} {PREFIX} --plot={PLOT_ADATA}
     """
     return template
-    
+
+
 def load_seg_template():
     template = """
     # SEGMENTATION
@@ -28,10 +28,11 @@ def load_seg_template():
     # SETUP ADATA 
     # pixi run setup_adata_all {EXPERIMENT} {PREFIX} {PLOT_ADATA}
     pixi run -e preprocessing python src/spida/cli.py P setup_adata_all {EXPERIMENT} {PREFIX} --plot={PLOT_ADATA}
-    """ 
+    """
     return template
 
-def run_seg_template(seg_type:str):
+
+def run_seg_template(seg_type: str):
     if seg_type == "cellpose":
         template = """
         # SEGMENTATION
@@ -43,7 +44,7 @@ def run_seg_template(seg_type:str):
 
         # SETUP ADATA 
         pixi run -e preprocessing python src/spida/cli.py P setup_adata_all {EXPERIMENT} {PREFIX} --plot={PLOT_ADATA}
-        """ 
+        """
     elif seg_type == "mesmer":
         template = """
         # SEGMENTATION
@@ -55,7 +56,7 @@ def run_seg_template(seg_type:str):
 
         # SETUP ADATA 
         pixi run -e preprocessing python src/spida/cli.py P setup_adata_all {EXPERIMENT} {PREFIX} --plot={PLOT_ADATA}
-        """ 
+        """
     else:
         template = """
         # SEGMENTATION
@@ -67,11 +68,11 @@ def run_seg_template(seg_type:str):
 
         # SETUP ADATA
         pixi run -e preprocessing python src/spida/cli.py P setup_adata_all {EXPERIMENT} {PREFIX} --plot={PLOT_ADATA}
-        """ 
+        """
     return template
 
 
-def seg_template_P(): 
+def seg_template_P():
     template = """
     # SEGMENTATION
     pixi run segment_all {SEG_TYPE} {EXPERIMENT}
@@ -82,11 +83,11 @@ def seg_template_P():
 
     # SETUP ADATA 
     pixi run setup_adata_all {EXPERIMENT} {PREFIX} {PLOT_ADATA}
-    """ 
+    """
     return template
 
 
-def annot_mmc_template(): 
+def annot_mmc_template():
     template = """
     # ANNOTATION
     pixi run -e mapmycells python src/spida/cli.py I mmc_annotation_experiment {EXPERIMENT} {PREFIX} {BRAIN_REGION} {CODEBOOK}
@@ -94,13 +95,15 @@ def annot_mmc_template():
     """
     return template
 
-def annot_allc_template(): 
+
+def annot_allc_template():
     template = """
     # ANNOTATION
     pixi run -e preprocessing python src/spida/cli.py I allcools_integration_experiment {EXPERIMENT} {PREFIX} {ADATA_REF_PATH} --rna_cell_type_column={RNA_CLUSTER_COLUMN}
     pixi run -e preprocessing python src/spida/cli.py I backup_adata_experiment {EXPERIMENT} {PREFIX} {ADATA_PATH}
     """
     return template
+
 
 ### template sandbox:
 
@@ -119,7 +122,6 @@ proseg_template = """
 """
 
 
-
 seg_template = """
 # SEGMENTATION
 pixi run segment_{SEG_TYPE}_all {EXPERIMENT}
@@ -130,7 +132,7 @@ pixi run filter_cells_all {EXPERIMENT} {PREFIX} {PLOT_FILTERING} {CUTOFF_JSON_PA
 
 # SETUP ADATA 
 pixi run setup_adata_all {EXPERIMENT} {PREFIX} {PLOT_ADATA}
-""" 
+"""
 
 
 seg_template_p = """
@@ -143,4 +145,4 @@ pixi run filter_cells_all {EXPERIMENT} {PREFIX} {PLOT_FILTERING} {CUTOFF_JSON_PA
 
 # SETUP ADATA 
 pixi run setup_adata_all {EXPERIMENT} {PREFIX} {PLOT_ADATA}
-""" 
+"""

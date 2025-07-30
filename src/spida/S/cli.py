@@ -15,22 +15,22 @@
 
 # logger = logging.getLogger(__name__)
 
-# DESCRIPTION = """ 
+# DESCRIPTION = """
 #     Command line interface for SPIDA S (Spatial Processing) Module.
 #     This interface provides methods to ingest raw data, segment spatial data using a variety of algorithms,
 #     deconvolve large images for better segmentation, and align cell based segmentations to the nuclei segmentation
-#     they are rooted in to remove dubious artifacts. 
-    
+#     they are rooted in to remove dubious artifacts.
+
 #     Methods:
 
-#     [Utilities] 
+#     [Utilities]
 #     decon-image                        - Deconvolve large image files in tiles using DeconWolf algorithm.
 
-#     [Segmentations] 
+#     [Segmentations]
 #     run / run-segmentation-region      - Run segmentation on a single region using specified algorithm.
 #     experiment / segment-experiment    - Run segmentation for all regions in an experiment using specified algorithm.
 
-#     [Alignment]    
+#     [Alignment]
 #     align / align-proseg               - Align cell-based segmentations to the nuclei segmentation.
 
 #     [io]
@@ -45,18 +45,18 @@
 # Documentation:
 # """
 
-# def setup_logging(stdout=False, quiet=False, **kwargs):     
-    
+# def setup_logging(stdout=False, quiet=False, **kwargs):
+
 #     stream_handler = logging.StreamHandler(sys.stdout if stdout else sys.stderr)
 #     stream_handler.setLevel(logging.INFO if not quiet else logging.WARNING)
 #     stream_handler.setFormatter(logging.Formatter(
 #         '[%(levelname)s | %(module)s | L%(lineno)d] %(asctime)s - %(message)s',
 #         datefmt="%Y-%m-%dT%H:%M:%S%z"
 #     ))
-    
+
 #     logger.addHandler(stream_handler)
 #     logger.setLevel(logging.INFO if not quiet else logging.WARNING)
-    
+
 #     # logger.basicConfig(level=logging.INFO,
 #     #                    format='[%(levelname)s | %(module)s | L%(lineno)d] %(asctime)s - %(message)s',
 #     #                    datefmt="%Y-%m-%dT%H:%M:%S%z")
@@ -123,15 +123,15 @@
 #     parser.add_argument('--prefix_name', type=str, default="default", help='Prefix for the keys in the spatialdata object (default: default)')
 #     parser.add_argument('--plot', action='store_true', help='Plot results after loading segmentation')
 #     parser.add_argument('--load_kwargs', type=parse_dict, default={}, help='Additional keyword arguments for loading segmentation data')
-#     return 
+#     return
 
-# def deconwolf_register_subparser(subparser): 
+# def deconwolf_register_subparser(subparser):
 #     """Get parser for decon_image"""
-#     parser = subparser.add_parser('decon-image', 
+#     parser = subparser.add_parser('decon-image',
 #                                   aliases=['decon_image'],
 #                                   help='Deconvolve large image files in tiles',
 #                                   description='Deconvolve large image files in tiles using DeconWolf algorithm')
-    
+
 #     parser.add_argument("-i", "--image_path", type=parse_path, required=True, help="Path to the image file or directory")
 #     parser.add_argument("--data_org_path", type=str, required=True, help="Path to data organization file")
 #     parser.add_argument(
@@ -143,8 +143,8 @@
 #     parser.add_argument("-ts", "--tile_size", type=int, default=2960, help="Tile size in pixels (default: 2960)")
 #     parser.add_argument("--overlap", type=int, default=100, help="Overlap between tiles in pixels (default: 100)")
 #     parser.add_argument("--visualize_grid", action="store_true", help="Visualize the tiling grid")
-    
-    
+
+
 #     parser.add_argument("--z_step", type=float, default=1.5, help="axial(z) step size in micrometers")
 #     parser.add_argument("--filter", type=str, default=None, help="Filter to apply to the image before segmentation")
 #     parser.add_argument(
@@ -156,7 +156,7 @@
 #     return
 
 
-# def run_segmentation_region_register_subparser(subparser): 
+# def run_segmentation_region_register_subparser(subparser):
 #     # Subcommand: run_segmentation
 #     run_parser = subparser.add_parser(
 #         'run',
@@ -193,7 +193,7 @@
 #                             help='Configuration file path (for VPT segmentation)')
 #     exp_parser.add_argument('-k','--kwargs',type=str,nargs='*',
 #         help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
-#     return 
+#     return
 
 # def run_proseg_alignment_register_subparser(subparser):
 #     # Subcommand: align_proseg
@@ -231,8 +231,7 @@
 #                               help='Cell polygons filename (default: merged_cell_polygons.geojson)')
 #     align_parser.add_argument('-k', '--kwargs',type=str,nargs='*',
 #                               help='Additional keyword arguments in key=value format (e.g., --kwargs param1=value1 param2=value2)')
-#     return 
-
+#     return
 
 
 # def main():
@@ -254,20 +253,20 @@
 #         if "register_subparser" in name:
 #             register_subparser_func(subparsers)
 
-#     # initiate args: 
+#     # initiate args:
 #     args = None
-#     if len(sys.argv) > 1: 
-#         if sys.argv[1] in ["-v", "--version"]: 
+#     if len(sys.argv) > 1:
+#         if sys.argv[1] in ["-v", "--version"]:
 #             print(S.__version__)
 #             exit()
-#         else: 
+#         else:
 #             args = parser.parse_args()
 #     else:
 #         args = parser.parse_args(['--help'])
 #         exit()
-    
-#     # setup logging here: 
-#     if not logging.root.handlers: 
+
+#     # setup logging here:
+#     if not logging.root.handlers:
 #         setup_logging(stdout=True, quiet=False)
 
 #     # collect args
@@ -286,7 +285,7 @@
 #         from .io.main import load_segmentation_all as func
 #     elif command in ["decon-image"]:
 #         from .decon_script import decon_image as func
-#     elif command in ["run", "run-segmentation-region"]: 
+#     elif command in ["run", "run-segmentation-region"]:
 #         from .segmentation.main import run_segmentation as func
 #     elif command in ["experiment", "segment-experiment"]:
 #         from .segmentation.main import segment_experiment as func
@@ -309,10 +308,10 @@
 #     main()
 
 
-# # import argparse 
+# # import argparse
 # # import spida.S.decon_script as decon_script
 
-# # def main(): 
+# # def main():
 # #     """ Main Entry Point for the S module of SPIDA"""
 
 # #     parser = argparse.ArgumentParser(prog="spida.S", description="SPIDA S module CLI")

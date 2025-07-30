@@ -5,33 +5,31 @@ from spida._templates import *
 
 TEMPLATE_PREFIX = "template"
 
-def _get_outfile(dir:str): 
+
+def _get_outfile(dir: str):
     path = Path(dir)
-    if not path.exists(): 
+    if not path.exists():
         path.mkdir(parents=True)
         return f"{dir}/{TEMPLATE_PREFIX}_1.sh"
 
     existing_files = list(path.glob(f"{TEMPLATE_PREFIX}*.sh"))
     numbers = []
-    for file in existing_files: 
-        try: 
+    for file in existing_files:
+        try:
             num = int(file.stem.split("_")[-1])
             numbers.append(num)
-        except ValueError: 
+        except ValueError:
             continue
-    
+
     return f"{dir}/{TEMPLATE_PREFIX}_{max(numbers, default=0) + 1}.sh"
 
 
-def _generate_run_command(type:str,
-                          exp_name:str,
-                          prefix_name:str,
-                          **kwargs):
+def _generate_run_command(type: str, exp_name: str, prefix_name: str, **kwargs):
     """
     Generate the run command for a specific type of processing step in SPIDA.
 
     """
-    
+
     seg_input_dir = kwargs.get("seg_input_dir", None)
     seg_output_dir = kwargs.get("seg_output_dir", None)
     seg_type = kwargs.get("seg_type", "")
@@ -46,8 +44,7 @@ def _generate_run_command(type:str,
     adata_ref_path = kwargs.get("adata_ref_path", None)
     rna_cluster_col = kwargs.get("rna_cluster_col", "supercluster_name")
 
-
-    if type == "start": 
+    if type == "start":
         template = load_def_template()
         fout = template.format(
             EXPERIMENT=exp_name,
@@ -57,7 +54,7 @@ def _generate_run_command(type:str,
             PLOT_ADATA=plot_setup,
             CUTOFF_JSON_PATH=cutoffs_path,
         )
-    elif type == "load_seg": 
+    elif type == "load_seg":
         template = load_seg_template()
         fout = template.format(
             EXPERIMENT=exp_name,
@@ -83,7 +80,7 @@ def _generate_run_command(type:str,
             CUTOFF_JSON_PATH=cutoffs_path,
             PLOT_ADATA=plot_setup,
         )
-    elif type == "mmc_annotation": 
+    elif type == "mmc_annotation":
         template = annot_mmc_template()
         fout = template.format(
             EXPERIMENT=exp_name,
@@ -92,7 +89,7 @@ def _generate_run_command(type:str,
             CODEBOOK=codebook,
             ADATA_PATH=adata_path,
         )
-    elif type == "allc_integration": 
+    elif type == "allc_integration":
         template = annot_allc_template()
         fout = template.format(
             EXPERIMENT=exp_name,
@@ -103,12 +100,14 @@ def _generate_run_command(type:str,
         )
     return fout
 
-def gen_run(out_loc:str,
-            type:str | list,
-            exp_name:str | list, 
-            prefix_name:str | list, 
-            **kwargs
-            ):
+
+def gen_run(
+    out_loc: str,
+    type: str | list,
+    exp_name: str | list,
+    prefix_name: str | list,
+    **kwargs,
+):
     """
     Generate the run commands for the main processing steps in SPIDA.
 
@@ -117,14 +116,14 @@ def gen_run(out_loc:str,
     out_loc : str
         The directory where the output script will be saved.
     type : str or list
-        The type of processing step(s) to generate commands for. 
+        The type of processing step(s) to generate commands for.
         Options include "start", "load_seg", "seg", "mmc_annotation", and "allc_integration".
     exp_name : str or list
         The name(s) of the experiment(s) to be processed.
     prefix_name : str or list
         The prefix name(s) for the output files.
     kwargs : dict
-        Additional keyword arguments for specific processing steps. These may include: 
+        Additional keyword arguments for specific processing steps. These may include:
         - seg_input_dir: Directory for input segmentation data.
         - seg_output_dir: Directory for output segmentation data.
         - seg_type: Type of segmentation to run.
@@ -139,30 +138,28 @@ def gen_run(out_loc:str,
         - adata_ref_path: Path to the reference AnnData object for integration.
         - rna_cluster_col: Column name for RNA clusters in the AnnData object.
     """
-    
-    # Get the output file location 
+
+    # Get the output file location
     outfile = _get_outfile(out_loc)
     print(outfile)
 
-    if isinstance(type, str): 
+    if isinstance(type, str):
         type = [type]
     if isinstance(prefix_name, str):
         prefix_name = [prefix_name]
     if isinstance(exp_name, str):
         exp_name = [exp_name]
-    
-    
+
     output = "#!/bin/bash\n\n"
-    for _e in exp_name: 
+    for _e in exp_name:
         for _p in prefix_name:
-            for _t in type: 
+            for _t in type:
                 fout = _generate_run_command(_t, _e, _p, **kwargs)
                 output += fout + "\n"
-    
+
     with open(outfile, "w") as f:
         f.write(output)
-    
-    
-if __name__ == "__main__": 
-    fire.Fire({"run_template" : gen_run})
 
+
+if __name__ == "__main__":
+    fire.Fire({"run_template": gen_run})

@@ -1,4 +1,4 @@
-import os 
+import os
 import sys
 import warnings
 
@@ -39,13 +39,25 @@ print("REGION:", REGION)
 print("zarr_path:", zarr_path)
 
 
-sdata = read_merscope(input_path, zarr_path, exp_name=EXPERIMENT, reg_name=REGION, prefix_name=prefix_name)
+sdata = read_merscope(
+    input_path, zarr_path, exp_name=EXPERIMENT, reg_name=REGION, prefix_name=prefix_name
+)
 
 image_channels = sd.models.get_channel_names(sdata[IMAGE_KEY])
 image_scale_keys = list(sdata[IMAGE_KEY].keys())
 
 with PdfPages(image_path) as pdf:
-    plot_images(sdata, IMAGE_KEY, image_scale_keys, image_channels, cs="global", pdf_file=pdf)
+    plot_images(
+        sdata, IMAGE_KEY, image_scale_keys, image_channels, cs="global", pdf_file=pdf
+    )
     plot_shapes(sdata, SHAPES_KEY, table_name="table", cs="pixel", pdf_file=pdf)
     plot_points(sdata, POINTS_KEY, cs="pixel", cmap="tab10", pdf_file=pdf)
-    plot_overlap(sdata, IMAGE_KEY, SHAPES_KEY, POINTS_KEY, image_scale_keys, cs="pixel", pdf_file=pdf)
+    plot_overlap(
+        sdata,
+        IMAGE_KEY,
+        SHAPES_KEY,
+        POINTS_KEY,
+        image_scale_keys,
+        cs="pixel",
+        pdf_file=pdf,
+    )

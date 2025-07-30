@@ -4,7 +4,7 @@
 #SBATCH -A mcb130189
 #SBATCH -J proseg_{EXP_N}_{REG_N}
 #SBATCH -p wholenode
-#SBATCH --time=1:30:00
+#SBATCH --time=3:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=128
 #SBATCH --mem=128gb

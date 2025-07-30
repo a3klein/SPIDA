@@ -4,7 +4,7 @@
 #SBATCH -A mcb130189-gpu
 #SBATCH -J setup_{EXP_N}_{REG_N}_2
 #SBATCH -p gpu
-#SBATCH --time=1:30:00
+#SBATCH --time=3:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=64
@@ -13,7 +13,7 @@
 #SBATCH -e /home/x-aklein2/projects/aklein/BICAN/logs/{EXP_N}/setup_{EXP_N}_{REG_N}_P2.out
 #SBATCH --export=ALL
 
-module load modtree/cpu
+module load modtree/gpu
 module list
 
 export PATH="/home/x-aklein2/.pixi/bin:$PATH"
