@@ -5,10 +5,10 @@
 # from spida.I.main import I_cli
 # from spida.__main__ import gen_run
 
-# class CLI(): 
+# class CLI():
 #     """
 #     Command Line Interface for SPIDA.
-    
+
 #     Initialize the CLI with submodules for different functionalities.
 
 #     Submodules:
@@ -18,7 +18,7 @@
 #     - generate_template: Generates a template for SPIDA analysis.
 #     """
 
-#     def __init__(self):     
+#     def __init__(self):
 #         self.io = io_cli()
 #         self.P = P_cli()
 #         self.I = I_cli()
@@ -30,7 +30,6 @@
 #     fire.Fire(CLI)
 
 
-
 # # def main():
 # #     parser = argparse.ArgumentParser(prog="spida", description="SPIDA CLI")
 # #     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -38,7 +37,7 @@
 # #     subparsers.add_parser(
 # #         "io", parents=[io_cli.get_parser()], help = "SPIDA IO tools",
 # #     )
-    
+
 # #     subparsers.add_parser(
 # #         "P", parents=[P_cli.get_parser()], help = "SPIDA Preprocessing tools",
 # #     )
