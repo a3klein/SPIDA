@@ -5,10 +5,10 @@ from ALLCools.clustering import tsne  # type: ignore
 
 
 # A function that moves the manifold coordinate
-def dump_embedding(adata, name, n_dim=2):
+def dump_embedding(adata, from_name, to_name, n_dim=2):
     # put manifold coordinates into adata.obs
     for i in range(n_dim):
-        adata.obs[f"{name}_{i}"] = adata.obsm[f"X_{name}"][:, i]
+        adata.obs[f"{to_name}_{i}"] = adata.obsm[f"X_{from_name}"][:, i]
     return adata
 
 
@@ -73,6 +73,43 @@ def run_setup(
     sc.tl.leiden(adata, flavor="igraph", n_iterations=2)
 
     return adata
+
+def _calc_embeddings(
+    adata : ad.AnnData, 
+    layer : str | None = None,
+    use_rep : str | None = None, 
+    key_added : str = "X_",
+): 
+    """ Calculate the UMAP and tSNE embeddings for the AnnData object and given layer"""
+    if (use_rep is not None) and (layer is not None): 
+        raise ValueError("Either use_rep or layer can be specified, not both.")
+    
+    if adata.shape[0] > 50000: 
+        chunked = True
+    
+    if use_rep is None: 
+        sc.pp.pca(adata, n_comps=50, chunked=chunked, layer=layer, key_added=f"{key_added}pca")
+        use_rep = f"{key_added}pca"
+
+    sc.pp.neighbors(adata, use_rep=use_rep)
+    sc.tl.umap(adata, random_state=13, key_added=f"{key_added}umap")
+    dump_embedding(adata, from_name=f"{key_added}umap", to_name=f"{key_added}umap")
+
+    tsne(
+        adata,
+        obsm=use_rep,
+        metric="euclidean",
+        exaggeration=-1,
+        perplexity=50,
+        n_jobs=-1,
+    )
+    dump_embedding(adata, from_name="tsne", to_name=f"{key_added}tsne")
+    
+    # Clustering using leiden
+    sc.tl.leiden(adata, flavor="igraph", n_iterations=2, key_added=f"{key_added}leiden")
+
+    return adata
+    
 
 def combined_setup(
     adata : ad.AnnData, 

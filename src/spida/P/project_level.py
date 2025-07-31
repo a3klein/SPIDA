@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 import warnings
 import shutil
+import pickle
 
 import anndata as ad
 import spatialdata as sd
@@ -161,15 +162,20 @@ def concatenate_tables(
     if table_keys is None:
         table_keys = list(sdata.tables.keys())
 
+    uns_dict = {}
     concatenated_tables = []
     for key in table_keys:
         if key in sdata.tables:
             concatenated_tables.append(sdata.tables[key])
+            uns_dict[key] = sdata.tables[key].uns.copy()
         else:
             logger.warning(
                 f"Table key {key} not found in SpatialData object. Skipping."
             )
-
+                        
+    with open(output_path.parent / f"{output_path.name.split('.')[0]}_uns_dict.pkl", 'wb') as f:
+        pickle.dump(uns_dict, f)
+    
     # Need to double check
     adata = ad.concat(concatenated_tables)
     if output_path is not None:

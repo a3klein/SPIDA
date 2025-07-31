@@ -45,6 +45,8 @@ DESCRIPTION = """
 
     [project level]
     combine-datasets                  - Combine multiple datasets into a single SpatialData object.
+    setup-dataset                     - Perform standard PCA + Leiden clustering on a joint dataset object.
+    resolvi-dataset                   - Perform ResolVI workflow on a joint dataset object.
     """
 EPILOGUE = """
 Author: Amit Klein
@@ -226,6 +228,7 @@ def resolvi_region_register_subparser(subparser):
         "--plot", action="store_true", help="Whether to plot the results"
     )
     parser.add_argument("--image_path", type=parse_path, help="Path to save the plot")
+    parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
     parser.add_argument(
         "--model_kwargs",
         nargs="*",
@@ -258,6 +261,7 @@ def resolvi_all_register_subparser(subparser):
         "--plot", action="store_true", help="Whether to plot the results"
     )
     parser.add_argument("--image_path", type=parse_path, help="Path to save the plot")
+    parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
     parser.add_argument(
         "-k",
         "--model_kwargs",
@@ -465,6 +469,14 @@ def resolvi_dataset_register_subparser(subparser):
     )
     parser.add_argument("dataset_name", type=str, help="name of the dataset")
     parser.add_argument("--anndata_path", type=parse_path, help="Path to the AnnData directory")
+    parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
+    parser.add_argument(
+        "--model_kwargs",
+        nargs="*",
+        action=ParseKwargs,
+        default={},
+        help="Additional keyword arguments for the ResolVI model (default: {})",
+    )
     return
 
 
