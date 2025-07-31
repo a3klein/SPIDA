@@ -462,7 +462,6 @@ def resolvi_cluster_region(
     # Perform RESOLVI clustering
     adata = resolvi_cluster(
         adata,
-        max_epochs=model_kwargs.get("max_epochs", 200),
         layer=model_kwargs.get("layer", "raw"),
         batch_key=model_kwargs.get("batch_key", "donor"),
         categorical_covariates=model_kwargs.get("categorical_covariates", None),
@@ -651,8 +650,7 @@ def resolvi_dataset(
     
     
     adata = resolvi_cluster(
-        adata, 
-        max_epochs=model_kwargs.get("max_epochs", 100),
+        adata,
         layer=model_kwargs.get("layer", "counts"),
         batch_key=model_kwargs.get("batch_key", "dataset_id"),
         categorical_covariates=model_kwargs.get("categorical_covariates", None),
