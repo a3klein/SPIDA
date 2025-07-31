@@ -1,4 +1,7 @@
 import pandas as pd
+import sys
+sys.path.append("/home/x-aklein2/projects/aklein/BICAN/spida_dev/helper_scripts")
+from _scatteplot import plot_categorical # fix import? 
 import anndata as ad
 
 import matplotlib.pyplot as plt
@@ -192,32 +195,34 @@ def plot_resolvi(
     plt.rcParams["axes.facecolor"] = "white"
     donor = _region_to_donor(reg_name)
     # Plot the UMAP embeddings
-    plot_scatter(
-        adata,
-        title=f"{donor} - UMAP",
-        colors=["volume", "nCount_RNA", "leiden_resolvi"],
-        ncols=3,
-        coord_base="umap",
-        pdf_file=pdf_file,
-    )
+    fig, axes = plt.subplots(3, 3, figsize=(20, 20), dpi=300)
+    plot_categorical(adata, coord_base="umap", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[0][0])
+    axes[0][0].set_title(f"tsne - {donor} - leiden Clustering")
+    plot_categorical(adata, coord_base="resolvi_umap", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[0][1])
+    axes[0][1].set_title(f"tsne - {donor} - RESOLVI leiden Clustering")
+    plot_categorical(adata, coord_base="corr_umap", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[0][2])
+    axes[0][2].set_title(f"tsne - {donor} - corrected expression leiden Clustering")
     # Plot the TSNE embeddings
-    plot_scatter(
-        adata,
-        title=f"{donor} - UMAP",
-        colors=["volume", "nCount_RNA", "leiden_resolvi"],
-        ncols=3,
-        coord_base="tsne",
-        pdf_file=pdf_file,
-    )
+    plot_categorical(adata, coord_base="tsne", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[1][0])
+    axes[1][0].set_title(f"tsne - {donor} - leiden Clustering")
+    plot_categorical(adata, coord_base="resolvi_tsne", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[1][1])
+    axes[1][1].set_title(f"tsne - {donor} - RESOLVI leiden Clustering")
+    plot_categorical(adata, coord_base="corr_tsne", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[1][2])
+    axes[1][2].set_title(f"tsne - {donor} - corrected expression leiden Clustering")
     # Plot the spatial coordinates
-    plot_scatter(
-        adata,
-        title=f"{donor} - UMAP",
-        colors=["volume", "nCount_RNA", "leiden_resolvi"],
-        ncols=3,
-        coord_base="spatial",
-        pdf_file=pdf_file,
-    )
+    plot_categorical(adata, coord_base="spatial", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[2][0])
+    axes[2][0].set_title(f"{donor} - Leiden Clustering")
+    plot_categorical(adata, coord_base="spatial", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[2][1])
+    axes[2][1].set_title(f"{donor} - RESOLVI leiden Clustering")
+    plot_categorical(adata, coord_base="spatial", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[2][2])
+    axes[2][2].set_title(f"{donor} - corrected expression leiden Clustering")
+    
+    if pdf_file:
+        pdf_file.savefig(fig, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+        plt.close()
 
 
 def plot_doublets(adata, save_file, ax=None):

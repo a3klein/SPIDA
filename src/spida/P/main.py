@@ -417,6 +417,8 @@ def resolvi_cluster_region(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    model_save_path : Path = None,
+    trained : bool = False, 
     **model_kwargs,
 ):
     """
@@ -431,11 +433,16 @@ def resolvi_cluster_region(
     image_path (Path, optional): Path to save the plot. If None, uses a default path.
     """
     from spida.P.scvi_toolkit import resolvi_cluster
+    from spida.P.setup_adata import _calc_embeddings
 
     logger.info(
         "RESOLVI CLUSTERING, EXPERIMENT %s, REGION %s, PREFIX %s"
         % (exp_name, reg_name, prefix_name)
     )
+
+    model_kwargs = model_kwargs['model_kwargs']
+    for key, val in model_kwargs.items():
+        logger.info(f"Model kwargs: {key} = {val}")
 
     # Get KEYS
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
@@ -444,8 +451,33 @@ def resolvi_cluster_region(
         exp_name, reg_name, prefix_name, suffix=suffix
     )  # Use the filtered data if available
 
+    logger.info("arguments passing into resolvi")
+    logger.info(f"max_epochs: {model_kwargs.get('max_epochs', 200)}")
+    logger.info(f"layer: {model_kwargs.get('layer', 'raw')}")
+    logger.info(f"batch_key: {model_kwargs.get('batch_key', 'donor')}")
+    logger.info(f"categorical_covariates: {model_kwargs.get('categorical_covariates', None)}")
+    logger.info(f"model_save_path: {model_save_path}")
+    logger.info(f"model_save_ext: {f'{exp_name}_{reg_name}_{prefix_name}'}")
+    
     # Perform RESOLVI clustering
-    adata = resolvi_cluster(adata, **model_kwargs)
+    adata = resolvi_cluster(
+        adata,
+        max_epochs=model_kwargs.get("max_epochs", 200),
+        layer=model_kwargs.get("layer", "raw"),
+        batch_key=model_kwargs.get("batch_key", "donor"),
+        categorical_covariates=model_kwargs.get("categorical_covariates", None),
+        model_save_path=model_save_path,
+        model_save_ext=f"{exp_name}_{reg_name}_{prefix_name}",
+        **model_kwargs,
+    )
+
+    logger.info("DONE WITH RESOLVI, NOW CLUSTERING")
+
+    # _calc_embeddings(adata, key_added="base_")
+    logger.info("embedding resolvi")
+    _calc_embeddings(adata, use_rep="X_resolVI", key_added="resolvi_")
+    logger.info("embedding generated expression")
+    _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
 
     # backup the adata object
     _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
@@ -463,6 +495,7 @@ def resolvi_cluster_all(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    model_save_path : Path = None, 
     **model_kwargs,
 ):
     """
@@ -488,6 +521,7 @@ def resolvi_cluster_all(
             suffix=suffix,
             plot=plot,
             image_path=image_path,
+            model_save_path=model_save_path,
             **model_kwargs,
         )
 
@@ -559,7 +593,7 @@ def combine_datasets(
 
     if output_path is None:
         output_path = Path(os.getenv("ANNDATA_STORE_PATH"))
-        output_path = output_path / f"{project_name}_{lab_name}_{prefix_name}{suffix}"
+        output_path = output_path / f"{project_name}_{lab_name}_{prefix_name}{suffix}.h5ad"
 
     # aggregate the spatialdata objects
     sdata = aggregate_experiments(
@@ -596,26 +630,46 @@ def setup_dataset(
 
 def resolvi_dataset(
     dataset_name:str,
-    anndata_path: Path = None,
+    anndata_path:Path = None,
+    model_save_path:Path = None, 
     **model_kwargs
     ): 
     """
     This function runs resolvi on a dataset level object. Takes more time and memory than resolvi_region.
     """
     from spida.P.scvi_toolkit import resolvi_cluster
+    from spida.P.setup_adata import _calc_embeddings
     import anndata as ad
 
+    model_kwargs = model_kwargs['model_kwargs']
+    
     logger.info(f"RESOLVI ON {dataset_name}")
     if anndata_path is None: 
         anndata_path = Path(os.getenv("ANNDATA_STORE_PATH"))
     anndata_path = anndata_path / dataset_name
     adata = ad.read_h5ad(anndata_path)    
     
+    
     adata = resolvi_cluster(
         adata, 
-        max_epochs=model_kwargs.get("max_epochs", 400),
+        max_epochs=model_kwargs.get("max_epochs", 100),
+        layer=model_kwargs.get("layer", "counts"),
+        batch_key=model_kwargs.get("batch_key", "dataset_id"),
+        categorical_covariates=model_kwargs.get("categorical_covariates", None),
+        model_save_path=model_save_path,
+        model_save_ext=dataset_name,
         **model_kwargs
     )
+
+    logger.info("DONE WITH RESOLVI, NOW CLUSTERING")
+
+    # _calc_embeddings(adata, key_added="base_")
+    logger.info("embedding resolvi")
+    _calc_embeddings(adata, use_rep="X_resolVI", key_added="resolvi_")
+    logger.info("embedding generated expression")
+    _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
+
+
     adata.write_h5ad(anndata_path)
     logger.info(f"DONE RESOLVI ON {dataset_name}")
     return 0
