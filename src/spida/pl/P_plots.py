@@ -1,16 +1,13 @@
 import pandas as pd
-import sys
-sys.path.append("/home/x-aklein2/projects/aklein/BICAN/spida_dev/helper_scripts")
-from _scatteplot import plot_categorical # fix import? 
 import anndata as ad
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# sys.path.append(os.getenv("SPIDA_PATH"))
 from spida._constants import CELL_X, CELL_Y
-from spida.pl import plot_scatter
+from spida.pl import plot_scatter # TODO: depreceate this! 
 from spida._utilities import _region_to_donor
+from ._scatteplot import plot_categorical
 
 
 def plot_feature_distribution(
