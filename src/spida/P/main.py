@@ -638,6 +638,7 @@ def resolvi_dataset(
     """
     from spida.P.scvi_toolkit import resolvi_cluster
     from spida.P.setup_adata import _calc_embeddings
+    from spida.pl import plot_dataset
     import anndata as ad
 
     model_kwargs = model_kwargs['model_kwargs']
@@ -667,7 +668,19 @@ def resolvi_dataset(
     logger.info("embedding generated expression")
     _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
 
-
     adata.write_h5ad(anndata_path)
     logger.info(f"DONE RESOLVI ON {dataset_name}")
+
+    logger.info("PLOTTING DATASET")
+    
+    if image_path is None:
+        image_store = os.getenv(
+            "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
+        )
+        image_path = Path(
+            f"{image_store}/{dataset_name}"
+        )
+        image_path.mkdir(parents=True, exist_ok=True)
+
+    plot_dataset(adata, save_path=image_path, show=False)
     return 0

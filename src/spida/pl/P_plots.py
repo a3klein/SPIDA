@@ -1,3 +1,4 @@
+from pathlib import Path
 import pandas as pd
 import anndata as ad
 
@@ -7,7 +8,7 @@ import seaborn as sns
 from spida._constants import CELL_X, CELL_Y
 from spida.pl import plot_scatter # TODO: depreceate this! 
 from spida._utilities import _region_to_donor
-from ._scatteplot import plot_categorical
+from ._scatteplot import plot_categorical, plot_continuous
 
 
 def plot_feature_distribution(
@@ -254,3 +255,98 @@ def plot_doublets(adata, save_file, ax=None):
         plt.close(fig)
     else:
         return ax
+
+def plot_dataset(
+    adata,
+    save_path:str|Path=None,
+    show=True,
+    gene=None,
+):
+    """
+    Plot the dataset.
+    Parameters:
+    adata (anndata.AnnData): The AnnData object containing the dataset.
+    save_path (str, optional): Path to save the plot. If None, the plot is shown but not saved.
+    show (bool, optional): Whether to show the plot. Defaults to True.
+    """
+    if isinstance(save_path, str):
+        save_path = Path(save_path)
+    plt.rcParams["axes.facecolor"] = "white"
+
+    # plot region / donor / replicate metadata
+    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(20, 10), dpi=300)
+    plot_categorical(adata, coord_base="umap", cluster_col="region", text_anno=True, coding=True, show=False, ax=axes[0])
+    axes[0].set_title(f"Region")
+    plot_categorical(adata, coord_base="umap", cluster_col="donor", text_anno=False, coding=True, show=False, ax=axes[1])
+    axes[1].set_title(f"Donor")
+    plot_categorical(adata, coord_base="umap", cluster_col="replicate", text_anno=False, coding=True, show=False, ax=axes[2])
+    axes[2].set_title(f"Replicate")
+    if save_path:
+        fig.savefig(save_path / "umap_meta.png", bbox_inches="tight")
+        plt.close(fig)
+    elif show:
+        plt.show()
+        plt.close(fig)
+    
+    # plot tsne metadata
+    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(20, 10), dpi=300)
+    plot_categorical(adata, coord_base="tsne", cluster_col="region", text_anno=True, coding=True, show=False, ax=axes[0])
+    axes[0].set_title(f"Region")
+    plot_categorical(adata, coord_base="tsne", cluster_col="donor", text_anno=False, coding=True, show=False, ax=axes[1])
+    axes[1].set_title(f"Donor")
+    plot_categorical(adata, coord_base="tsne", cluster_col="replicate", text_anno=False, coding=True, show=False, ax=axes[2])
+    axes[2].set_title(f"Replicate")
+    if save_path:
+        fig.savefig(save_path / "tsne_meta.png", bbox_inches="tight")
+        plt.close(fig)
+    elif show:
+        plt.show()
+        plt.close(fig)    
+    
+    # plot umap / tsne / spatial coordinates 
+    # Plot the UMAP embeddings
+    fig, axes = plt.subplots(3, 3, figsize=(20, 20), dpi=300)
+    plot_categorical(adata, coord_base="umap", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[0][0])
+    axes[0][0].set_title(f"tsne - leiden Clustering")
+    plot_categorical(adata, coord_base="resolvi_umap", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[0][1])
+    axes[0][1].set_title(f"tsne - RESOLVI leiden Clustering")
+    plot_categorical(adata, coord_base="corr_umap", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[0][2])
+    axes[0][2].set_title(f"tsne - corrected expression leiden Clustering")
+    # Plot the TSNE embeddings
+    plot_categorical(adata, coord_base="tsne", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[1][0])
+    axes[1][0].set_title(f"tsne - leiden Clustering")
+    plot_categorical(adata, coord_base="resolvi_tsne", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[1][1])
+    axes[1][1].set_title(f"tsne - RESOLVI leiden Clustering")
+    plot_categorical(adata, coord_base="corr_tsne", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[1][2])
+    axes[1][2].set_title(f"tsne - corrected expression leiden Clustering")
+    # Plot the spatial coordinates
+    plot_categorical(adata, coord_base="spatial", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[2][0])
+    axes[2][0].set_title(f"Leiden Clustering")
+    plot_categorical(adata, coord_base="spatial", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[2][1])
+    axes[2][1].set_title(f"RESOLVI leiden Clustering")
+    plot_categorical(adata, coord_base="spatial", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[2][2])
+    axes[2][2].set_title(f"corrected expression leiden Clustering")
+    if save_path:
+        fig.savefig(save_path / "categorical.png", bbox_inches="tight")
+        plt.close(fig)
+    elif show:
+        plt.show()
+        plt.close(fig)
+
+    
+    if gene is None: 
+        gene = "MOBP"
+    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(20, 20), dpi=300)
+    axes = axes.flatten()
+    plot_continuous(adata, coord_base="tsne", color_by=gene, layer="generated_expression", ax=axes[0], show=False, title=f"tsne - {gene} - generated expression")
+    plot_continuous(adata, coord_base="umap", color_by=gene, layer="generated_expression", ax=axes[1], show=False, title=f"umap - {gene} - generated expression")
+    plot_continuous(adata, coord_base="spatial", color_by=gene, layer="generated_expression", ax=axes[2], show=False, title=f"spatial - {gene} - generated expression")
+    plot_continuous(adata, coord_base="tsne", color_by=gene, layer="raw", ax=axes[3], show=False, title=f"tsne - {gene} - raw expression")
+    plot_continuous(adata, coord_base="umap", color_by=gene, layer="raw", ax=axes[4], show=False, title=f"umap - {gene} - raw expression")
+    plot_continuous(adata, coord_base="spatial", color_by=gene, layer="raw", ax=axes[5], show=False, title=f"spatial - {gene} - raw expression")
+    if save_path:
+        fig.savefig(save_path / "continuous.png", bbox_inches="tight")
+        plt.close(fig)
+    elif show:
+        plt.show()
+        plt.close(fig)

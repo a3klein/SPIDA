@@ -10,14 +10,14 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize, Colormap
 import seaborn as sns
 
-from plotting_utils import (
+from ._utils import (
     _extract_coords, _density_based_sample, _auto_size, 
     zoom_min_max, zoom_ax, _take_data_series, level_one_palette,
     _calculate_luminance, tight_hue_range, _text_anno_scatter,
     density_contour, despine, _make_tiny_axis_label, plot_text_legend,
     plot_color_dict_legend, plot_marker_legend, plot_cmap_legend, get_cmap
 )
-from palettes import add_color_scheme
+from .palettes import add_color_scheme
 
 def continuous_scatter(
     data : pd.DataFrame | ad.AnnData,
