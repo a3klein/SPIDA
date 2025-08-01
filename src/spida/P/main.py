@@ -474,7 +474,7 @@ def resolvi_cluster_region(
 
     # _calc_embeddings(adata, key_added="base_")
     logger.info("embedding resolvi")
-    _calc_embeddings(adata, use_rep="X_resolVI", key_added="resolvi_")
+    _calc_embeddings(adata, use_rep="X_resolvi", key_added="resolvi_")
     logger.info("embedding generated expression")
     _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
 
