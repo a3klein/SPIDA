@@ -84,8 +84,7 @@ def _calc_embeddings(
     if (use_rep is not None) and (layer is not None): 
         raise ValueError("Either use_rep or layer can be specified, not both.")
     
-    if adata.shape[0] > 50000: 
-        chunked = True
+    chunked = (adata.shape[0] > 50000) and (layer is None)
     
     if use_rep is None: 
         sc.pp.pca(adata, n_comps=50, chunked=chunked, layer=layer, key_added=f"{key_added}pca")
