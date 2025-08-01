@@ -229,6 +229,7 @@ def resolvi_region_register_subparser(subparser):
     )
     parser.add_argument("--image_path", type=parse_path, help="Path to save the plot")
     parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
+    parser.add_argument("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
     parser.add_argument(
         "--model_kwargs",
         nargs="*",
@@ -262,6 +263,7 @@ def resolvi_all_register_subparser(subparser):
     )
     parser.add_argument("--image_path", type=parse_path, help="Path to save the plot")
     parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
+    parser.add_argument("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
     parser.add_argument(
         "-k",
         "--model_kwargs",
@@ -470,6 +472,7 @@ def resolvi_dataset_register_subparser(subparser):
     parser.add_argument("dataset_name", type=str, help="name of the dataset")
     parser.add_argument("--anndata_path", type=parse_path, help="Path to the AnnData directory")
     parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
+    parser.add_argument("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
     parser.add_argument(
         "--model_kwargs",
         nargs="*",

@@ -631,6 +631,7 @@ def resolvi_dataset(
     dataset_name:str,
     anndata_path:Path = None,
     model_save_path:Path = None, 
+    trained:bool = False,
     **model_kwargs
     ): 
     """
@@ -657,6 +658,7 @@ def resolvi_dataset(
         categorical_covariates=model_kwargs.get("categorical_covariates", None),
         model_save_path=model_save_path,
         model_save_ext=dataset_name,
+        trained=trained,
         **model_kwargs
     )
 
