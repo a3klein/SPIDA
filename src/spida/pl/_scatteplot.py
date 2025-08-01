@@ -317,9 +317,10 @@ def continuous_scatter(
 		)  # mm to px to fraction
 		pad = (space + ax.yaxis.labelpad * 1.2 * ax.figure.dpi / 72) / ax.figure.get_window_extent().width
 		# labelpad unit is points
-		left = ax.get_position().x1 + pad
+		ax_pos = ax.get_position()
+		left = ax_pos.x1 + pad
 		ax_legend = ax.figure.add_axes(
-			[left, ax.get_position().height * 0.8, legend_width, ax.get_position().height * 0.2]
+			[left, ax_pos.y0 + ax_pos.height * 0.8, legend_width, ax_pos.height * 0.2]
 		)  # left, bottom, width, height
 		# print("test:",hue_norm)
 		# cbar_kws.setdefault('vmin',hue_norm[0])
