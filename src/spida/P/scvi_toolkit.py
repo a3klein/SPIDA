@@ -102,9 +102,8 @@ def resolvi_cluster(
     
     if trained and (model_save_path is not None): 
         resolvi = scvi.external.RESOLVI.load(
-            model_save_path / f'/{model_save_ext}_resolvi/',
+            model_save_path / f'{model_save_ext}_resolvi/',
             adata=adata_train,
-            use_gpu=True,
         )
     else: 
         # Setup the model
@@ -129,7 +128,7 @@ def resolvi_cluster(
         model=resolvi.module.model_residuals,
         return_sites=["mixture_proportions"],
         summary_fun={"post_sample_means": np.mean},
-        num_samples=30, return_samples=False, batch_size=1000, macro_batch_size=50000
+        num_samples=30, return_samples=False, batch_size=1000
     )
     sample_mixtures = pd.DataFrame(sample_mixtures).T
     adata_train.obs[
@@ -143,9 +142,7 @@ def resolvi_cluster(
         summary_frequency=30,
         num_samples=30,
         return_samples=False,
-        batch_size=1000,
-        macro_batch_size=50000,
-        
+        batch_size=1000,        
     )
     samples_corr = pd.DataFrame(samples_corr).T
     adata_train.layers["generated_expression"] = samples_corr.loc[sample_quantile, "px_rate"].tocsr()
