@@ -473,6 +473,7 @@ def resolvi_dataset_register_subparser(subparser):
     parser.add_argument("--anndata_path", type=parse_path, help="Path to the AnnData directory")
     parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
     parser.add_argument("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
+    parser.add_argument("--image_path", type=parse_path, default=None, help="Path to save the plot (default: None)")
     parser.add_argument(
         "--model_kwargs",
         nargs="*",

@@ -1,3 +1,15 @@
+# TODO: 
+# Reframe this instead of using argparse using click 
+# Generate click groups for P, S, I, ... 
+# Can have a big click group for spida in general and all other groups are contained within it. 
+# The pixi entry points can just be the tasks, so either spida P for the big entry point or spida-P for the specific entry point 
+# Can run as modules
+# Importantly, can have a config file module to this package, in which someone can define a json / yaml or whatever file to config different projects
+# i.e. for Wenliang's project where I can have different projects in different file locations.
+# The .env can be the fallback default, but the config files we be configured once and then loaded in for each call. 
+# In the click paradigm loading in the config files can be done in the group level commands (S / P / spida / ...) and then passed as context to the actual functions. 
+# #
+
 from pathlib import Path
 import fire
 
