@@ -5,13 +5,6 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
-mpl.style.use('default')
-mpl.rcParams['pdf.fonttype'] = 42
-mpl.rcParams['ps.fonttype'] = 42
-mpl.rcParams['font.family'] = 'sans-serif'
-mpl.rcParams['font.sans-serif'] = 'Arial'
-mpl.rcParams['figure.dpi'] = 80
-mpl.rcParams['savefig.dpi']=300
 donor_palette = {'UWA7648': '#D87C79','UCI4723': '#7A4300','UCI2424': '#D7A800','UCI5224': '#AB4CAA'}
 
 
@@ -76,8 +69,15 @@ def plot_violin_QC(
         top_cut_names:str|list[str]=None,
         bottom_cut_names:str|list[str]=None
     ):
-    
     """Plots a violin plot for a given QC metric."""
+    mpl.style.use('default')
+    mpl.rcParams['pdf.fonttype'] = 42
+    mpl.rcParams['ps.fonttype'] = 42
+    # mpl.rcParams['font.family'] = 'sans-serif'
+    # mpl.rcParams['font.sans-serif'] = 'Arial'
+    mpl.rcParams['figure.dpi'] = 80
+    mpl.rcParams['savefig.dpi']=300
+    
     if isinstance(qc_metric, str):
         qc_metric = [qc_metric]
 
