@@ -79,7 +79,7 @@ def resolvi_cluster(
     model_kwargs : dict, optional
         Additional keyword arguments for the RESOLVI model.
     """
-    import scipy.sparse as scp
+    # import scipy.sparse as scp
 
     import logging
     logger = logging.getLogger(__package__)
@@ -145,20 +145,14 @@ def resolvi_cluster(
         batch_size=1000,        
     )
     samples_corr = pd.DataFrame(samples_corr).T
-    adata_train.layers["generated_expression"] = samples_corr.loc[sample_quantile, "px_rate"].tocsr()
+    adata_train.layers["generated_expression"] = samples_corr.loc[sample_quantile, "px_rate"]
 
     ### move from adata_train to adata
     adata.obsm["X_resolvi"] = adata_train.obsm["X_resolvi"]
-    # adata.obsm["X_umap"] = adata_train.obsm["X_umap"]
-    # adata.obsm["X_tsne"] = adata_train.obsm["X_tsne"]
     adata.obs["leiden_resolvi"] = adata_train.obs["leiden_resolvi"]
     adata.obs["true_proportion"] = adata_train.obs["true_proportion"]
     adata.obs["diffusion_proportion"] = adata_train.obs["diffusion_proportion"]
     adata.obs["background_proportion"] = adata_train.obs["background_proportion"]
-    # adata.obs["umap_0"] = adata_train.obs["umap_0"]
-    # adata.obs["umap_1"] = adata_train.obs["umap_1"]
-    # adata.obs["tsne_0"] = adata_train.obs["tsne_0"]
-    # adata.obs["tsne_1"] = adata_train.obs["tsne_1"]
     adata.layers["generated_expression"] = adata_train.layers["generated_expression"]
 
     return adata
@@ -220,3 +214,11 @@ def resolvi_cluster(
     #     n_iterations=2,
     #     key_added="leiden_resolvi",
     # )
+
+
+    # adata.obs["umap_0"] = adata_train.obs["umap_0"]
+    # adata.obs["umap_1"] = adata_train.obs["umap_1"]
+    # adata.obs["tsne_0"] = adata_train.obs["tsne_0"]
+    # adata.obs["tsne_1"] = adata_train.obs["tsne_1"]
+    # adata.obsm["X_umap"] = adata_train.obsm["X_umap"]
+    # adata.obsm["X_tsne"] = adata_train.obsm["X_tsne"]
