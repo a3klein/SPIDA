@@ -467,6 +467,7 @@ def resolvi_cluster_region(
         categorical_covariates=model_kwargs.get("categorical_covariates", None),
         model_save_path=model_save_path,
         model_save_ext=f"{exp_name}_{reg_name}_{prefix_name}",
+        trained=trained,
         **model_kwargs,
     )
 
@@ -632,6 +633,7 @@ def resolvi_dataset(
     anndata_path:Path = None,
     model_save_path:Path = None, 
     trained:bool = False,
+    image_path:Path = None,
     **model_kwargs
     ): 
     """

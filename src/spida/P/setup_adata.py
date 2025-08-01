@@ -94,6 +94,7 @@ def _calc_embeddings(
     sc.tl.umap(adata, random_state=13, key_added=f"X_{key_added}umap")
     dump_embedding(adata, from_name=f"{key_added}umap", to_name=f"{key_added}umap")
 
+    temp_tsne = adata.obsm['X_tsne'].copy()
     tsne(
         adata,
         obsm=use_rep,
@@ -102,7 +103,9 @@ def _calc_embeddings(
         perplexity=50,
         n_jobs=-1,
     )
-    dump_embedding(adata, from_name="tsne", to_name=f"{key_added}tsne")
+    adata.obsm[f"X_{key_added}tsne"] = adata.obsm['X_tsne'].copy()
+    adata.obsm['X_tsne'] = temp_tsne  # restore original tsne
+    dump_embedding(adata, from_name=f"{key_added}tsne", to_name=f"{key_added}tsne")
     
     # Clustering using leiden
     sc.tl.leiden(adata, flavor="igraph", n_iterations=2, key_added=f"{key_added}leiden")
