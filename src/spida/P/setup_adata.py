@@ -92,7 +92,7 @@ def _calc_embeddings(
         use_rep = f"{key_added}pca"
 
     sc.pp.neighbors(adata, use_rep=use_rep)
-    sc.tl.umap(adata, random_state=13, key_added=f"{key_added}umap")
+    sc.tl.umap(adata, random_state=13, key_added=f"X_{key_added}umap")
     dump_embedding(adata, from_name=f"{key_added}umap", to_name=f"{key_added}umap")
 
     tsne(
