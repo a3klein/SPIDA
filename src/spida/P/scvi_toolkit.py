@@ -149,7 +149,6 @@ def resolvi_cluster(
 
     ### move from adata_train to adata
     adata.obsm["X_resolvi"] = adata_train.obsm["X_resolvi"]
-    adata.obs["leiden_resolvi"] = adata_train.obs["leiden_resolvi"]
     adata.obs["true_proportion"] = adata_train.obs["true_proportion"]
     adata.obs["diffusion_proportion"] = adata_train.obs["diffusion_proportion"]
     adata.obs["background_proportion"] = adata_train.obs["background_proportion"]
@@ -216,6 +215,7 @@ def resolvi_cluster(
     # )
 
 
+    # adata.obs["leiden_resolvi"] = adata_train.obs["leiden_resolvi"]
     # adata.obs["umap_0"] = adata_train.obs["umap_0"]
     # adata.obs["umap_1"] = adata_train.obs["umap_1"]
     # adata.obs["tsne_0"] = adata_train.obs["tsne_0"]
