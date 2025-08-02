@@ -9,6 +9,7 @@ from spida._constants import CELL_X, CELL_Y
 from spida.pl import plot_scatter # TODO: depreceate this! 
 from spida._utilities import _region_to_donor
 from ._scatteplot import plot_categorical, plot_continuous
+from ._spatial import plot_spatial_continuous, plot_spatial_categorical
 
 
 def plot_feature_distribution(
@@ -273,9 +274,61 @@ def plot_dataset(
         save_path = Path(save_path)
     plt.rcParams["axes.facecolor"] = "white"
 
+    experiments = adata.obs['brain_region'].unique()
+    donors = adata.obs['donor'].unique()
+
+    # this part is just for now: 
+    experiment_palette = {}
+    experiment_palette['CAB'] = '#F5867F'
+    experiment_palette['CAH'] = '#AB4642'
+    experiment_palette['CAT'] = '#430300'
+    experiment_palette['PU'] = '#F98F34'
+    experiment_palette['GP'] = '#6BBC46'
+    experiment_palette['GPe'] = '#007600'
+    experiment_palette['MGM1'] = '#FF2600'
+    experiment_palette['NAC'] = '#0C4E9B'
+    experiment_palette['STH'] = '#6B98C4'
+    experiment_palette['SUBTH'] = '#6B98C4'
+
+    donor_palette = {
+        'UWA7648': '#D87C79',
+        'UCI4723': '#7A4300',
+        'UCI2424': '#D7A800',
+        'UCI5224': '#AB4CAA'
+    }
+
+    replicate_palette = {
+        "ucsd" : '#039BE5',
+        "salk" : '#FFD54F'
+    }
+    if "experiment_palette" not in adata.uns:
+        adata.uns["experiment_palette"] = experiment_palette
+    if "donor_palette" not in adata.uns:
+        adata.uns["donor_palette"] = donor_palette
+    if "replicate_palette" not in adata.uns:
+        adata.uns["replicate_palette"] = replicate_palette
+
+    if "experiment_colors" not in adata.uns:
+        cols = []
+        for exp_order in adata.obs['experiment'].cat.categories: 
+            cols.append(experiment_palette[exp_order])
+        adata.uns['experiment_colors'] = cols
+    if "donor_colors" not in adata.uns:
+        cols = []
+        for exp_order in adata.obs['donor'].cat.categories: 
+            cols.append(donor_palette[exp_order])
+        adata.uns['donor_colors'] = cols
+    if "replicate_colors" not in adata.uns:
+        cols = []
+        for exp_order in adata.obs['replicate'].cat.categories: 
+            cols.append(replicate_palette[exp_order])
+        adata.uns['replicate_colors'] = cols
+
+
+
     # plot region / donor / replicate metadata
     fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(20, 10), dpi=300)
-    plot_categorical(adata, coord_base="umap", cluster_col="region", text_anno=True, coding=True, show=False, ax=axes[0])
+    plot_categorical(adata, coord_base="umap", cluster_col="brain_region", text_anno=True, coding=True, show=False, ax=axes[0])
     axes[0].set_title(f"Region")
     plot_categorical(adata, coord_base="umap", cluster_col="donor", text_anno=False, coding=True, show=False, ax=axes[1])
     axes[1].set_title(f"Donor")
@@ -305,7 +358,7 @@ def plot_dataset(
     
     # plot umap / tsne / spatial coordinates 
     # Plot the UMAP embeddings
-    fig, axes = plt.subplots(3, 3, figsize=(20, 20), dpi=300)
+    fig, axes = plt.subplots(2, 3, figsize=(20, 20), dpi=300)
     plot_categorical(adata, coord_base="umap", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[0][0])
     axes[0][0].set_title(f"tsne - leiden Clustering")
     plot_categorical(adata, coord_base="resolvi_umap", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[0][1])
@@ -319,13 +372,6 @@ def plot_dataset(
     axes[1][1].set_title(f"tsne - RESOLVI leiden Clustering")
     plot_categorical(adata, coord_base="corr_tsne", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[1][2])
     axes[1][2].set_title(f"tsne - corrected expression leiden Clustering")
-    # Plot the spatial coordinates
-    plot_categorical(adata, coord_base="spatial", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[2][0])
-    axes[2][0].set_title(f"Leiden Clustering")
-    plot_categorical(adata, coord_base="spatial", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[2][1])
-    axes[2][1].set_title(f"RESOLVI leiden Clustering")
-    plot_categorical(adata, coord_base="spatial", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[2][2])
-    axes[2][2].set_title(f"corrected expression leiden Clustering")
     if save_path:
         fig.savefig(save_path / "categorical.png", bbox_inches="tight")
         plt.close(fig)
@@ -333,8 +379,7 @@ def plot_dataset(
         plt.show()
         plt.close(fig)
 
-    
-    if gene is None: 
+    if gene is None:
         gene = "MOBP"
     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(20, 20), dpi=300)
     axes = axes.flatten()
@@ -350,3 +395,8 @@ def plot_dataset(
     elif show:
         plt.show()
         plt.close(fig)
+
+    # Plot the spatial coordinates
+    plot_spatial_categorical(adata, experiments=experiments, donors=donors, color_key="leiden", combined_legend=True, show=False, output=save_path / "spatial_leiden" if save_path else None)
+    plot_spatial_categorical(adata, experiments=experiments, donors=donors, color_key="resolvi_leiden", combined_legend=True, show=False, output=save_path / "spatial_resolvi_leiden" if save_path else None)
+    plot_spatial_categorical(adata, experiments=experiments, donors=donors, color_key="corr_leiden", combined_legend=True, show=False, output=save_path / "spatial_corr_leiden" if save_path else None)

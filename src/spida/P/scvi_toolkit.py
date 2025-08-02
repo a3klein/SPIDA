@@ -154,6 +154,12 @@ def resolvi_cluster(
     adata.obs["background_proportion"] = adata_train.obs["background_proportion"]
     adata.layers["generated_expression"] = adata_train.layers["generated_expression"]
 
+    adata.layers['generated_expression_raw'] = adata.layers['generated_expression'].copy()
+    # standard scanpy analysis pipeline
+    # TODO: decide whether we need to change to integer counts (this are not integer counts!)
+    sc.pp.normalize_total(adata, layer="generated_expression")
+    sc.pp.log1p(adata, layer="generated_expression")
+
     return adata
 
 # CODE FROM THE RESOLVI PAPER 

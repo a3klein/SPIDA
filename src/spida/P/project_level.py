@@ -104,9 +104,10 @@ def aggregate_experiments(
             tables[table_name].obs[region_key] = (
                 tables[table_name].obs[region_key].astype("category")
             )
-            tables[table_name].obs["experiment"] = ename
+            tables[table_name].obs["brain_region"] = ename
             tables[table_name].obs["donor"] = rname
             tables[table_name].obs["replicate"] = lab_name
+            tables[table_name].obs['dataset_id'] = f"{ename}_{rname}_{lab_name}"
             # unique coordinate system for each experiment!
             for elem in [
                 images[image_name],

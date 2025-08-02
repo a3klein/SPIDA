@@ -17,6 +17,8 @@ from ._utils import (
     density_contour, despine, _make_tiny_axis_label, plot_text_legend,
     plot_color_dict_legend, plot_marker_legend, plot_cmap_legend, get_cmap
 )
+from ..utilities.sd_utils import _get_obs_or_gene
+
 from .palettes import add_color_scheme
 
 def continuous_scatter(
@@ -300,7 +302,7 @@ def continuous_scatter(
 
 	return_axes = [ax]
 
-	# make color bar
+	# make color bar # TODO: replace this with the function from ._utils
 	if colorbar and (hue is not None):
 		# small ax for colorbar
 		# default_cbar_kws=dict(loc="upper left", borderpad=0,width="3%", height="20%") #bbox_to_anchor=(1,1)
@@ -402,7 +404,6 @@ def plot_continuous(
     -------
 	"""
 	import os
-	_drop_col = False
 
 	if isinstance(adata,str): # getting adata
 		adata=ad.read_h5ad(adata,backed='r')
@@ -412,21 +413,7 @@ def plot_continuous(
 		if layer not in adata.layers:
 			raise ValueError(f"Layer {layer} not found in adata.layers, please check the layer name.")    
 		
-	# ensure cluster_by in obs
-	if color_by in adata.obs.columns: # check if color_by is in obs
-		if not pd.api.types.is_numeric_dtype(adata.obs[color_by].dtype): # make sure coord_base is numeric
-			try: 
-				adata.obs[color_by] = adata.obs[color_by].astype(float)
-			except ValueError:
-				raise ValueError(f"Column {color_by} is not numeric, please check the data type.")
-	else: 
-		_drop_col = True
-		if color_by not in adata.var_names:
-			raise ValueError(f"Color by {color_by} is not in adata.obs and is not a valid gene.")
-		if layer is None: 
-			adata.obs[color_by] = adata[:,color_by].X.toarray().flatten() 
-		else: 
-			adata.obs[color_by] = adata[:,color_by].layers[layer].toarray().flatten()
+	adata, _drop_col = _get_obs_or_gene(adata, color_by, layer) # get the column from obs or var
 		
 	# figure out cmap: 
 	if f"{color_by}_cmap" in adata.uns: # check if cmap is in uns
@@ -753,6 +740,7 @@ def categorical_scatter(
 		pass
 
 	# deal with legend
+	# TODO: replace this with ax_add_legend() from ._utils
 	if show_legend and (hue is not None):
 		n_hue = len(palette_dict)
 		ncol=1 if n_hue <= 40 else 2 if n_hue <= 100 else 3
@@ -822,6 +810,7 @@ def plot_categorical(
     marker_fontsize=4,
     marker_pad=0.1,
     linewidth=0.5,
+    ret=False,
     text_anno:bool = False,
     text_kws=None,
     **kwargs
@@ -856,6 +845,8 @@ def plot_categorical(
         Line width of the legend marker (circle or rectangle), default 0.5
     text_anon: bool
         Whether to add text annotation for each cluster, default False.
+	ret : bool 
+		Whether to return the plot and colors, default False.
     kwargs : dict
         set text_anno=None to plot clustering without text annotations,
         coding=True to plot clustering without code annotations,
@@ -939,3 +930,8 @@ def plot_categorical(
         plt.savefig(os.path.expanduser(output),bbox_inches='tight',dpi=300)
     if show:
         plt.show()
+    
+    if ret:
+        return p, colors
+    else: 
+        return None, None
