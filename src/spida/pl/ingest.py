@@ -5,8 +5,6 @@ with warnings.catch_warnings():
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
-import spatialdata_plot  # noqa: F401
-
 
 plt.rcParams["axes.facecolor"] = "black"
 
@@ -19,6 +17,8 @@ def plot_images(
     cs: str = "global",
     pdf_file: str = None,
 ):
+    import spatialdata_plot  # noqa: F401
+
     max_int = (
         sdata[IMAGE_KEY][image_scale_keys[-1]]["image"]
         .max(["x", "y"])
@@ -60,6 +60,8 @@ def plot_shapes(
     cs: str = "pixel",
     pdf_file: str = None,
 ):
+    import spatialdata_plot  # noqa: F401
+
     fig, axes = plt.subplots(1, 3, figsize=(20, 8))
 
     sdata.pl.render_shapes(
@@ -96,6 +98,8 @@ def plot_points(
     cmap: str = "tab10",
     pdf_file: str = None,
 ):
+    import spatialdata_plot  # noqa: F401
+
     fig, axes = plt.subplots(1, 3, figsize=(20, 8))
     for i in range(3):
         gene_ex = sdata[TABLE_KEY].var.index[i]
@@ -119,6 +123,8 @@ def plot_overlap(
     cs: str = "pixel",
     pdf_file: str = None,
 ):
+    import spatialdata_plot  # noqa: F401
+
     """
     Plot the overlap of shapes and points on the image.
     """
@@ -145,6 +151,7 @@ def plot_overlap(
 
 def plot_seg_load(sdata, image_key, shapes_key, cs="global", pdf_file=None):
     from ..utilities.boxes import generate_multiple_random_boxes, visualize_boxes
+    import spatialdata_plot  # noqa: F401
 
     # Subsetting for faster cropping
     sub_sdata = sdata.subset([image_key, shapes_key])
@@ -235,6 +242,7 @@ def plot_example_doublets(
     sdata, image_key, shapes_key, table_key, cs="global", pdf_file=None
 ):
     from spida.pl import plot_doublets
+    import spatialdata_plot  # noqa: F401
 
     # Subsetting for faster cropping
     sub_sdata = sdata.subset([image_key, shapes_key, table_key])

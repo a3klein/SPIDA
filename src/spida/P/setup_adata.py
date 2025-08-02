@@ -5,7 +5,9 @@ from ALLCools.clustering import tsne  # type: ignore
 
 
 # A function that moves the manifold coordinate
-def dump_embedding(adata, from_name, to_name, n_dim=2):
+def dump_embedding(adata, from_name, to_name=None, n_dim=2):
+    if to_name is None:
+        to_name = from_name
     # put manifold coordinates into adata.obs
     for i in range(n_dim):
         adata.obs[f"{to_name}_{i}"] = adata.obsm[f"X_{from_name}"][:, i]

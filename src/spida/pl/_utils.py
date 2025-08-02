@@ -5,7 +5,9 @@
 import pandas as pd
 import anndata as ad
 import numpy as np
-from matplotlib.colors import Normalize, colorConverter, TwoSlopeNorm
+from matplotlib.colors import (
+    Normalize, colorConverter, TwoSlopeNorm, Colormap
+)
 from matplotlib.lines import Line2D
 from matplotlib.legend_handler import HandlerBase
 from matplotlib.text import Text
@@ -796,3 +798,297 @@ def get_cmap(cmap):
 	if ret is None: 
 		raise ValueError(f"cmap {cmap} not found, please check the name.")
 	return ret
+
+### Added by Amit: 
+def fig_plot_marker_legend(
+	color_dict=None, ax=None, title=None, color_text=True, 
+	marker='o',kws=None,luminance=0.5
+):
+	"""
+	plot legend for different marker
+
+	Parameters
+	----------
+	D: a dict, key is categorical variable, values are marker.
+	ax: axes to plot the legend.
+	title: title of legend.
+	color_text: whether to change the color of text based on the color in D.
+	label_side: right of left.
+	kws: kws passed to plt.legend.
+
+	Returns
+	-------
+	ax.legend
+
+	"""
+	if ax is None:
+		ax = plt.gca()
+
+	lgd_kws = kws.copy() if not kws is None else {}  # bbox_to_anchor=(x,-0.05)
+	lgd_kws.setdefault("frameon", True)
+	lgd_kws.setdefault("ncol", 1)
+	lgd_kws["loc"] = "center left"
+	# lgd_kws["bbox_transform"] = ax.figure.transFigure
+	lgd_kws.setdefault("borderpad", 0.2 * mm2inch * 72)  # 0.1mm
+	# lgd_kws.setdefault("markerscale", 1)
+	lgd_kws.setdefault("handleheight", 0.5)  # font size, units is points
+	lgd_kws.setdefault("handlelength", 1)  # font size, units is points
+	lgd_kws.setdefault(
+		"borderaxespad", 0.1
+	)  # The pad between the axes and legend border, in font-size units.
+	lgd_kws.setdefault(
+		"handletextpad", 0.4 #0.2 * mm2inch * 72
+	)  # The pad between the legend handle and text, in font-size units.
+	lgd_kws.setdefault(
+		"labelspacing", 0.5
+	)  # gap height between two Patches,  0.05*mm2inch*72
+	lgd_kws.setdefault("columnspacing", 0.5)
+	# lgd_kws.setdefault("bbox_to_anchor", (0, 1))
+	lgd_kws["bbox_to_anchor"] = (0.5, 0.5)
+	lgd_kws.setdefault("title", title)
+	lgd_kws.setdefault("markerfirst", True)
+
+	ms = lgd_kws.pop("markersize", 10)
+	L = [
+		Line2D(
+			[0],
+			[0],
+			color=color,
+			marker=marker,
+			linestyle="None",
+			markersize=ms,
+			label=l,
+		)
+		for l,color in color_dict.items()
+	]
+	L = ax.legend(handles=L, **lgd_kws)
+	ax.figure.canvas.draw()
+	L._legend_box.align = 'center'
+	L.get_title().set_ha('center')
+	if color_text:
+		for text in L.get_texts():
+			try:
+				lum = _calculate_luminance(color_dict[text.get_text()])
+				if luminance is None:
+					text_color = "black"
+				else:
+					text_color = "black" if lum > luminance else color_dict[text.get_text()]
+				text.set_color(text_color)
+			except:
+				pass
+	ax.grid(False)
+	ax.axis("off")
+	return L
+
+def add_legend_axis(
+    fig,
+    legend_width=3, 
+    legend_height=0.6,
+    legend_ystart=0.2,
+    space=0
+): 
+    """ 
+	Add a legend axis to the right of the current axes in a figure.
+
+	Parameters
+	----------
+	fig : matplotlib figure
+		The figure to which the legend axis will be added.
+	legend_width : float, optional
+		The width of the legend axis in mm, by default 3 mm.
+	legend_height : float, optional		
+		The height of the legend axis in fraction of the figure height, by default 0.6.
+	legend_ystart : float, optional
+		The starting y position of the legend axis in fraction of the figure height, by default 0.2.
+	space : float, optional
+		The space in mm between the rightmost axis and the legend axis, by default 0.0 mm.
+	"""
+
+    ax = fig.get_axes()[0]
+    mm2inch = 1 / 25.4
+    
+    legend_width = (legend_width * mm2inch * fig.dpi / fig.get_window_extent().width)  # mm to px to fraction
+    pad = (space + ax.yaxis.labelpad * 1.2 * fig.dpi / 72) / fig.get_window_extent().width # labelpad unit is points
+    # Iterate through all axes to find the rightmost position
+    rightmost_x = 0
+    for _ax in fig.get_axes():
+        bbox = _ax.get_position()
+        rightmost_x = max(rightmost_x, bbox.x1)
+    left = rightmost_x + pad
+    # Creating the new legend
+    ax_legend = fig.add_axes(
+        [left, legend_ystart, legend_width, legend_height]
+    )  # left, bottom, width, height
+    return ax_legend
+
+def fig_make_legend(
+    fig,
+    _data, 
+    hue,
+    palette_dict,
+    alpha=0.7,
+    code2label=None, 
+    id_marker=True, 
+    labelsize=4,
+    legend_color_text=True,
+    legend_kws=None,
+    legend_height=0.6,
+    legend_width=3, 
+    legend_ystart=0.2,
+    luminance=None,	
+    marker_pad=0.1,
+    marker_fontsize=4,
+    rectangle_marker=False,     
+    space=0
+):
+    """
+    Adding legend to the axis.
+
+    Parameters
+    ----------
+    fig
+       figure to add legend.
+    _data
+        data to plot legend.
+    hue
+        hue name for legend.
+    palette_dict
+        palette dictionary for hue.
+    alpha
+        alpha value for legend (default 0.7).
+    code2label
+        dictionary mapping code to label for legend text (default None).
+    id_marker
+        whether to use id marker for legend (default True).
+    labelsize
+        label size for legend text (default 4).
+    legend_color_text
+        whether to use color text for legend (default True).
+    legend_kws
+		kwargs for legend (default None).
+	legend_height
+		height of legend in fraction of figure height (default 0.6).
+	legend_width
+		width of legend in mm (default 3).
+	legend_ystart
+		starting y position of legend in fraction of figure height (default 0.2).
+    luminance
+        luminance value for legend (default None).
+    marker_pad
+        padding between markers in legend (default 0.1).
+    marker_fontsize
+        font size for markers in legend (default 4).
+    rectangle_marker
+        whether to use rectangle marker for legend (default False).
+	space
+		space in mm between the rightmost axis and the legend axis (default 0).
+    """
+    
+    
+    n_hue = len(palette_dict)
+    ncol=1 if n_hue <= 40 else 2 if n_hue <= 100 else 3
+    if legend_kws is None:
+        legend_kws = {}
+    default_lgd_kws = dict(
+        ncol=ncol,fontsize=labelsize,
+        bbox_to_anchor=(1, 1),loc="upper left",
+        markersize=labelsize #legend_kws["fontsize"],
+    )
+    for k in default_lgd_kws:
+        legend_kws.setdefault(k, default_lgd_kws[k])
+
+    exist_hues = _data["hue"].unique()
+    color_dict={hue_name: color for hue_name, color in palette_dict.items() if hue_name in exist_hues}
+    
+    ax_legend = add_legend_axis(
+		fig=fig, legend_width=legend_width, legend_height=legend_height, legend_ystart=legend_ystart, space=space
+	)
+    if code2label is not None and id_marker:
+        boxstyle='Circle' if not rectangle_marker else 'Round'
+        plot_text_legend(color_dict, code2label, ax_legend, title=hue, 
+                color_text=legend_color_text, boxstyle=boxstyle,marker_pad=marker_pad,
+                legend_kws=legend_kws,marker_fontsize=marker_fontsize,
+                alpha=alpha,luminance=luminance)
+    else:
+        if rectangle_marker: 
+			## plot Patch legend (rectangle marker)
+            plot_color_dict_legend(
+                D=color_dict, ax=ax_legend, title=hue, color_text=legend_color_text, 
+                kws=legend_kws,luminance=luminance
+            )
+        else:
+            # plot marker legend (for example, circle marker)
+            fig_plot_marker_legend(
+                color_dict=color_dict, ax=ax_legend, title=hue, color_text=legend_color_text, 
+                marker='o',kws=legend_kws,luminance=luminance
+            )
+
+
+# Colorbar for continuous scatter plot
+def fig_make_colorbar(
+    fig,
+    vmin : float,
+    vmax : float,
+    label : str,
+    cmap : str | Colormap = 'Wistia',
+    cbar_width=3,
+    legend_ystart=0.2, 
+    legend_height=0.6,
+    labelsize=6,
+    linewidth=0.5,
+    ticklabel_size=4,
+    space=0,
+    **cbar_kws
+): 
+    """ 
+	Plot the colorbar for a given axis / figure 
+	
+	Parameters
+    ----------
+    fig
+        figure to add legend.
+    vmin
+        minimum value for colorbar.
+    vmax
+        maximum value for colorbar.
+	label
+		label for colorbar.
+    cmap
+        colormap to use for colorbar (default 'Wistia').
+	cbar_width
+		width of colorbar in mm (default 3).    
+	legend_height
+		height of legend in fraction of figure height (default 0.6).
+	legend_width
+		width of legend in mm (default 3).
+	legend_ystart
+		starting y position of legend in fraction of figure height (default 0.2).
+	linewidth
+		linewidth for colorbar ticks (default 0.5).
+	ticklabel_size
+		size of tick labels for colorbar (default 4).
+	space
+		space in mm between the rightmost axis and the legend axis (default 0).
+	cbar_kws
+		kwargs for colorbar (default None).
+    """
+    ax = fig.get_axes()[0]
+    
+    # make color bar
+    # default_cbar_kws=dict(loc="upper left", borderpad=0,width="3%", height="20%") #bbox_to_anchor=(1,1)
+    if cbar_kws is None:
+        cbar_kws={}
+    
+    ax_legend = add_legend_axis(
+		fig=fig, legend_width=cbar_width, legend_height=legend_height, legend_ystart=legend_ystart, space=space
+	)
+    cbar_kws['vmin']=vmin
+    cbar_kws['vmax']=vmax
+    plot_cmap_legend(
+        ax=ax,
+        cax=ax_legend,
+        cmap=cmap,
+        label=label,
+        kws=cbar_kws.copy(),labelsize=labelsize, 
+        linewidth=linewidth,ticklabel_size=ticklabel_size,
+        )

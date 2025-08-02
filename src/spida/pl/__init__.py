@@ -15,4 +15,5 @@ from .P_plots import (
     plot_dataset
 )
 from ._scatteplot import plot_categorical, plot_continuous
+from ._spatial import plot_spatial_continuous, plot_spatial_categorical
 from .qc_plots import plot_violin_QC

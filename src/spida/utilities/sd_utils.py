@@ -246,3 +246,30 @@ def _assign_new_table(
         raise ValueError(
             f"Element {full_name} already exists in the spatialdata object. Skipping write operation."
         )
+
+
+def _get_obs_or_gene(adata, col, layer): 
+    """
+    Helper function to get the column from obs or var.
+    """
+    import pandas.api as papi
+    # ensure cluster_by in obs
+    if col in adata.obs.columns:  # check if col is in obs
+        _drop_col = False
+        if not papi.types.is_numeric_dtype(adata.obs[col].dtype): # make sure coord_base is numeric
+            try: 
+                adata.obs[col] = adata.obs[col].astype(float)
+            except ValueError:
+                raise ValueError(f"Column {col} is not numeric, please check the data type.")
+    elif col in adata.var_names:  # check if col is in var_names
+        _drop_col = True
+        if col not in adata.var_names:
+            raise ValueError(f"Color by {col} is not in adata.obs and is not a valid gene.")
+        if layer is None: 
+            adata.obs[col] = adata[:,col].X.toarray().flatten() 
+        else: 
+            adata.obs[col] = adata[:,col].layers[layer].toarray().flatten()
+    else:
+        raise ValueError(f"Column {col} not found in adata.obs or adata.var_names.")
+
+    return adata, _drop_col
