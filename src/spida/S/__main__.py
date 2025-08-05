@@ -110,6 +110,10 @@ def ingest_region_register_subparser(subparser):
     parser.add_argument(
         "--plot", action="store_true", help="Plot results after ingestion"
     )
+    parser.add_argument(
+        "--root_path", type=parse_path, default=None,
+        help="Root path for the processed data (default: None, uses PROCESSED_ROOT_PATH in .env)"
+    )
     return parser
 
 
@@ -145,6 +149,10 @@ def ingest_all_register_subparser(subparser):
     )
     parser.add_argument(
         "--plot", action="store_true", help="Plot results after ingestion"
+    )
+    parser.add_argument(
+        "--root_path", type=parse_path, default=None,
+        help="Root path for the processed data (default: None, uses PROCESSED_ROOT_PATH in .env)"
     )
     return parser
 

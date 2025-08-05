@@ -419,6 +419,10 @@ def resolvi_cluster_region(
     image_path: Path = None,
     model_save_path : Path = None,
     trained : bool = False, 
+    max_epochs: int = 100,
+    layer: str = "raw",
+    batch_key: str = None,
+    categorical_covariates: list = None,
     **model_kwargs,
 ):
     """
@@ -452,19 +456,20 @@ def resolvi_cluster_region(
     )  # Use the filtered data if available
 
     logger.info("arguments passing into resolvi")
-    logger.info(f"max_epochs: {model_kwargs.get('max_epochs', 200)}")
-    logger.info(f"layer: {model_kwargs.get('layer', 'raw')}")
-    logger.info(f"batch_key: {model_kwargs.get('batch_key', 'donor')}")
-    logger.info(f"categorical_covariates: {model_kwargs.get('categorical_covariates', None)}")
+    logger.info(f"max_epochs: {max_epochs}")
+    logger.info(f"layer: {layer}")
+    logger.info(f"batch_key: {batch_key}")
+    logger.info(f"categorical_covariates: {categorical_covariates}")
     logger.info(f"model_save_path: {model_save_path}")
     logger.info(f"model_save_ext: {f'{exp_name}_{reg_name}_{prefix_name}'}")
     
     # Perform RESOLVI clustering
     adata = resolvi_cluster(
         adata,
-        layer=model_kwargs.get("layer", "raw"),
-        batch_key=model_kwargs.get("batch_key", "donor"),
-        categorical_covariates=model_kwargs.get("categorical_covariates", None),
+        layer=layer,
+        batch_key=batch_key,
+        max_epochs=max_epochs,
+        categorical_covariates=categorical_covariates,
         model_save_path=model_save_path,
         model_save_ext=f"{exp_name}_{reg_name}_{prefix_name}",
         trained=trained,
@@ -623,9 +628,16 @@ def setup_dataset(
     if anndata_path is None: 
         anndata_path = Path(os.getenv("ANNDATA_STORE_PATH"))
     anndata_path = anndata_path / dataset_name
-    adata = ad.read_h5ad(anndata_path)    
+    try: 
+        adata = ad.read_h5ad(anndata_path.with_suffix(".h5ad"))
+    except FileNotFoundError:
+        logger.warning(f"Anndata file not found at {anndata_path}. Please check the path.")
+        logger.info("trying to read from file with no suffix")
+        adata = ad.read_h5ad(anndata_path)
+    logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
+
     adata = combined_setup(adata, scale=scale)
-    adata.write_h5ad(anndata_path)
+    adata.write_h5ad(anndata_path.with_suffix(".h5ad"))
     logger.info(f"DONE SETUP ON {dataset_name}")
 
 def resolvi_dataset(
@@ -634,6 +646,10 @@ def resolvi_dataset(
     model_save_path:Path = None, 
     trained:bool = False,
     image_path:Path = None,
+    max_epochs:int = 100,
+    layer:str = "counts", 
+    batch_key:str = "dataset_id",
+    categorical_covariates:list = ['donor', 'brain_region'],
     **model_kwargs
     ): 
     """
@@ -641,7 +657,6 @@ def resolvi_dataset(
     """
     from spida.P.scvi_toolkit import resolvi_cluster
     from spida.P.setup_adata import _calc_embeddings
-    from spida.pl import plot_dataset
     import anndata as ad
 
     model_kwargs = model_kwargs['model_kwargs']
@@ -650,14 +665,21 @@ def resolvi_dataset(
     if anndata_path is None: 
         anndata_path = Path(os.getenv("ANNDATA_STORE_PATH"))
     anndata_path = anndata_path / dataset_name
-    adata = ad.read_h5ad(anndata_path)    
+    try: 
+        adata = ad.read_h5ad(anndata_path.with_suffix(".h5ad"))
+    except FileNotFoundError:
+        logger.warning(f"Anndata file not found at {anndata_path}. Please check the path.")
+        logger.info("trying to read from file with no suffix")
+        adata = ad.read_h5ad(anndata_path)
+    logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
     
     
     adata = resolvi_cluster(
         adata,
-        layer=model_kwargs.get("layer", "counts"),
-        batch_key=model_kwargs.get("batch_key", "dataset_id"),
-        categorical_covariates=model_kwargs.get("categorical_covariates", None),
+        layer=layer,
+        batch_key=batch_key,
+        categorical_covariates=categorical_covariates,
+        max_epochs=max_epochs,
         model_save_path=model_save_path,
         model_save_ext=dataset_name,
         trained=trained,
@@ -672,19 +694,56 @@ def resolvi_dataset(
     logger.info("embedding generated expression")
     _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
 
-    adata.write_h5ad(anndata_path)
+    adata.write_h5ad(anndata_path.with_suffix(".h5ad"))
     logger.info(f"DONE RESOLVI ON {dataset_name}")
 
     logger.info("PLOTTING DATASET")
+    plot_dataset_setup(dataset_name, image_path=image_path, show=False)
     
+    return 0
+
+def plot_dataset_setup(
+    dataset_name : str,
+    anndata_path: str | Path = None,
+    image_path: str | Path | None = None,
+    show: bool = False
+):
+    """
+    Plot the dataset results for a specific region in an experiment.
+    """
+    from spida.pl import plot_dataset
+
+    adata = _read_adata(dataset_name, anndata_path=anndata_path)
+
     if image_path is None:
         image_store = os.getenv(
-            "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
+            "IMAGE_STORE_PATH",
         )
         image_path = Path(
             f"{image_store}/{dataset_name}"
         )
         image_path.mkdir(parents=True, exist_ok=True)
 
-    plot_dataset(adata, save_path=image_path, show=False)
-    return 0
+    plot_dataset(adata, save_path=image_path, show=show)
+
+
+def _read_adata(
+    dataset_name: str | Path,
+    anndata_path: str | Path = None
+): 
+    """ handle adata reading with different suffixes and paths """
+    import anndata as ad
+
+    if anndata_path is None: 
+        anndata_path = Path(os.getenv("ANNDATA_STORE_PATH"))
+    path = anndata_path / dataset_name
+    try: 
+        adata = ad.read_h5ad(path.with_suffix(".h5ad"))
+    except FileNotFoundError:
+        logger.warning(f"Anndata file not found at {path}. Please check the path.")
+        logger.info("trying to read from file with no suffix")
+        adata = ad.read_h5ad(path)
+    logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
+    return adata
+
+

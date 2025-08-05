@@ -10,7 +10,7 @@ from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_s
 
 import os
 import glob
-import pathlib
+from pathlib import Path
 import warnings
 import logging
 
@@ -35,6 +35,7 @@ def ingest_region(
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
+    root_path : str | Path | None = None,
     **kwargs,
 ):
     """
@@ -52,10 +53,9 @@ def ingest_region(
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
 
     if type == "merscope" and source == "machine":
-        root_path = os.getenv(
-            "PROCESSED_ROOT_PATH", "/ceph/cephatlas/merscope_data/processed"
-        )
-        processed_path = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+        if root_path is None:
+            root_path = os.getenv("PROCESSED_ROOT_PATH")
+        processed_path = os.getenv("ZARR_STORAGE_PATH")
         input_path = f"{root_path}/{exp_name}/out/{reg_name}"
         zarr_path = f"{processed_path}/{exp_name}/{reg_name}"
 
@@ -72,11 +72,9 @@ def ingest_region(
 
         logging.info(sdata.tables.keys())
         if plot:
-            image_path = os.getenv(
-                "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
-            )
+            image_path = os.getenv("IMAGE_STORE_PATH")
             image_path = f"{image_path}/{exp_name}/default/{reg_name}/pixi-ing.pdf"
-            pathlib.Path(image_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(image_path).parent.mkdir(parents=True, exist_ok=True)
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 with PdfPages(image_path) as pdf:
@@ -121,6 +119,7 @@ def ingest_all(
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
+    root_path: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -136,9 +135,8 @@ def ingest_all(
     logger.info("INGESTING ALL REGIONS; EXPERIMENT %s" % (exp_name))
 
     if type == "merscope" and source == "machine":
-        root_path = os.getenv(
-            "PROCESSED_ROOT_PATH", "/ceph/cephatlas/merscope_data/processed"
-        )
+        if root_path is None:
+            root_path = os.getenv("PROCESSED_ROOT_PATH")
         input_path = f"{root_path}/{exp_name}/out"
         regions = glob.glob(f"{input_path}/region_*")
         for reg in regions:
@@ -218,7 +216,7 @@ def load_segmentation_region(
             "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
         )
         image_path = f"{image_root}/{exp_name}/{prefix_name}/{reg_name}/pixi-load.pdf"
-        pathlib.Path(image_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(image_path).parent.mkdir(parents=True, exist_ok=True)
 
         # plot
         with warnings.catch_warnings():
@@ -304,9 +302,7 @@ def load_deconvolution_region(
     )
 
     if image_dir is None:
-        image_dir = os.getenv(
-            "PROCESSED_ROOT_PATH", "/ceph/cephatlas/aklein/bican/images"
-        )
+        image_dir = os.getenv("PROCESSED_ROOT_PATH")
     image_dir = f"{image_dir}/{exp_name}/out/{reg_name}/images"
     logger.info(f"Loading deconvolution images from {image_dir}")
 
@@ -327,7 +323,7 @@ def load_deconvolution_region(
             "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
         )
         image_path = f"{image_path}/{exp_name}/default/{reg_name}/pixi-decon.pdf"
-        pathlib.Path(image_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(image_path).parent.mkdir(parents=True, exist_ok=True)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             with PdfPages(image_path) as pdf:

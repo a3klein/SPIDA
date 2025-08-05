@@ -196,11 +196,11 @@ def plot_resolvi(
     # Plot the UMAP embeddings
     fig, axes = plt.subplots(3, 3, figsize=(20, 20), dpi=300)
     plot_categorical(adata, coord_base="umap", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[0][0])
-    axes[0][0].set_title(f"tsne - {donor} - leiden Clustering")
+    axes[0][0].set_title(f"umap - {donor} - leiden Clustering")
     plot_categorical(adata, coord_base="resolvi_umap", cluster_col="resolvi_leiden", text_anno=False, coding=True, show=False, ax=axes[0][1])
-    axes[0][1].set_title(f"tsne - {donor} - RESOLVI leiden Clustering")
+    axes[0][1].set_title(f"umap - {donor} - RESOLVI leiden Clustering")
     plot_categorical(adata, coord_base="corr_umap", cluster_col="corr_leiden", text_anno=False, coding=True, show=False, ax=axes[0][2])
-    axes[0][2].set_title(f"tsne - {donor} - corrected expression leiden Clustering")
+    axes[0][2].set_title(f"umap - {donor} - corrected expression leiden Clustering")
     # Plot the TSNE embeddings
     plot_categorical(adata, coord_base="tsne", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[1][0])
     axes[1][0].set_title(f"tsne - {donor} - leiden Clustering")
@@ -257,6 +257,7 @@ def plot_doublets(adata, save_file, ax=None):
     else:
         return ax
 
+# TODO: Reconcile with salk-ucsd differences
 def plot_dataset(
     adata,
     save_path:str|Path=None,
@@ -276,6 +277,7 @@ def plot_dataset(
 
     experiments = adata.obs['brain_region'].unique()
     donors = adata.obs['donor'].unique()
+    replicates = adata.obs['replicate'].unique()
 
     # this part is just for now: 
     experiment_palette = {}
@@ -308,11 +310,11 @@ def plot_dataset(
     if "replicate_palette" not in adata.uns:
         adata.uns["replicate_palette"] = replicate_palette
 
-    if "experiment_colors" not in adata.uns:
+    if "brain_region_colors" not in adata.uns:
         cols = []
-        for exp_order in adata.obs['experiment'].cat.categories: 
+        for exp_order in adata.obs['brain_region'].cat.categories: 
             cols.append(experiment_palette[exp_order])
-        adata.uns['experiment_colors'] = cols
+        adata.uns['brain_region_colors'] = cols
     if "donor_colors" not in adata.uns:
         cols = []
         for exp_order in adata.obs['donor'].cat.categories: 
@@ -329,7 +331,7 @@ def plot_dataset(
     # plot region / donor / replicate metadata
     fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(20, 10), dpi=300)
     plot_categorical(adata, coord_base="umap", cluster_col="brain_region", text_anno=True, coding=True, show=False, ax=axes[0])
-    axes[0].set_title(f"Region")
+    axes[0].set_title(f"Brain Region")
     plot_categorical(adata, coord_base="umap", cluster_col="donor", text_anno=False, coding=True, show=False, ax=axes[1])
     axes[1].set_title(f"Donor")
     plot_categorical(adata, coord_base="umap", cluster_col="replicate", text_anno=False, coding=True, show=False, ax=axes[2])
@@ -342,13 +344,26 @@ def plot_dataset(
         plt.close(fig)
     
     # plot tsne metadata
-    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(20, 10), dpi=300)
-    plot_categorical(adata, coord_base="tsne", cluster_col="region", text_anno=True, coding=True, show=False, ax=axes[0])
-    axes[0].set_title(f"Region")
+    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(20, 20), dpi=300)
+    axes = axes.flatten()
+    plot_categorical(adata, coord_base="tsne", cluster_col="brain_region", text_anno=True, coding=True, show=False, ax=axes[0])
+    axes[0].set_title(f"Brain Region")
     plot_categorical(adata, coord_base="tsne", cluster_col="donor", text_anno=False, coding=True, show=False, ax=axes[1])
     axes[1].set_title(f"Donor")
     plot_categorical(adata, coord_base="tsne", cluster_col="replicate", text_anno=False, coding=True, show=False, ax=axes[2])
     axes[2].set_title(f"Replicate")
+    plot_categorical(adata, coord_base="resolvi_tsne", cluster_col="brain_region", text_anno=True, coding=True, show=False, ax=axes[3])
+    axes[3].set_title(f"Brain Region (resolvi_tsne)")
+    plot_categorical(adata, coord_base="resolvi_tsne", cluster_col="donor", text_anno=False, coding=True, show=False, ax=axes[4])
+    axes[4].set_title(f"Donor (resolvi_tsne)")
+    plot_categorical(adata, coord_base="resolvi_tsne", cluster_col="replicate", text_anno=False, coding=True, show=False, ax=axes[5])
+    axes[5].set_title(f"Replicate (resolvi_tsne)")
+    plot_categorical(adata, coord_base="corr_tsne", cluster_col="brain_region", text_anno=True, coding=True, show=False, ax=axes[6])
+    axes[6].set_title(f"Brain Region (corrected expression tsne)")
+    plot_categorical(adata, coord_base="corr_tsne", cluster_col="donor", text_anno=False, coding=True, show=False, ax=axes[7])
+    axes[7].set_title(f"Donor (corrected expression tsne)")
+    plot_categorical(adata, coord_base="corr_tsne", cluster_col="replicate", text_anno=False, coding=True, show=False, ax=axes[8])
+    axes[8].set_title(f"Replicate (corrected expression tsne)")
     if save_path:
         fig.savefig(save_path / "tsne_meta.png", bbox_inches="tight")
         plt.close(fig)
@@ -386,9 +401,9 @@ def plot_dataset(
     plot_continuous(adata, coord_base="tsne", color_by=gene, layer="generated_expression", ax=axes[0], show=False, title=f"tsne - {gene} - generated expression")
     plot_continuous(adata, coord_base="umap", color_by=gene, layer="generated_expression", ax=axes[1], show=False, title=f"umap - {gene} - generated expression")
     plot_continuous(adata, coord_base="spatial", color_by=gene, layer="generated_expression", ax=axes[2], show=False, title=f"spatial - {gene} - generated expression")
-    plot_continuous(adata, coord_base="tsne", color_by=gene, layer="raw", ax=axes[3], show=False, title=f"tsne - {gene} - raw expression")
-    plot_continuous(adata, coord_base="umap", color_by=gene, layer="raw", ax=axes[4], show=False, title=f"umap - {gene} - raw expression")
-    plot_continuous(adata, coord_base="spatial", color_by=gene, layer="raw", ax=axes[5], show=False, title=f"spatial - {gene} - raw expression")
+    plot_continuous(adata, coord_base="tsne", color_by=gene, layer="counts", ax=axes[3], show=False, title=f"tsne - {gene} - raw expression")
+    plot_continuous(adata, coord_base="umap", color_by=gene, layer="counts", ax=axes[4], show=False, title=f"umap - {gene} - raw expression")
+    plot_continuous(adata, coord_base="spatial", color_by=gene, layer="counts", ax=axes[5], show=False, title=f"spatial - {gene} - raw expression")
     if save_path:
         fig.savefig(save_path / "continuous.png", bbox_inches="tight")
         plt.close(fig)
@@ -397,6 +412,12 @@ def plot_dataset(
         plt.close(fig)
 
     # Plot the spatial coordinates
-    plot_spatial_categorical(adata, experiments=experiments, donors=donors, color_key="leiden", combined_legend=True, show=False, output=save_path / "spatial_leiden" if save_path else None)
-    plot_spatial_categorical(adata, experiments=experiments, donors=donors, color_key="resolvi_leiden", combined_legend=True, show=False, output=save_path / "spatial_resolvi_leiden" if save_path else None)
-    plot_spatial_categorical(adata, experiments=experiments, donors=donors, color_key="corr_leiden", combined_legend=True, show=False, output=save_path / "spatial_corr_leiden" if save_path else None)
+    plot_spatial_categorical(adata, experiments=experiments, donors=donors, replicates=replicates, 
+                             color_key="leiden", combined_legend=True,
+                             show=False, output=save_path / "spatial_leiden" if save_path else None)
+    plot_spatial_categorical(adata, experiments=experiments, donors=donors, replicates=replicates, 
+                             color_key="resolvi_leiden", combined_legend=True,
+                             show=False, output=save_path / "spatial_resolvi_leiden" if save_path else None)
+    plot_spatial_categorical(adata, experiments=experiments, donors=donors, replicates=replicates, 
+                             color_key="corr_leiden", combined_legend=True,
+                             show=False, output=save_path / "spatial_corr_leiden" if save_path else None)

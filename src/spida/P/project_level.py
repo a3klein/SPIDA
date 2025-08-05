@@ -17,6 +17,7 @@ from spida._constants import (
     rename_reg_salk,
     rename_exp_ucsd,
     rename_reg_ucsd,
+    ren_to_exp_map,
 )
 
 logger = logging.getLogger(__package__)
@@ -70,14 +71,14 @@ def aggregate_experiments(
         )  # getting the shorthand experiment name
         if not experiment.is_dir():  # processing the experiment
             continue
-        print(f"Processing {exp_name}...")
+        logger.info(f"Processing {exp_name}...")
         # for each region in the experiment
         for region in experiment.iterdir():
             region_name = region.name  # get the full region name
             rname = region_rename_func(region_name)  # get the shorthand region name
             if not region.is_dir():  # processing the region
                 continue
-            print(f"  Processing {region_name}...")
+            logger.info(f"  Processing {region_name}...")
             # Generate keys for the current region
             KEYS = _gen_keys(prefix_name, exp_name, region_name)
             # Load the spatial data for the current region
@@ -104,7 +105,12 @@ def aggregate_experiments(
             tables[table_name].obs[region_key] = (
                 tables[table_name].obs[region_key].astype("category")
             )
-            tables[table_name].obs["brain_region"] = ename
+            
+            if lab_name == "salk":
+                tables[table_name].obs["brain_region"] = ename
+            elif lab_name == "ucsd": # converting experiment number to region name
+                tables[table_name].obs["ename"] = ename
+                tables[table_name].obs["brain_region"] = ren_to_exp_map.get(ename, ename)
             tables[table_name].obs["donor"] = rname
             tables[table_name].obs["replicate"] = lab_name
             tables[table_name].obs['dataset_id'] = f"{ename}_{rname}_{lab_name}"

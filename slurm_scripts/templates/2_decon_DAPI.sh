@@ -30,9 +30,9 @@ echo "Running whole image deconvolution - DAPI - {REG_N} - {EXP_N}"
 
 pixi run -e preprocessing \
     python -m spida.S decon_image \
-    -i /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/out/{REGION}/images \
-    --data_org_path /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/raw/dataorganization.csv \
-    -o /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/analysis/{REGION}/tile_images \
+    -i {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
+    --data_org_path {ROOT_PATH}/{EXPERIMENT}/raw/dataorganization.csv \
+    -o {ROOT_PATH}/{EXPERIMENT}/analysis/{REGION}/tile_images \
     --channels DAPI \
     -ts 2960 \
     --overlap 400 \
