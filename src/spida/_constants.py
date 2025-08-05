@@ -99,3 +99,14 @@ def rename_exp_ucsd(x):
 def rename_reg_ucsd(x):
     reg_n = x.split("_")[1].split("Q0")[0]
     return reg_n
+
+ren_to_exp_map = {
+    "Ren35": "CAH",
+    "Ren36": "PU",
+    "Ren37": "GP",
+    "Ren38": "CAB",
+    "Ren39": "MGM1",
+    "Ren40": "NAC",
+    "Ren41": "SUBTH",
+    "Ren42": "CAT",
+}

@@ -24,5 +24,4 @@ pixi run -e preprocessing \
     python -m spida.S ingest-region \
     {EXPERIMENT} \
     {REGION} \
-    --root_path {ROOT_PATH} \
     --plot

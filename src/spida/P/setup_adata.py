@@ -81,6 +81,7 @@ def _calc_embeddings(
     layer : str | None = None,
     use_rep : str | None = None, 
     key_added : str = "X_",
+    leiden_res : int = 0.7
 ): 
     """ Calculate the UMAP and tSNE embeddings for the AnnData object and given layer"""
     if (use_rep is not None) and (layer is not None): 
@@ -110,7 +111,8 @@ def _calc_embeddings(
     dump_embedding(adata, from_name=f"{key_added}tsne", to_name=f"{key_added}tsne")
     
     # Clustering using leiden
-    sc.tl.leiden(adata, flavor="igraph", n_iterations=2, key_added=f"{key_added}leiden")
+    sc.tl.leiden(adata, flavor="igraph", n_iterations=2, key_added=f"{key_added}leiden",
+                 resolution=leiden_res)
 
     return adata
     
@@ -123,10 +125,15 @@ def combined_setup(
     Setup the AnnData object for the combined datasets. 
     """
     import scipy.sparse as sp
-    adata.X = adata.layers['raw'].copy()
+    
+    if "raw" in adata.layers:
+        adata.X = adata.layers['raw'].copy()
+        del adata.layers['raw']  # remove raw layer to save memory
 
-    adata.layers["counts"] = sp.csr_matrix(adata.X.copy())
-    adata.X = adata.layers['counts'].copy()
+        adata.layers["counts"] = sp.csr_matrix(adata.X.copy())
+        adata.X = adata.layers['counts'].copy()
+    else: 
+        adata.X = adata.layers['counts'].copy()
 
     sc.pp.normalize_total(adata)
     sc.pp.log1p(adata)
@@ -142,8 +149,8 @@ def combined_setup(
     sc.tl.leiden(adata, resolution=0.8, random_state=13, flavor="igraph", n_iterations=2)
 
     # manifold projections:
-    sc.tl.umap(adata)
-    dump_embedding(adata, "umap")
+    dump_embedding(adata, "umap", "base_umap")
+    adata.obsm["X_base_umap"] = adata.obsm["X_umap"].copy()
 
     tsne(
         adata,
@@ -153,7 +160,8 @@ def combined_setup(
         perplexity=50,
         n_jobs=-1,
     )
-    dump_embedding(adata, "tsne")
+    dump_embedding(adata, "tsne", "base_tsne")
+    adata.obsm["X_base_tsne"] = adata.obsm["X_tsne"].copy()
 
     return adata
 

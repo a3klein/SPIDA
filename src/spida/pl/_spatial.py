@@ -38,26 +38,26 @@ def _determine_layout(
     if num_repl > 1: 
         num_cols = num_repl
         if num_donors > 1: 
-            name_order = {0 : "experiment", 1 : "donor", 2 : "replicate"}
+            name_order = {0 : "brain_region", 1 : "donor", 2 : "replicate"}
             data_order = {0 : experiments, 1 : donors, 2 : replicates}
         else: 
             if num_experiments > 1:
-                name_order = {0 : "donor", 1 : "experiment", 2 : "replicate"}
+                name_order = {0 : "donor", 1 : "brain_region", 2 : "replicate"}
                 data_order = {0 : donors, 1 : experiments, 2 : replicates}
                 
             else:
-                name_order = {0 : "experiment", 1 : "donor", 2 : "replicate"}
+                name_order = {0 : "brain_region", 1 : "donor", 2 : "replicate"}
                 data_order = {0 : experiments, 1 : donors, 2 : replicates}
     else: 
         if num_donors > 1: 
-            name_order = {0 : "replicate", 1 : "experiment", 2 : "donor"}
+            name_order = {0 : "replicate", 1 : "brain_region", 2 : "donor"}
             data_order = {0 : replicates, 1 : experiments, 2 : donors}
         else:
             if num_experiments > 1:
-                name_order = {0 : "replicate", 1 : "donor", 2 : "experiment"}
+                name_order = {0 : "replicate", 1 : "donor", 2 : "brain_region"}
                 data_order = {0 : replicates, 1 : donors, 2 : experiments}
             else:
-                name_order = {0 : "replicate", 1 : "donor", 2 : "experiment"}
+                name_order = {0 : "replicate", 1 : "donor", 2 : "brain_region"}
                 data_order = {0 : replicates, 1 : donors, 2 : experiments}
 
     return name_order, data_order

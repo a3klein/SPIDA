@@ -27,8 +27,8 @@ pixi run -e preprocessing \
     proseg \
     {EXPERIMENT} \
     {REGION} \
-    --input_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose/ \
-    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM \
+    --input_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose/ \
+    --output_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
     --kwargs \
     detect-layers=True \
     voxel-layers=3 \
@@ -43,7 +43,7 @@ pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
     --type proseg \
     --prefix_name proseg_SAM \
     --plot
@@ -56,7 +56,7 @@ pixi run -e preprocessing \
     --seed_prefix_name cellpose_SAM \
     --prefix_name proseg_SAM \
     --out_prefix_name proseg_aligned \
-    --seg_dir {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM
+    --seg_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM
 
 # # Fixing Loading proseg_aligned of there was an error in the above script
 # This loading function is used after re-running transcript assignment on the proseg shapes
@@ -64,7 +64,7 @@ pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
     --plot \
     --type vpt \
     --prefix_name proseg_aligned \

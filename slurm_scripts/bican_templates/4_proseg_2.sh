@@ -27,8 +27,8 @@ pixi run -e preprocessing \
     proseg \
     {EXPERIMENT} \
     {REGION} \
-    --input_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose/ \
-    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM \
+    --input_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose/ \
+    --output_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
     --kwargs \
     detect-layers=True \
     voxel-layers=3 \
@@ -43,7 +43,7 @@ pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
     --type proseg \
     --prefix_name proseg_SAM \
     --plot
@@ -56,28 +56,28 @@ pixi run -e preprocessing \
     --seed_prefix_name cellpose_SAM \
     --prefix_name proseg_SAM \
     --out_prefix_name proseg_aligned \
-    --seg_dir {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM
+    --seg_dir /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM
 
 # # Fixing Loading proseg_aligned of there was an error in the above script
 # This loading function is used with the cellpose_SAM shapes but with the direct proseg output cell_by_gene
-cp {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose/{REGION}/cell_metadata.csv \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_metadata.csv
-cp {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose/{REGION}/cellpose_micron_space.parquet \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_polygons.parquet
+cp /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose/{REGION}/cell_metadata.csv \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_metadata.csv
+cp /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose/{REGION}/cellpose_micron_space.parquet \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_polygons.parquet
 
 # Fixing index mismatching + naming schemes 
 pixi run -e preprocessing \
     python -m spida.S filt-to-ids \
-    --meta_path {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_metadata.csv \
-    --tz_path {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM/{REGION}/merged_transcript_metadata.csv \
-    --cbg_path {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM/{REGION}/merged_cell_by_gene.csv \
-    --geom_path {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_polygons.parquet
+    --meta_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_metadata.csv \
+    --tz_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/merged_transcript_metadata.csv \
+    --cbg_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/merged_cell_by_gene.csv \
+    --geom_path /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM/{REGION}/cellpose_polygons.parquet
 
 pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_SAM \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/proseg_SAM \
     --plot \
     --type vpt \
     --prefix_name proseg_aligned \

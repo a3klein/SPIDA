@@ -2,14 +2,14 @@
 # FILENAME: whole_image_dw.sh
 
 #SBATCH -A mcb130189-gpu
-#SBATCH -J decon_{EXP_N}_{REG_N}_P
+#SBATCH -J decon_{EXP_N}_{REG_N}_D
 #SBATCH -p gpu
 #SBATCH --time=6:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=4
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/logs/{EXP_N}/decon_{EXP_N}_{REG_N}_P.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/logs/{EXP_N}/decon_{EXP_N}_{REG_N}_P.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/logs/{EXP_N}/decon_{EXP_N}_{REG_N}_D.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/logs/{EXP_N}/decon_{EXP_N}_{REG_N}_D.out
 #SBATCH --export=ALL
 
 # module purge
@@ -26,14 +26,14 @@ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/anvil/projects/x-mcb130189/aklein/programs/gsl
 export PATH="/home/x-aklein2/.pixi/bin:$PATH"
 cd /anvil/projects/x-mcb130189/aklein/SPIDA
 
-echo "Running whole image deconvolution - PolyT - {REG_N} - {EXP_N}"
+echo "Running whole image deconvolution - DAPI - {REG_N} - {EXP_N}"
 
 pixi run -e preprocessing \
     python -m spida.S decon_image \
-    -i {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
-    --data_org_path {ROOT_PATH}/{EXPERIMENT}/raw/dataorganization.csv \
-    -o {ROOT_PATH}/{EXPERIMENT}/analysis/{REGION}/tile_images \
-    --channels PolyT \
+    -i /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/out/{REGION}/images \
+    --data_org_path /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/raw/dataorganization.csv \
+    -o /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/analysis/{REGION}/tile_images \
+    --channels DAPI \
     -ts 2960 \
     --overlap 400 \
     --z_step 1.5 \

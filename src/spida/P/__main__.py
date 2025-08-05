@@ -230,6 +230,9 @@ def resolvi_region_register_subparser(subparser):
     parser.add_argument("--image_path", type=parse_path, help="Path to save the plot")
     parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
     parser.add_argument("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
+    parser.add_argument("--max_epochs", type=int, default=100, help="Maximum number of epochs for training (default: 100)")
+    parser.add_argument("--categorical_covariates", type=parse_list, default=[], help="List of categorical covariates to use (default: [])")
+    parser.add_argument("--batch_key", type=str, default="dataset_id", help="Key for batch information in the AnnData object (default: 'dataset_id')")
     parser.add_argument(
         "--model_kwargs",
         nargs="*",
@@ -264,6 +267,9 @@ def resolvi_all_register_subparser(subparser):
     parser.add_argument("--image_path", type=parse_path, help="Path to save the plot")
     parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
     parser.add_argument("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
+    parser.add_argument("--max_epochs", type=int, default=100, help="Maximum number of epochs for training (default: 100)")
+    parser.add_argument("--categorical_covariates", type=parse_list, default=[], help="List of categorical covariates to use (default: [])")
+    parser.add_argument("--batch_key", type=str, default="dataset_id", help="Key for batch information in the AnnData object (default: 'dataset_id')")
     parser.add_argument(
         "-k",
         "--model_kwargs",
@@ -407,6 +413,27 @@ def plot_resolvi_region_register_subparser(subparser):
     )
     return
 
+def plot_dataset_register_subparser(subparser):
+    """Register subparser for plot-dataset command."""
+    parser = subparser.add_parser(
+        "plot-dataset",
+        aliases=["plot_dataset"],
+        help="Plot the dataset resolvi + setup results ",
+        description="Plot the dataset results",
+    )
+    parser.add_argument("dataset_name", type=str, help="The dataset name of the specified anndata object")
+    parser.add_argument("--anndata_path", type=parse_path, default = None, help="Path to the anndata file")
+    parser.add_argument(
+        "--image_path",
+        type=parse_path,
+        default=None,
+        help="Path to save the plot (default: None)",
+    )
+    parser.add_argument(
+        "--show", action="store_true", help="Whether to show the plot (default: False)"
+    )
+    return
+
 
 def combine_datasets_register_subparser(subparser):
     """Register subparser for combine-datasets command."""
@@ -474,6 +501,9 @@ def resolvi_dataset_register_subparser(subparser):
     parser.add_argument("--model_save_path", type=parse_path, default=None, help="Path to save the ResolVI model")
     parser.add_argument("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
     parser.add_argument("--image_path", type=parse_path, default=None, help="Path to save the plot (default: None)")
+    parser.add_argument("--max_epochs", type=int, default=100, help="Maximum number of epochs for training (default: 100)")
+    parser.add_argument("--categorical_covariates", type=parse_list, default=[], help="List of categorical covariates to use (default: [])")
+    parser.add_argument("--batch_key", type=str, default="dataset_id", help="Key for batch information in the AnnData object (default: 'dataset_id')")
     parser.add_argument(
         "--model_kwargs",
         nargs="*",
@@ -560,6 +590,8 @@ def main():
         from .main import setup_dataset as func
     elif command in ["resolvi-dataset"]:
         from .main import resolvi_dataset as func
+    elif command in ["plot-dataset"]:
+        from .main import plot_dataset_setup as func
     else:
         logger.error(f"Unknown command: {command}")
         parser.print_help()

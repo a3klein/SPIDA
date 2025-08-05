@@ -28,8 +28,8 @@ pixi run -e cellpose \
     cellpose \
     {EXPERIMENT} \
     {REGION} \
-    --input_dir {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
-    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose \
+    --input_dir /anvil/scratch/x-aklein2/BICAN/{EXPERIMENT}/out/{REGION}/images \
+    --output_dir /anvil/projects/x-mcb130189/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose \
     --kwargs \
     scale=4 \
     image_ext=.decon.tif \
@@ -45,7 +45,7 @@ pixi run -e preprocessing \
     python -m spida.S load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose \
+    /home/x-aklein2/projects/aklein/BICAN/data/segmented/{EXPERIMENT}/cellpose \
     --type vpt \
     --prefix_name cellpose_SAM \
     --plot
@@ -54,5 +54,4 @@ pixi run -e preprocessing python \
     -m spida.S load_decon_images \
     {EXPERIMENT} \
     {REGION} \
-    --image_dir {ROOT_PATH} \
     --plot

@@ -28,7 +28,7 @@ pixi run -e preprocessing \
     {REGION} \
     cellpose_SAM \
     --plot \
-    --cutoffs_path {CUTOFFS_PATH}
+    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/data/filtering_cutoffs.json
 
 ### NOT REMOVING DOUBLETS ON CELLPOSE BECUASE I SAW THAT THEY WERE NOT REAL DOUBLETS
 
@@ -58,7 +58,16 @@ pixi run -e preprocessing \
     {REGION} \
     proseg_aligned \
     --plot \
-    --cutoffs_path {CUTOFFS_PATH}
+    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/data/filtering_cutoffs.json
+
+# # REMOVE DOUBLETS? 
+# pixi run -e preprocessing-gpu \
+#     python -m spida.P remove-doublets-region \
+#     {EXPERIMENT} \
+#     {REGION} \
+#     proseg_aligned \
+#     --threshold 0.5 \
+#     --plot
 
 # SETUP ADATA 
 pixi run -e preprocessing \
@@ -77,4 +86,5 @@ pixi run -e preprocessing-gpu \
     proseg_aligned \
     --suffix _filt \
     --plot \
-    --max_epochs 100 \
+    --model_kwargs \
+    max_epochs=300
