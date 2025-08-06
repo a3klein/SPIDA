@@ -156,7 +156,7 @@ class Filter:
         max_count_by_median = cutoffs.get("n_count_by_median", False)
 
         if max_vol_by_median:
-            volume_max = max(df_feature["volume"].median() * vol_max_mult, volume_max)
+            volume_max = df_feature["volume"].median() * vol_max_mult
         if max_count_by_median:
             n_count_max = max(
                 df_feature["nCount_RNA"].median() * count_max_mult, n_count_max

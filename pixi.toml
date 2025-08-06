@@ -28,6 +28,7 @@ jupyterlab = "4.*"
 ipykernel = "*"
 pixi-kernel = ">=0.6.4,<0.7"
 click = ">=8.2.2,<9"
+tqdm = ">=4.67.1,<5"
 
 [pypi-dependencies]
 ruff = "*"
@@ -58,6 +59,7 @@ scvi-tools = "*"
 scanpy = "*"
 leidenalg = "*"
 scikit-learn = "1.6.0.*"
+scikit-misc = ">=0.1.4,<0.2"
 [feature.preprocessing.pypi-dependencies] 
 allcools = { git = "https://github.com/DingWB/ALLCools" }
 imblearn = "*"
