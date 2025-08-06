@@ -56,10 +56,10 @@ def _region_to_donor(reg_name: str) -> str:
     elif "7648" in reg_name:
         return "UWA7648"
     else:
-        raise ValueError(
-            f"Unknown region name {reg_name}. Cannot determine donor name."
+        logger.warning(
+            f"Region name {reg_name} does not match any known donor names. Returning the region name as donor name."
         )
-
+        return reg_name
 
 def _validate_adata(adata):
     """
