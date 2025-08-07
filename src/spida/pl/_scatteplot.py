@@ -34,7 +34,8 @@ def continuous_scatter(
     color=None,
     cmap ="viridis",
     colorbar=True,
-    size=None,
+    alpha=1.0,
+	size=None,
     size_norm=None,
     size_portion=0.95,
     sizes=None,
@@ -182,7 +183,7 @@ def continuous_scatter(
 		s = _auto_size(ax, n_dots)
 
 	# default scatter options
-	_scatter_kws = {"linewidth": 0, "s": s, "legend": None, "rasterized": rasterized}
+	_scatter_kws = {"linewidth": 0, "s": s, "legend": None, "rasterized": rasterized, "alpha":alpha}
 	if color is not None:
 		if hue is not None:
 			raise ValueError("Only one of color and hue can be provided")
@@ -212,10 +213,12 @@ def continuous_scatter(
 		else:
 			if not isinstance(cmap, ScalarMappable):
 				raise TypeError(f"cmap can only be str or ScalarMappable, got {type(cmap)}")
+		_data.sort_values(by="hue", inplace=True)  # sort by hue for better color mapping
 	else:
 		hue_norm = None
 		cnorm = None
 		colorbar_label = ""
+
 
 	# deal with size
 	if size is not None:

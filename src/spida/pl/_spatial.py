@@ -163,6 +163,7 @@ def plot_spatial_continuous(
                     ax=ax,
                     coord_base="spatial",
                     color_by=color_key,
+                    cmap=cmap,
                     layer=layer,
                     show=False,
                     **kwargs
