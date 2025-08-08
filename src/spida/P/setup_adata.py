@@ -1,7 +1,7 @@
 import scanpy as sc
 import anndata as ad
 
-from ALLCools.clustering import tsne  # type: ignore
+from ALLCools.clustering import tsne, significant_pc_test  # type: ignore
 
 
 # A function that moves the manifold coordinate
@@ -81,7 +81,9 @@ def _calc_embeddings(
     layer : str | None = None,
     use_rep : str | None = None, 
     key_added : str = "X_",
-    leiden_res : int = 0.7
+    leiden_res : int = 0.7,
+    min_dist=0.25,
+    knn:int=25,
 ): 
     """ Calculate the UMAP and tSNE embeddings for the AnnData object and given layer"""
     if (use_rep is not None) and (layer is not None): 
@@ -90,11 +92,18 @@ def _calc_embeddings(
     chunked = (adata.shape[0] > 50000) and (layer is None)
     
     if use_rep is None: 
-        sc.pp.pca(adata, n_comps=50, chunked=chunked, layer=layer, key_added=f"{key_added}pca")
+        sc.pp.pca(
+            adata,
+            n_comps=min(min(adata.shape) - 1, 100),
+            chunked=chunked,
+            layer=layer,
+            key_added=f"{key_added}pca"
+        )
+        significant_pc_test(adata, p_cutoff=0.1, update=True, obsm=f"{key_added}pca", downsample=100000)
         use_rep = f"{key_added}pca"
 
-    sc.pp.neighbors(adata, use_rep=use_rep)
-    sc.tl.umap(adata, random_state=13, key_added=f"X_{key_added}umap")
+    sc.pp.neighbors(adata, use_rep=use_rep, n_neighbors=knn)
+    sc.tl.umap(adata, min_dist=min_dist, random_state=13, key_added=f"X_{key_added}umap")
     dump_embedding(adata, from_name=f"{key_added}umap", to_name=f"{key_added}umap")
 
     temp_tsne = adata.obsm['X_tsne'].copy()
