@@ -76,6 +76,8 @@ def resolvi_cluster(
         The quantile to use for sampling posterior predictive, by default 'post_sample_q50'.
     model_save_path : str, optional
         Path to save the trained model, by default None.
+    model_save_ext : str, optional
+        Extension for the saved model, by default None.
     model_kwargs : dict, optional
         Additional keyword arguments for the RESOLVI model.
     """
@@ -157,8 +159,10 @@ def resolvi_cluster(
     adata.layers['generated_expression_raw'] = adata.layers['generated_expression'].copy()
     # standard scanpy analysis pipeline
     # TODO: decide whether we need to change to integer counts (this are not integer counts!)
-    sc.pp.normalize_total(adata, layer="generated_expression")
-    sc.pp.log1p(adata, layer="generated_expression")
+    # NORMALIZATION SHOULD BE DONE AND DECIDED ON SEPARATE FROM HERE! 
+    # sc.pp.normalize_total(adata, layer="generated_expression")
+    # sc.pp.log1p(adata, layer="generated_expression")
+
 
     return adata
 
