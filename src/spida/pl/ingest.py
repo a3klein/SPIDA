@@ -70,7 +70,7 @@ def plot_shapes(
     sdata.pl.render_shapes(
         SHAPES_KEY,
         table_name=table_name,
-        scale=2,
+        scale=1,
         method="matplotlib",
         color="transcript_count",
         cmap="viridis",
@@ -78,7 +78,7 @@ def plot_shapes(
     sdata.pl.render_shapes(
         SHAPES_KEY,
         table_name=table_name,
-        scale=2,
+        scale=1,
         method="matplotlib",
         color="volume",
         cmap="viridis",

@@ -14,6 +14,11 @@ from .P_plots import (
     plot_resolvi,
     plot_dataset
 )
+
+from .I_plots import (
+    plot_allcools_joint_embeddings,
+    plot_allcools_spatial_annot
+)
 from ._scatteplot import plot_categorical, plot_continuous
 from ._spatial import plot_spatial_continuous, plot_spatial_categorical
 from .qc_plots import plot_violin_QC

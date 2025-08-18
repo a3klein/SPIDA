@@ -107,6 +107,7 @@ def allcools_integration_region_register_subparser(subparser):
     parser.add_argument(
         "ref_path", type=parse_path, help="Path to the reference RNA AnnData object"
     )
+    parser.add_argument("--suffix", type=str, default="_filt", help="Suffix for the table")
     parser.add_argument(
         "--anndata-store-path",
         type=parse_path,
@@ -143,6 +144,7 @@ def allcools_integration_experiment_register_subparser(subparser):
     parser.add_argument(
         "ref_path", type=str, help="Path to the reference RNA AnnData object"
     )
+    parser.add_argument("--suffix", type=str, default="_filt", help="Suffix for the table")
     parser.add_argument(
         "--anndata-store-path",
         type=parse_path,
@@ -364,21 +366,21 @@ def main():
 
     command = args_var.pop("command").lower().replace("_", "-")
     if command in ["backup-adata-region"]:
-        from main import backup_adata_region as func
+        from .main import backup_adata_region as func
     elif command in ["backup-adata-experiment"]:
-        from main import backup_adata_experiment as func
+        from .main import backup_adata_experiment as func
     elif command in ["allcools-integration-region"]:
-        from main import allcools_integration_region as func
+        from .main import allcools_integration_region as func
     elif command in ["allcools-integration-experiment"]:
-        from main import allcools_integration_experiment as func
+        from .main import allcools_integration_experiment as func
     elif command in ["mmc-setup"]:
-        from main import mmc_setup as func
+        from .main import mmc_setup as func
     elif command in ["mmc-annotation-region"]:
-        from main import mmc_annotation_region as func
+        from .main import mmc_annotation_region as func
     elif command in ["mmc-annotation-experiment"]:
-        from main import mmc_annotation_experiment as func
+        from .main import mmc_annotation_experiment as func
     elif command in ["moscot-integration"]:
-        from main import moscot_integration as func
+        from .main import moscot_integration as func
     else:
         logging.error(f"Unknown command: {command}")
         parser.print_help()

@@ -1,23 +1,52 @@
 ### Integration / Annotations main file
-import warnings
-import fire  # type: ignore
+# author: Amit Klein, a3klein@ucsd.edu
+
+import os
 from dotenv import load_dotenv  # type: ignore
+from pathlib import Path
+import warnings
+import logging
+from rich.logging import RichHandler
+# import fire  # type: ignore
+import click
+from rich_click import RichCommand, RichGroup # type: ignore
+from spida.utilities.script_utils import parse_click_kwargs, JSONParam
+from spida.settings import configure_logging_for_runtime
 
 load_dotenv()
+logger = logging.getLogger(__package__)
+warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
 
+def setup_logging(**kwargs):
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s - %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+        handlers=[RichHandler(rich_tracebacks=True, show_time=False, markup=True)],
+    )
 
+@click.group(cls=RichGroup)
+def cli():
+    pass
+
+@cli.command(name="backup-adata", cls=RichCommand)
+@click.argument('exp_name', type=click.STRING)
+@click.argument('reg_name', type=click.STRING)
+@click.argument('prefix_name', type=click.STRING)
+@click.option('--adata_path',
+              type=click.Path(file_okay=True, path_type=str, dir_okay=True),
+              default=None,
+              help='Path to the store of AnnData objects. Defaults to None.'
+            )
 def backup_adata_region(
-    exp_name: str, reg_name: str, prefix_name: str, adata_path: str = None
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str,
+    adata_path: str = None
 ):
     """
-    Backup function for AnnData objects. Due to env incompatibilities with
-    SpatialData and some of the annotation / integration libraries.
-
-    Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    adata_path (str, optional): Path to the store of AnnData objects. Defaults to None.
+    Backup the AnnData objects for experiment EXP_NAME, region REG_NAME with prefix PREFIX_NAME.
+    Can serve as input for integration methods incompatible with the spatialdata package (i.e. mapmycells).
     """
 
     with warnings.catch_warnings():
@@ -26,14 +55,22 @@ def backup_adata_region(
     func(exp_name, reg_name, prefix_name, adata_path)
 
 
+@cli.command(name='backup-adata-experiment', cls=RichCommand)
+@click.argument('exp_name', type=str)
+@click.argument('prefix_name', type=str)
+@click.option(
+    '--adata_path',
+    type=click.Path(file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of AnnData objects. Defaults to None.'
+)
 def backup_adata_experiment(exp_name: str, prefix_name: str, adata_path: str = None):
     """
-    Backup function for AnnData objects for an entire experiment.
+    Backup function for AnnData objects for an entire experiment EXP_NAME with prefix PREFIX_NAME.
 
-    Parameters:
-    exp_name (str): Name of the experiment.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    adata_path (str, optional): Path to the store of AnnData objects. Defaults to None.
+    Arguments:\n
+    exp_name (str): Name of the experiment.\n
+    prefix_name (str): Prefix for the keys in the spatialdata object.\n
     """
 
     with warnings.catch_warnings():
@@ -41,64 +78,333 @@ def backup_adata_experiment(exp_name: str, prefix_name: str, adata_path: str = N
         from spida.I._utils import backup_adata_experiment as func
     func(exp_name, prefix_name, adata_path)
 
-
+#### ALLCools INTEGRATION ####
+@cli.command(
+    name='allcools-integration-region',
+    cls=RichCommand,
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.argument('exp_name', type=click.STRING)
+@click.argument('reg_name', type=click.STRING)
+@click.argument('prefix_name', type=click.STRING)
+@click.argument('ref_path', type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False))
+@click.option('--suffix', type=click.STRING, default='_filt', help='Suffix for the keys in the spatialdata object. Defaults to "_filt".')
+@click.option(
+    '--anndata_store_path',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of AnnData objects. Defaults to None.'
+)
+@click.option(
+    '--annotations_store_path',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of annotation specific files. Defaults to None.'
+)
+@click.option("--gene_rename_dict",
+              type=JSONParam(),
+              default=None,
+              help='JSON string (representing a dict), path to a JSON file, or a dict when calling programmatically. Defaults to None.'
+)
+@click.option("--max_cells_per_cluster", type=int, default=3000, help='Maximum number of cells per cluster when downsampling the reference AnnData object. Defaults to 3000.')
+@click.option("--min_cells_per_cluster", type=int, default=0, help='Minimum number of cells per cluster when downsampling the reference AnnData object. Defaults to 0.')
+@click.option(
+    "--top_deg_genes",
+    type=int,
+    default=-1,
+    help='Number of top differentially expressed genes to use from each cluster, set to -1 to turn off. Defaults to -1.')
+@click.option("--downsample_ref", type=bool, is_flag=True, default=False, help='Whether to downsample the reference AnnData object. Defaults to False.')
+@click.option("--min_ref_cells", type=int, default=50000, help='Minimum number of cells to downsample to in the reference AnnData object. Defaults to 50000.')
+@click.option("--save_integrator", type=bool, is_flag=True, default=True, help='Whether to save the integrator object. Defaults to True.')
+@click.option("--save_adata_comb", type=bool, is_flag=True, default=True, help='Whether to save the combined AnnData object. Defaults to True.')
+@click.option("--rna_cell_type_column", type=click.STRING, default="supercluster_name", help='Column name in the AnnData object for RNA cell types. Defaults to "supercluster_name".')
+@click.option("--qry_cluster_column", type=click.STRING, default="leiden", help='Column name in the AnnData object for query clusters. Defaults to "leiden".')
+@click.option("--run_joint_embeddings", type=bool, is_flag=True, default=False, help='Whether to run joint embeddings on the integrated data. Defaults to False.')
+@click.option("--plot", type=bool, is_flag=True, default=False, help='Whether to plot the results of the ALLCools integration. Defaults to False.')
+@click.option("--image_path", type=click.Path(exists=False, file_okay=False, path_type=str, dir_okay=True), default=None, help='Path to the image file for plotting. Defaults to None.')
+@click.option("--backup_to_spatialdata", type=bool, is_flag=True, default=True, help='Whether to backup the results to the spatialdata object. Defaults to True.')
+@click.pass_context
 def allcools_integration_region(
+    ctx,
     exp_name: str,
     reg_name: str,
     prefix_name: str,
     ref_path: str,
+    suffix:str = "_filt",
     anndata_store_path: str = None,
     annotations_store_path: str = None,
+    gene_rename_dict: dict | Path | str = None,
+    top_deg_genes: int = -1, 
+    max_cells_per_cluster = 3000,
+    min_cells_per_cluster = 0,
+    downsample_ref: bool = False,
+    min_ref_cells: int = 50000,
+    save_integrator:bool = True, 
+    save_adata_comb: bool = True,
+    rna_cell_type_column: str = "supercluster_name",
+    qry_cluster_column:str = "leiden",
+    run_joint_embeddings:bool = False,
+    plot:bool = False,
+    image_path:str | Path | None = None,
+    backup_to_spatialdata:bool = True, 
     **kwargs,
 ):
     """
-    Run ALLCools integration on a given experiment and region.
-    ENVIRONMENT = "preprocessing"
+    Run ALLCools integration on a given EXP_NAME, REG_NAME, and PREFIX_NAME
 
-    Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    ref_path (str): Path to the reference RNA AnnData object .
-    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
-    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults
-    to None.
-    **kwargs: Additional keyword arguments for ALLCools integration.
+    Arguments:\n
+    exp_name (str): Name of the experiment.\n
+    reg_name (str): Name of the region.\n
+    prefix_name (str): Prefix for the keys in the spatialdata object.\n
+    ref_path (str): Path to the reference RNA AnnData object .\n
+    **kwargs: Additional keyword arguments for ALLCools integration.\n
     """
+    import json
+    import anndata as ad # type: ignore
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        from spida.I.allcools import allcools_integration_region as func
-    func(
-        exp_name,
-        reg_name,
-        prefix_name,
-        ref_path,
-        anndata_store_path,
-        annotations_store_path,
+        from spida.I.allcools import run_allcools_seurat
+    
+    logger.info(
+        "RUNNING ALLCOOLS INTEGRATION, EXPERIMENT %s, REGION %s, PREFIX %s"
+        % (exp_name, reg_name, prefix_name)
+    )
+    extra_args = ctx.args
+    kwargs = parse_click_kwargs(extra_args)
+    for key, value in kwargs.items():
+        logger.info(f"Parsed {key} = {value};  {type(value)}")
+
+    # # Getting the adata object
+    zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
+    ad_path = f"{zarr_path}/tables/{prefix_name}_table{suffix}"
+    logger.info(f"ad_path: {ad_path}")
+    
+    adata = ad.read_zarr(ad_path)
+    logger.info(f"adata shape: {adata.shape}")
+
+    # Handling the gene renaming: 
+    if gene_rename_dict is not None:
+        logger.info(f"Renaming genes using gene_rename_dict: {gene_rename_dict}")
+        adata.var_names = [gene_rename_dict.get(name, name) for name in adata.var_names]
+
+    ref_adata = ad.read_h5ad(ref_path, backed='r')
+    logger.info(f"ref_adata shape: {ref_adata.shape}")
+    if downsample_ref:
+        logger.info("Downsampling the reference AnnData object")
+        # Never less than the number in the reference, or the min_ref_cells params
+        num_cells = min(ref_adata.shape[0], max(adata.shape[0], min_ref_cells))
+        ref_adata = ref_adata[ref_adata.obs.sample(num_cells).index]
+        logger.info(f"ref_adata shape after downsampling: {ref_adata.shape}")
+    
+    # Subsetting to shared genes before loading into memory:
+    ref_adata = ref_adata[:, ref_adata.var_names[ref_adata.var_names.isin(adata.var_names)]]
+    ref_adata = ref_adata.to_memory()
+
+    logger.info(f"Missing Gene Names: {adata.var_names.difference(ref_adata.var_names)}")
+
+    # Loading global parameters for storing anndata and annotations related files 
+    if not anndata_store_path:
+        anndata_store_path = os.getenv("ANNDATA_STORE_PATH")
+        if not anndata_store_path:
+            raise ValueError(
+                "Please provide an anndata_store_path or set the ANNDATA_STORE_PATH environment variable."
+            )
+
+    if not annotations_store_path:
+        annotations_store_path = os.getenv("ANNOTATIONS_STORE_PATH")
+        if not annotations_store_path:
+            raise ValueError(
+                "Please provide an annotations_store_path or set the ANNOTATIONS_STORE_PATH environment variable."
+            )
+
+    logger.info("read data and calling the function")
+    adata = run_allcools_seurat(
+        ref_adata=ref_adata, 
+        qry_adata=adata, 
+        anndata_store_path=anndata_store_path,
+        annotations_store_path=annotations_store_path,
+        rna_cell_type_column=rna_cell_type_column,
+        qry_cluster_column=qry_cluster_column,
+        top_deg_genes=top_deg_genes,
+        max_cells_per_cluster=max_cells_per_cluster,
+        min_cells_per_cluster=min_cells_per_cluster,
+        run_joint_embeddings=run_joint_embeddings,
+        save_integrator=save_integrator,
+        save_adata_comb=save_adata_comb,
         **kwargs,
     )
 
+    logger.info("DONE WITH ALLCOOLS INTEGRATION")
 
+    if backup_to_spatialdata: 
+        logger.info("Backing up the AnnData object to the spatialdata object")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            from spida.utilities.sd_utils import _gen_keys,_backup_adata
+            from spida._constants import TABLE_KEY
+            KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+            _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+    
+    if plot:
+        logger.info("Plotting the results of the ALLCools integration")
+        exp = adata.uns.get("experiment")
+        seg_name = adata.uns.get("segmentation")
+        donor = adata.uns.get("donor")
+        ctx.invoke(
+            plot_allcools_integration,
+            exp_name=exp,
+            seg_name=seg_name,
+            donor=donor,
+            anndata_store_path=anndata_store_path,
+            annotations_store_path=annotations_store_path,
+            output_path=image_path,
+            plot_joint_embeddings=run_joint_embeddings,
+        )
+
+@cli.command(
+    name='plot-allcools-integration', 
+    cls=RichCommand,
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.argument('exp_name', type=click.STRING)
+@click.argument('seg_name', type=click.STRING)
+@click.argument('donor', type=click.STRING)
+@click.option(
+    '--anndata_store_path',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of AnnData objects. Defaults to None.'
+)
+@click.option(
+    '--annotations_store_path',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of annotation specific files. Defaults to None.'
+)
+@click.option(
+    '--output_path',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the output directory for results. Defaults to None.'
+)
+@click.option("--plot_joint_embeddings", type=bool, is_flag=True, default=False, help='Whether to plot the joint embeddings. Defaults to False.')
+def plot_allcools_integration(
+    exp_name: str,
+    seg_name: str,
+    donor: str,
+    anndata_store_path: str = None,
+    annotations_store_path: str = None,
+    output_path: str = None,
+    plot_joint_embeddings:bool = False,
+):
+    """
+    Plot the results of ALLCools integration for a given EXP_NAME, SEG_NAME, and DONOR.
+
+    Arguments:\n
+    exp_name (str): Name of the experiment.\n
+    seg_name (str): Name of the segmentation.\n
+    donor (str): Name of the donor.\n
+    """
+    import anndata as ad # type: ignore
+    from spida.pl import plot_allcools_joint_embeddings, plot_allcools_spatial_annot
+    from matplotlib.backends.backend_pdf import PdfPages
+
+
+    # TODO: Click configuration files (handled within the cli group function to get all of these filepaths)
+    if not anndata_store_path:
+        anndata_store_path = os.getenv("ANNDATA_STORE_PATH")
+        if not anndata_store_path:
+            raise ValueError(
+                "Please provide an anndata_store_path or set the ANNDATA_STORE_PATH environment variable."
+            )
+
+    if not annotations_store_path:
+        annotations_store_path = os.getenv("ANNOTATIONS_STORE_PATH")
+        if not annotations_store_path:
+            raise ValueError(
+                "Please provide an annotations_store_path or set the ANNOTATIONS_STORE_PATH environment variable."
+            )
+
+    if output_path is None:
+        image_store = os.getenv("IMAGE_STORE_PATH")
+        output_path = Path(
+            f"{image_store}/{exp_name}/{seg_name}/region_{donor}/allcools_integration.pdf"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)    
+    
+
+    qry_path = Path(f"{anndata_store_path}/{exp_name}/{seg_name}/adata_{donor}.h5ad")
+    qry_adata = ad.read_h5ad(qry_path)
+
+    adata_comb_path = f"{annotations_store_path}/{exp_name}/{seg_name}/allcools/{donor}"
+    adata_comb = ad.read_h5ad(f"{adata_comb_path}/adata_comb_rna_merfish.h5ad")
+
+    pdf_file = PdfPages(output_path)
+    if plot_joint_embeddings:
+        plot_allcools_joint_embeddings(adata_comb, exp_name=exp_name, seg_name=seg_name, donor=donor, pdf_file=pdf_file)
+    plot_allcools_spatial_annot(qry_adata, exp_name=exp_name, seg_name=seg_name, donor=donor, pdf_file=pdf_file)
+    pdf_file.close()
+
+
+@cli.command(
+    name='allcools-integration-experiment',
+    cls=RichCommand,
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.argument('exp_name', type=click.STRING)
+@click.argument('prefix_name', type=click.STRING)
+@click.argument('ref_path', type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False))
+@click.option('--suffix', type=click.STRING, default='_filt', help='Suffix for the keys in the spatialdata object. Defaults to "_filt".')
+@click.option(
+    '--anndata_store_path',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of AnnData objects. Defaults to None.'
+)
+@click.option(
+    '--annotations_store_path',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of annotation specific files. Defaults to None.'
+)
+@click.pass_context
 def allcools_integration_experiment(
+    ctx,
     exp_name: str,
     prefix_name: str,
     ref_path: str,
+    suffix:str = "_filt",
     anndata_store_path: str = None,
     annotations_store_path: str = None,
     **kwargs,
 ):
     """
-    Run ALLCools integration for an entire experiment.
+    Run ALLCools integration for an entire EXP_NAME with PREFIX_NAME.
 
-    Parameters:
-    exp_name (str): Name of the experiment.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    ref_path (str): Path to the reference RNA AnnData object .
-    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
-    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults
+    Arguments:\n
+    exp_name (str): Name of the experiment.\n
+    prefix_name (str): Prefix for the keys in the spatialdata object.\n
+    ref_path (str): Path to the reference RNA AnnData object .\n
     to None.
-    **kwargs: Additional keyword arguments for ALLCools integration.
+    **kwargs: Additional keyword arguments for ALLCools integration.\n
     """
+    extra_args = ctx.args
+    if extra_args:
+        click.echo(f"Received extra arguments: {extra_args}")
+    kwargs = parse_click_kwargs(extra_args)
+    for key, value in kwargs.items():
+        click.echo(f"Parsed {key} = {value};  {type(value)}")
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         from spida.I.allcools import allcools_integration_experiment as func
@@ -106,13 +412,45 @@ def allcools_integration_experiment(
         exp_name,
         prefix_name,
         ref_path,
+        suffix,
         anndata_store_path,
         annotations_store_path,
         **kwargs,
     )
 
-
+@cli.command(
+    name='mmc-setup', 
+    cls=RichCommand,
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.argument('ref_path', type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False))
+@click.argument('heirarchy_list', type=click.STRING, nargs=-1)
+@click.argument('BRAIN_REGION', type=click.STRING)
+@click.argument('CODEBOOK', type=click.STRING)
+@click.option(
+    '--codebook_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False),
+    default=None,
+    help='Path to the codebook file. Defaults to None.'
+)
+@click.option(
+    '--mmc_store_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of MapMyCells markers. Defaults to None.'
+)
+@click.option(
+    '--ref_norm',
+    type=click.STRING,
+    default='log2CPM',
+    help='Normalization method for the reference AnnData.X. Defaults to "log2CPM".'
+)
+@click.pass_context
 def mmc_setup(
+    ctx,
     ref_path: str,
     heirarchy_list: list,
     BRAIN_REGION: str,
@@ -134,9 +472,14 @@ def mmc_setup(
     mmc_store_path (str, optional): Path to the store of MapMyCells markers. Defaults to None.
     ref_norm (str, optional): Normalization method for the reference AnnData.X. Defaults to "log2CPM".
     **kwargs: Additional keyword arguments.
-
-
     """
+    extra_args = ctx.args
+    if extra_args:
+        click.echo(f"Received extra arguments: {extra_args}")
+    kwargs = parse_click_kwargs(extra_args)
+    for key, value in kwargs.items():
+        click.echo(f"Parsed {key} = {value};  {type(value)}")
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         from spida.I.mmc import mmc_setup as func
@@ -152,7 +495,40 @@ def mmc_setup(
     )
 
 
+@cli.command(
+    name="mmc-annotation-region",
+    cls=RichCommand,
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.argument('exp_name', type=click.STRING)
+@click.argument('reg_name', type=click.STRING)
+@click.argument('prefix_name', type=click.STRING)
+@click.argument('BRAIN_REGION', type=click.STRING)
+@click.argument('CODEBOOK', type=click.STRING)
+@click.option(
+    '--mmc_store_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of MapMyCells markers. Defaults to None.'
+)
+@click.option(
+    '--anndata_store_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of AnnData objects. Defaults to None.'
+)
+@click.option(
+    '--annotations_store_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of annotation specific files. Defaults to None.'
+)
+@click.pass_context
 def mmc_annotation_region(
+    ctx, 
     exp_name: str,
     reg_name: str,
     prefix_name: str,
@@ -177,6 +553,12 @@ def mmc_annotation_region(
     annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults to None.
     **kwargs: Additional keyword arguments.
     """
+    extra_args = ctx.args
+    if extra_args:
+        click.echo(f"Received extra arguments: {extra_args}")
+    kwargs = parse_click_kwargs(extra_args)
+    for key, value in kwargs.items():
+        click.echo(f"Parsed {key} = {value};  {type(value)}")
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
@@ -193,8 +575,39 @@ def mmc_annotation_region(
         **kwargs,
     )
 
-
+@cli.command(
+    name="mmc-annotation-experiment", 
+    cls=RichCommand,
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.argument('exp_name', type=click.STRING)
+@click.argument('prefix_name', type=click.STRING)
+@click.argument('BRAIN_REGION', type=click.STRING)
+@click.argument('CODEBOOK', type=click.STRING)
+@click.option(
+    '--mmc_store_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of MapMyCells markers. Defaults to None.'
+)
+@click.option(
+    '--anndata_store_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of AnnData objects. Defaults to None.'
+)
+@click.option(
+    '--annotations_store_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the store of annotation specific files. Defaults to None.'
+)
+@click.pass_context
 def mmc_annotation_experiment(
+    ctx,
     exp_name: str,
     prefix_name: str,
     BRAIN_REGION: str,
@@ -217,6 +630,12 @@ def mmc_annotation_experiment(
     annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults to None.
     **kwargs: Additional keyword arguments.
     """
+    extra_args = ctx.args
+    if extra_args:
+        click.echo(f"Received extra arguments: {extra_args}")
+    kwargs = parse_click_kwargs(extra_args)
+    for key, value in kwargs.items():
+        click.echo(f"Parsed {key} = {value};  {type(value)}")
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
@@ -232,21 +651,30 @@ def mmc_annotation_experiment(
         **kwargs,
     )
 
-
+#### MOSCOT INTEGRATION ####
+@cli.command(
+    name="moscot-integration",
+    cls=RichCommand,
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
 def moscot_integration():
     raise NotImplementedError("MOSCOT integration is not implemented yet.")
 
 
 if __name__ == "__main__":
-    fire.Fire(
-        {
-            "backup_adata_region": backup_adata_region,
-            "backup_adata_experiment": backup_adata_experiment,
-            "allcools_integration_region": allcools_integration_region,
-            "allcools_integration_experiment": allcools_integration_experiment,
-            "setup_mmc": mmc_setup,
-            "mmc_annotation_region": mmc_annotation_region,
-            "mmc_annotation_experiment": mmc_annotation_experiment,
-            "moscot_integration": moscot_integration,
-        }
+    
+    # Move this to inside the top level CLI! 
+    env = configure_logging_for_runtime(
+        level=logging.INFO, logger=logger,
     )
+    logger.info(f"Logging configured for environment: {env}")
+
+
+    # setup logging here:
+    # if not logging.root.handlers:
+    #     setup_logging(stdout=True, quiet=False)
+            
+    cli()

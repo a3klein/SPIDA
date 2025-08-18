@@ -11,20 +11,54 @@ load_dotenv()
 logger = logging.getLogger(__package__)
 
 
+def _determine_proseg_version():
+    """
+    Determine the version of the proseg binary installed.
+    Returns:
+        str: The version of the proseg binary.
+    """
+    try:
+        ret = subprocess.run(["proseg", "-V"], capture_output=True, check=True)
+        if ret.returncode != 0:
+            raise ValueError("Proseg failed to run. Check the installation and the PATH variable.")
+        proseg_version = ret.stdout.decode('utf-8').split(" ")[-1].strip()
+        return proseg_version
+    except FileNotFoundError:
+        raise FileNotFoundError("Proseg binary not found. Please ensure it is installed and in your PATH.")
+
+# click? 
+def get_proseg_version():
+    """
+    Get the version of the proseg binary installed.
+    Returns:
+        str: The version of the proseg binary.
+    """
+    try:
+        proseg_version = _determine_proseg_version()
+        logger.info(f"Proseg version: {proseg_version}")
+        return proseg_version
+    except Exception as e:
+        logger.error(f"Error determining Proseg version: {e}")
+        raise
+
 def _add_proseg_binary():
     """
     Add the path to the proseg binary to the PATH environment variable.
     This is necessary to ensure that the proseg command can be found when running the script.
+    Returns:
+        bool: True if the proseg version is 3.x, False otherwise.
     """
     # Need to add the rust path to the PATH variable
     os.environ["PATH"] += os.pathsep + os.getenv("RUST_BIN_PATH")
 
     # Test that proseg can be run:
-    ret = subprocess.run(["proseg", "-h"], capture_output=True, check=True)
+    ret = subprocess.run(["proseg", "--help"], capture_output=True, check=True)
     if ret.returncode != 0:
         raise ValueError(
             "Proseg failed to run. Check the installation and the PATH variable."
         )
+    proseg_v3 = _determine_proseg_version()[0] == '3'
+    logger.info(f"Proseg version 3.x detected: {proseg_v3}")
 
     proseg_out = ret.stdout.decode()
     proseg_options = proseg_out.split("Options:")[-1]
@@ -41,8 +75,11 @@ def _add_proseg_binary():
 
     logger.info("proseg binary added to PATH successfully.")
 
+    return proseg_v3
 
-def _execute_cli_proseg(root_dir: str, output_dir: str, region: str, **proseg_params):
+
+@DeprecationWarning
+def _execute_cli_proseg_v2(root_dir: str, output_dir: str, region: str, **proseg_params):
     """
     Run the proseg command with the prespecified parameters using subprocess.
     """
@@ -79,6 +116,39 @@ def _execute_cli_proseg(root_dir: str, output_dir: str, region: str, **proseg_pa
     return ret
 
 
+def _execute_cli_proseg_v3(root_dir: str, output_dir: str, region: str, **proseg_params):
+    """
+    Run the proseg command for the 3.0.1 version of proseg
+    """
+    # The proseg command to run
+    proseg_run_cmd = f"""
+        proseg --merscope \
+        {root_dir}/{region}/detected_transcripts.csv \
+        --output-path {output_dir}/{region} \
+        --output-spatialdata proseg_outputs.zarr \
+        --output-cell-polygons cell-polygons.geojson.gz \
+        """
+    for _key, _val in proseg_params.items():
+        if _key not in proseg_args:
+            logger.info("skipping unknown proseg parameter: %s" % _key)
+            continue
+        if isinstance(_val, bool):
+            if _val:
+                logger.info(f"Adding boolean proseg parameter: --{_key}")
+                proseg_run_cmd += f"--{_key} \n"
+        else:
+            logger.info(f"Adding proseg parameter: --{_key} {_val}")
+            proseg_run_cmd += f"--{_key} {_val} \n"
+
+    # proseg_run_cmd += f"--nthreads {os.cpu_count()} \\\n"
+    logger.info(f"Running proseg with command:\n{proseg_run_cmd}")
+
+    # run command and report results
+    ret = subprocess.run(proseg_run_cmd.split(), capture_output=True, check=True)
+    return ret
+
+
+
 def run_proseg(root_dir: str, output_dir: str, region: str, **proseg_params):
     """
     Run the proseg command to process detected transcripts in a specified region.
@@ -96,10 +166,13 @@ def run_proseg(root_dir: str, output_dir: str, region: str, **proseg_params):
     pathlib.Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
 
     # Add proseg path to environment
-    _add_proseg_binary()
+    v3_flag = _add_proseg_binary()
 
     # Prepare the command to run proseg
-    ret = _execute_cli_proseg(root_dir, output_dir, region, **proseg_params)
+    if v3_flag: 
+        ret = _execute_cli_proseg_v3(root_dir, output_dir, region, **proseg_params)
+    else: # run the old version of proseg
+        ret = _execute_cli_proseg_v2(root_dir, output_dir, region, **proseg_params)
 
     print(ret.returncode)
     print(ret.stdout.decode("utf-8"))

@@ -97,3 +97,36 @@ def _get_table(
         adata, region_key=REGION_KEY, region=shapes_key, instance_key="cell"
     )
     return table
+
+
+def _get_table_v3(
+    adata : ad.AnnData,
+    reg_name : str = None, 
+    exp_name : str = None, 
+    dataset_id : str = None, 
+    shapes_key : str = None
+): 
+    """
+    Get the table for the third version of proseg.
+    """
+    blank = adata[:, adata.var.gene.str.startswith("Blank-")].copy()
+    adata = adata[:, ~adata.var.gene.str.startswith("Blank-")].copy()
+    adata.obs['transcript_count'] = adata.X.toarray().sum(axis=1).flatten()
+
+    adata.obsm['spatial'] = adata.obs[['centroid_x', 'centroid_y']].values
+    adata.obsm['blank'] = blank.X.toarray()
+
+    adata.obs["region"] = pd.Series(reg_name, index=adata.obs_names, dtype="category")
+    adata.obs["slide"] = pd.Series(exp_name, index=adata.obs_names, dtype="category")
+    adata.obs["dataset_id"] = pd.Series(
+        dataset_id, index=adata.obs_names, dtype="category"
+    )
+    adata.obs[REGION_KEY] = pd.Series(
+        shapes_key, index=adata.obs_names, dtype="category"
+    )
+    adata.obs["cell"] = adata.obs.index
+
+    table = TableModel.parse(
+        adata, region_key=REGION_KEY, region=shapes_key, instance_key="cell"
+    )
+    return table
