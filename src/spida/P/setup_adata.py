@@ -1,5 +1,7 @@
 import scanpy as sc
 import anndata as ad
+import scipy.sparse as scp
+import numpy as np
 
 from ALLCools.clustering import tsne, significant_pc_test  # type: ignore
 
@@ -51,28 +53,32 @@ def run_setup(
     # create the spatial coordinates in obsm
     adata.obsm["spatial"] = adata.obs[["CENTER_X", "CENTER_Y"]].values
 
-    # standard scanpy analysis pipeline
-    sc.pp.normalize_total(adata)
-    sc.pp.log1p(adata)
-    sc.tl.pca(adata)
-    sc.pp.neighbors(adata)
+    # Normalize gene count by volume
+    adata.layers['volume_norm'] = scp.csr_matrix(adata.X / adata.obs['volume'].values[:, np.newaxis])
+    adata.X = adata.layers['volume_norm'].copy()
+    sc.pp.log1p(adata) # log1p for variance stabilization
+    _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35)
+    
+    # sc.pp.normalize_total(adata)
+    # sc.tl.pca(adata)
+    # sc.pp.neighbors(adata)
 
-    # manifold projections:
-    sc.tl.umap(adata)
-    dump_embedding(adata, "umap")
+    # # manifold projections:
+    # sc.tl.umap(adata)
+    # dump_embedding(adata, "umap")
 
-    tsne(
-        adata,
-        obsm="X_pca",
-        metric="euclidean",
-        exaggeration=-1,
-        perplexity=50,
-        n_jobs=-1,
-    )
-    dump_embedding(adata, "tsne")
+    # tsne(
+    #     adata,
+    #     obsm="X_pca",
+    #     metric="euclidean",
+    #     exaggeration=-1,
+    #     perplexity=50,
+    #     n_jobs=-1,
+    # )
+    # dump_embedding(adata, "tsne")
 
-    # Clustering using leiden
-    sc.tl.leiden(adata, flavor="igraph", n_iterations=2)
+    # # Clustering using leiden
+    # sc.tl.leiden(adata, flavor="igraph", n_iterations=2)
 
     return adata
 
@@ -106,7 +112,8 @@ def _calc_embeddings(
     sc.tl.umap(adata, min_dist=min_dist, random_state=13, key_added=f"X_{key_added}umap")
     dump_embedding(adata, from_name=f"{key_added}umap", to_name=f"{key_added}umap")
 
-    temp_tsne = adata.obsm['X_tsne'].copy()
+    
+    temp_tsne = adata.obsm['X_tsne'].copy() if "X_tsne" in adata.obsm.keys() else None
     tsne(
         adata,
         obsm=use_rep,
@@ -116,7 +123,8 @@ def _calc_embeddings(
         n_jobs=-1,
     )
     adata.obsm[f"X_{key_added}tsne"] = adata.obsm['X_tsne'].copy()
-    adata.obsm['X_tsne'] = temp_tsne  # restore original tsne
+    if temp_tsne is not None:
+        adata.obsm['X_tsne'] = temp_tsne
     dump_embedding(adata, from_name=f"{key_added}tsne", to_name=f"{key_added}tsne")
     
     # Clustering using leiden

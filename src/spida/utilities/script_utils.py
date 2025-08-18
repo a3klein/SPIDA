@@ -1,11 +1,13 @@
-# From Fishtank
+# Author: Amit Klein, a3klein@ucsd.edu
+# some functions imported from fishtank. 
+import os
 import ast
 import math
 import argparse
+import click
 from pathlib import Path
 
 import numpy as np
-
 
 def parse_dict(arg: str) -> dict:
     """Parse dictionary input in the form of key1=val1,key2=val2"""
@@ -93,6 +95,7 @@ def parse_kwargs(kwargs_list):
     Returns:
         dict: Dictionary of parsed key-value pairs
     """
+    # TODO: depreceate eventually into all click kargs parsing
     kwargs_dict = {}
     if kwargs_list:
         for kwarg in kwargs_list:
@@ -112,3 +115,71 @@ def parse_kwargs(kwargs_list):
                 kwargs_dict[key] = value
 
     return kwargs_dict
+
+def parse_click_kwargs(item_list): 
+    kwargs_dict = {}
+    num_items = len(item_list) / 2
+    if num_items != int(num_items):
+        raise ValueError("kwargs must be in pairs of key and value")
+    
+    # TODO: use ast literal eval to simplify this code!
+    for i in range(0, len(item_list), 2):
+        key = item_list[i]
+        value = item_list[i + 1]
+        if not key.startswith("--"):
+            raise ValueError(f"Expected key to start with '--', got {key}")
+        if i + 1 >= len(item_list):
+            raise ValueError(f"Missing value for key {key}")
+        key = key[2:]  # Remove the leading '--'
+
+        if value.lower() in ("true", "false"):
+            kwargs_dict[key] = value.lower() == "true"
+        elif value.replace(".", "").replace("-", "").isdigit():
+            if "." in value:
+                kwargs_dict[key] = float(value)
+            else:
+                kwargs_dict[key] = int(value)
+        elif "," in value:
+            kwargs_dict[key] = [v.strip() for v in value.split(",")]
+        else:
+            kwargs_dict[key] = value
+    return kwargs_dict
+
+def parse_json_dict(arg: dict | Path | str) -> dict:
+    import json 
+    # if already a dict (when called programmatically)
+    if isinstance(arg, dict):
+        return arg
+    elif isinstance(arg, Path):
+        with open(arg, 'r') as f:
+            return json.load(f)
+    elif isinstance(arg, str):
+        # try to parse as JSON string first
+        try:
+            parsed = json.loads(arg)
+            if not isinstance(parsed, dict):
+                raise ValueError("Parsed JSON is not a dict")
+            return parsed
+        except Exception:
+            # not a JSON string -> treat as path to a JSON file
+            if os.path.exists(arg):
+                with open(arg, 'r') as f:
+                    return json.load(f)
+            else:
+                raise click.BadParameter(
+                   f"{arg} must be a dict, a JSON string, or a path to a JSON file"
+                )
+    else:
+        raise click.BadParameter(
+            f"{arg} must be a dict, a JSON string, or a path to a JSON file"
+        )
+
+class JSONParam(click.ParamType):
+    """Click ParamType that accepts a dict, a JSON string, or a path to a JSON file and returns a dict."""
+    name = "json"
+
+    def convert(self, value, param, ctx):
+        try:
+            return parse_json_dict(value)
+        except click.BadParameter as e:
+            self.fail(str(e), param, ctx)

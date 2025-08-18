@@ -97,6 +97,10 @@ def filter_cells_region_register_subparser(subparser):
         "prefix_name", type=str, help="Prefix for the keys in the spatialdata object"
     )
     parser.add_argument(
+        "--seg_fam", type=str, default=None,
+        help="Which preset of column names to use when running filtering (default is None which uses a constant map)"
+    )
+    parser.add_argument(
         "--cutoffs_path", type=parse_path, help="Path to the cutoffs JSON file"
     )
     parser.add_argument(
@@ -117,6 +121,10 @@ def filter_cells_all_register_subparser(subparser):
     parser.add_argument("exp_name", type=str, help="Name of the experiment")
     parser.add_argument(
         "prefix_name", type=str, help="Prefix for the keys in the spatialdata object"
+    )
+    parser.add_argument(
+        "--seg_fam", type=str, default=None,
+        help="Which preset of column names to use when running filtering (default is None which uses a constant map)"
     )
     parser.add_argument(
         "--cutoffs_path", type=parse_path, help="Path to the cutoffs JSON file"

@@ -261,7 +261,8 @@ def load_vpt_segmentation(
     return sdata
 
 
-def load_proseg_segmentation(
+@DeprecationWarning
+def load_proseg_segmentation_v2(
     sdata: sd.SpatialData,
     exp_name: str,
     reg_name: str,
@@ -363,6 +364,96 @@ def load_proseg_segmentation(
             f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
         )
 
+    sd.save_transformations(sdata)
+
+    return sdata
+
+def load_proseg_segmentation_v3(
+    sdata: sd.SpatialData,
+    exp_name: str,
+    reg_name: str,
+    proseg_path: str,
+    prefix_name: str = "proseg",
+    zarr_name: str = "proseg_outputs.zarr",
+    **kwargs,
+):
+    """
+    Load the ProSeg segmentation data.
+    This function is a placeholder for loading ProSeg segmentation data.
+
+    Parameters:
+    sdata (spatialdata.SpatialData): The spatialdata object to load the segmentation into.
+    exp_name (str): The name of the experiment.
+    reg_name (str): The name of the region.
+    proseg_path (str): The path to the ProSeg segmentation output directory.
+    zarr_name (str): The path to the zarr file to save the data.
+    """
+    from spida.S.io.read_proseg import _get_table_v3
+    logger.info("Loading ProSeg segmentation v3")
+
+    # KEYS
+    DEF_KEYS = _gen_keys("default", exp_name, reg_name)
+    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+
+    identity = Identity()
+    affine = get_transformation(
+        sdata[DEF_KEYS[SHAPES_KEY]], to_coordinate_system="global"
+    )
+    transformations = {"global": affine}
+
+    sdata_proseg = sd.read_zarr(f"{proseg_path}/{reg_name}/{zarr_name}")
+    points = {}
+    points[KEYS[POINTS_KEY]] = sdata_proseg["transcripts"].copy()
+    sd.transformations.set_transformation(points[KEYS[POINTS_KEY]], transformation=affine, to_coordinate_system="global")
+
+    shapes = {}
+    shapes[KEYS[SHAPES_KEY]] = sdata_proseg["cell_boundaries"].set_crs(None, allow_override=True).copy() 
+    shapes[KEYS[SHAPES_KEY]]['cell'] = shapes[KEYS[SHAPES_KEY]]['cell'].astype(str)
+    sd.transformations.set_transformation(shapes[KEYS[SHAPES_KEY]], transformation=affine, to_coordinate_system="global")
+
+    tables = {}
+    tables[KEYS[TABLE_KEY]] = _get_table_v3(
+        sdata_proseg["table"].copy(),
+        reg_name,
+        exp_name,
+        f"{exp_name}_{reg_name}",
+        KEYS[SHAPES_KEY],
+    )
+    tables[KEYS[TABLE_KEY]].obs.index.name = "index"
+
+    sdata[KEYS[TABLE_KEY]] = tables[KEYS[TABLE_KEY]]
+    sdata[KEYS[POINTS_KEY]] = points[KEYS[POINTS_KEY]]
+    sdata[KEYS[SHAPES_KEY]] = shapes[KEYS[SHAPES_KEY]]
+    sdata = _cast_multipolygons_to_polygons(
+        sdata, KEYS[SHAPES_KEY], subset_field=["cell"]
+    )
+
+    # Doing the transformations:
+    # Setting the pixel space coordinate system
+    set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
+    set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
+    
+    # saving points
+    if f"points/{KEYS[POINTS_KEY]}" not in sdata.elements_paths_on_disk():
+        sdata.write_element(KEYS[POINTS_KEY])
+    else:
+        logger.warning(
+            f"Points {KEYS[POINTS_KEY]} already exists in the spatialdata object. Not overwriting it."
+        )
+    # saving shapes
+    if f"shapes/{KEYS[SHAPES_KEY]}" not in sdata.elements_paths_on_disk():
+        sdata.write_element(KEYS[SHAPES_KEY])
+    else:
+        logger.warning(
+            f"Shapes {KEYS[SHAPES_KEY]} already exists in the spatialdata object. Not overwriting it."
+        )
+    # saving table
+    if f"tables/{KEYS[TABLE_KEY]}" not in sdata.elements_paths_on_disk():
+        sdata.write_element(KEYS[TABLE_KEY])
+    else:
+        logger.warning(
+            f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
+        )
     sd.save_transformations(sdata)
 
     return sdata

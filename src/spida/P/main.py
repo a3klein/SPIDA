@@ -24,6 +24,7 @@ def filter_cells_region(
     exp_name: str,
     reg_name: str,
     prefix_name: str,
+    seg_fam:str = None,
     cutoffs_path: Path = None,
     plot: bool = False,
     image_path: Path = None,
@@ -34,6 +35,7 @@ def filter_cells_region(
     exp_name (str): Name of the experiment.
     reg_name (str): Name of the region.
     prefix_name (str): Prefix for the keys in the spatialdata object.
+    seg_fam (str, optional): Which preset of column names to use when running filtering (default is None which uses a constant map)
     cutoffs_path (Path, optional): Path to the cutoffs JSON file. If None, uses a default path.
     plot (bool, optional): Whether to plot the results. Defaults to False.
     Raises:
@@ -62,7 +64,13 @@ def filter_cells_region(
     adata = _get_adata(exp_name, reg_name, prefix_name)
     # Run the filtering
     adata = run_filtering(
-        adata, exp_name, reg_name, prefix_name, donor_name, cutoffs_path
+        adata=adata,
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix_name=prefix_name,
+        donor_name=donor_name,
+        seg_fam=seg_fam, 
+        cutoffs_path=cutoffs_path
     )
     # backup the AnnData object
     # _assign_new_table(exp_name, reg_name, adata, KEYS[TABLE_KEY], suffix="_filt") # double the storage but allows for iteration on filts.
@@ -115,6 +123,7 @@ def filter_cells_all(
     exp_name: str,
     prefix_name: str,
     cutoffs_path: Path = None,
+    seg_fam:str = None,
     plot: bool = False,
     image_path: Path = None,
 ):
@@ -137,6 +146,7 @@ def filter_cells_all(
             exp_name,
             reg_name,
             prefix_name,
+            seg_fam=seg_fam,
             cutoffs_path=cutoffs_path,
             plot=plot,
             image_path=image_path,
@@ -238,7 +248,7 @@ def setup_adata_all(
     """
 
     # Getting the regions for the experiment
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    zarr_store = os.getenv("ZARR_STORAGE_PATH")
     exp_path = Path(f"{zarr_store}/{exp_name}")
     regions = glob.glob(f"{exp_path}/region_*")
 
@@ -277,9 +287,7 @@ def plot_setup_region(
     adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix)
 
     if image_path is None:
-        image_store = os.getenv(
-            "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
-        )
+        image_store = os.getenv("IMAGE_STORE_PATH")
         image_path = Path(
             f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/pixi_setup.pdf"
         )

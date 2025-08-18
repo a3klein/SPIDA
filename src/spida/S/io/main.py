@@ -3,7 +3,8 @@ from spida._constants import *
 from .ingest_exp import (
     read_merscope,
     load_vpt_segmentation,
-    load_proseg_segmentation,
+    load_proseg_segmentation_v2,
+    load_proseg_segmentation_v3,
     load_decon_images,
 )
 from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
@@ -196,14 +197,28 @@ def load_segmentation_region(
             **load_kwargs,
         )
     elif type == "proseg":
-        sdata = load_proseg_segmentation(
-            sdata,
-            exp_name,
-            reg_name,
-            proseg_path=seg_dir,
-            prefix_name=prefix_name,
-            **load_kwargs,
-        )
+        from spida.S.segmentation.proseg import _determine_proseg_version
+        proseg_version = _determine_proseg_version()
+        if proseg_version[0] == '2':
+            sdata = load_proseg_segmentation_v2(
+                sdata,
+                exp_name,
+                reg_name,
+                proseg_path=seg_dir,
+                prefix_name=prefix_name,
+                **load_kwargs,
+            )
+        elif proseg_version[0] == '3':
+            sdata = load_proseg_segmentation_v3(
+                sdata,
+                exp_name,
+                reg_name,
+                proseg_path=seg_dir,
+                prefix_name=prefix_name,
+                **load_kwargs,
+            )
+
+    # TODO: add a function to filter the spatialdata object to something very permissive (like at least 5 transcripts per cell?)
 
     if plot:
         # plot params
@@ -223,13 +238,13 @@ def load_segmentation_region(
             warnings.filterwarnings("ignore")
             with PdfPages(image_path) as pdf:
                 # plot_images(sdata, KEYS[IMAGE_KEY], image_scale_keys, image_channels, cs="global", pdf_file=pdf)
-                plot_shapes(
-                    sdata,
-                    KEYS[SHAPES_KEY],
-                    table_name=KEYS[TABLE_KEY],
-                    cs="pixel",
-                    pdf_file=pdf,
-                )
+                # plot_shapes(
+                #     sdata,
+                #     KEYS[SHAPES_KEY],
+                #     table_name=KEYS[TABLE_KEY],
+                #     cs="pixel",
+                #     pdf_file=pdf,
+                # )
                 plot_seg_load(
                     sdata, KEYS[IMAGE_KEY], KEYS[SHAPES_KEY], cs="global", pdf_file=pdf
                 )

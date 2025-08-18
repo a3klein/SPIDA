@@ -28,6 +28,7 @@ jupyterlab = "4.*"
 ipykernel = "*"
 pixi-kernel = ">=0.6.4,<0.7"
 click = ">=8.2.2,<9"
+rich-click = ">=1.8.9,<2"
 # tqdm = ">=4.67.1,<5"
 
 [pypi-dependencies]
@@ -61,9 +62,13 @@ scikit-learn = ">=1.4.1,<1.6"
 jax = ">=0.7.0,<0.8"
 numpyro = ">=0.19.0,<0.20"
 imbalanced-learn = ">=0.12.4,<0.13"
+chex = ">=0.1.90,<0.2"
 [feature.preprocessing.pypi-dependencies] 
 allcools = { git = "https://github.com/DingWB/ALLCools" }
 opencv-python = "*"
+sqc-metrics = { path = "../sqc-metrics" }
+plottable = ">=0.1.5, <0.2"
+#scib-metrics = ">=0.5.6, <0.6"
 
 [feature.deepcell.pypi-dependencies]
 deepcell = "==0.12.6"

@@ -69,7 +69,7 @@ class Filter:
         except pl.exceptions.PolarsError:
             df_obs = pl.DataFrame(self.adata.obs)
 
-        df_meta = df_obs.select([CELL_ID, CELL_X, CELL_Y, CELL_FOV, CELL_VOLUME])
+        df_meta = df_obs.select([CELL_ID, CELL_X, CELL_Y, CELL_VOLUME])
         df_meta = self.load_info(df_meta)
         return df_meta
 
@@ -77,7 +77,21 @@ class Filter:
         """
         Load cell-by-gene data from an AnnData object and return it as a Polars DataFrame.
         """
-        df_cbg = pl.DataFrame(self.adata.X.copy()).sum_horizontal().to_frame()
+        from numpy import ndarray as np_array
+        from scipy.sparse import csr_matrix as scp_csr_matrix
+        if type(self.adata.X) == np_array:
+            df_cbg = pl.DataFrame(self.adata.X.copy()).sum_horizontal().to_frame()
+            num_unique = (pl.DataFrame(self.adata.X.copy()) != 0).sum_horizontal()
+        elif type(self.adata.X) == pl.DataFrame:
+            df_cbg = self.adata.X.sum_horizontal().to_frame()
+            num_unique = (self.adata.X != 0).sum_horizontal()
+        elif type(self.adata.X) == scp_csr_matrix:
+            df_cbg = pl.DataFrame(self.adata.X.toarray().copy()).sum_horizontal().to_frame()
+            num_unique = (pl.DataFrame(self.adata.X.toarray().copy()) != 0).sum_horizontal()
+        else: 
+            raise TypeError(
+                "Unsupported type for adata.X. Expected np.ndarray, pl.DataFrame, or scp.csr_matrix."
+            )
         cell_ids = (
             self.adata.obs.index.str.split(".", n=1, expand=True)
             .get_level_values(0)
@@ -90,8 +104,9 @@ class Filter:
         df_cbg = df_cbg.rename(
             {"index": CELL_ID, "Index": CELL_ID, "sum": "nCount_RNA"}, strict=False
         )
+        
         df_cbg = df_cbg.with_columns(
-            nFeature_RNA=(pl.DataFrame(self.adata.X.copy()) != 0).sum_horizontal()
+            nFeature_RNA=num_unique # (pl.DataFrame(self.adata.X.copy()) != 0).sum_horizontal()
         )
         df_cbg = df_cbg.with_columns(
             nBlank=pl.DataFrame(self.adata.copy().obsm["blank"]).sum_horizontal()
@@ -123,7 +138,6 @@ class Filter:
                 "donor",
                 CELL_X,
                 CELL_Y,
-                CELL_FOV,
                 CELL_VOLUME,
                 "nCount_RNA",
                 "nFeature_RNA",
@@ -198,6 +212,7 @@ def run_filtering(
     reg_name: str,
     prefix_name: str,
     donor_name=None,
+    seg_fam:str=None,
     cutoffs_path: str = "/ceph/cephatlas/aklein/bican/reference/filtering_cutoffs.json",
 ):
     """
@@ -220,9 +235,11 @@ def run_filtering(
         "cellposeSAM": "default",
         "proseg_nuclei": "proseg",
         "proseg_SAM": "proseg",
+        "proseg_v3" : "proseg",
         "mesmer": "default",
     }
-    seg_fam = seg_fam_map.get(prefix_name, "default")
+    if seg_fam is None:
+        seg_fam = seg_fam_map.get(prefix_name, "default")
     PRESET = (
         PROSEG_PRESET if seg_fam == "proseg" else DEFAULT_PRESET
     )  # PRESET for column names

@@ -151,32 +151,56 @@ def plot_setup(
     plt.rcParams["axes.facecolor"] = "white"
     donor = _region_to_donor(reg_name)
     # Plot the UMAP embeddings
-    plot_scatter(
-        adata,
-        title=f"{donor} - UMAP",
-        colors=["volume", "nCount_RNA", "leiden"],
-        ncols=3,
-        coord_base="umap",
-        pdf_file=pdf_file,
-    )
-    # Plot the TSNE embeddings
-    plot_scatter(
-        adata,
-        title=f"{donor} - UMAP",
-        colors=["volume", "nCount_RNA", "leiden"],
-        ncols=3,
-        coord_base="tsne",
-        pdf_file=pdf_file,
-    )
-    # Plot the spatial coordinates
-    plot_scatter(
-        adata,
-        title=f"{donor} - UMAP",
-        colors=["volume", "nCount_RNA", "leiden"],
-        ncols=3,
-        coord_base="spatial",
-        pdf_file=pdf_file,
-    )
+    fig, axes = plt.subplots(3, 3, figsize=(20, 20), dpi=300)
+    plot_continuous(adata, coord_base="base_umap", color_by="volume", ax=axes[0][0], show=False, title="umap - Cell Volume")
+    plot_continuous(adata, coord_base="base_umap", color_by="nCount_RNA", ax=axes[0][1], show=False, title="umap - Number of Transcripts")
+    plot_categorical(adata, coord_base="base_umap", cluster_col="base_leiden", text_anno=False, coding=True, show=False, ax=axes[0][2])
+    axes[0][2].set_title(f"umap - Leiden Clusters")    
+
+    plot_continuous(adata, coord_base="base_tsne", color_by="volume", ax=axes[1][0], show=False, title="tsne - Cell Volume")
+    plot_continuous(adata, coord_base="base_tsne", color_by="nCount_RNA", ax=axes[1][1], show=False, title="tsne - Number of Transcripts")
+    plot_categorical(adata, coord_base="base_tsne", cluster_col="base_leiden", text_anno=False, coding=True, show=False, ax=axes[1][2])
+    axes[1][2].set_title(f"tsne - Leiden Clusters")
+
+    plot_continuous(adata, coord_base="spatial", color_by="volume", ax=axes[2][0], show=False, title="spatial - Cell Volume")
+    plot_continuous(adata, coord_base="spatial", color_by="nCount_RNA", ax=axes[2][1], show=False, title="spatial - Number of Transcripts")
+    plot_categorical(adata, coord_base="spatial", cluster_col="base_leiden", text_anno=False, coding=True, show=False, ax=axes[2][2])
+    axes[2][2].set_title(f"spatial - Leiden Clusters")
+
+    if pdf_file:
+        pdf_file.savefig(fig, dpi=300)
+        plt.close(fig)
+    else:
+        plt.show()
+        plt.close()
+
+    # # Plot the UMAP embeddings
+    # plot_scatter(
+    #     adata,
+    #     title=f"{donor} - UMAP",
+    #     colors=["volume", "nCount_RNA", "leiden"],
+    #     ncols=3,
+    #     coord_base="umap",
+    #     pdf_file=pdf_file,
+    # )
+    # # Plot the TSNE embeddings
+    # plot_scatter(
+    #     adata,
+    #     title=f"{donor} - UMAP",
+    #     colors=["volume", "nCount_RNA", "leiden"],
+    #     ncols=3,
+    #     coord_base="tsne",
+    #     pdf_file=pdf_file,
+    # )
+    # # Plot the spatial coordinates
+    # plot_scatter(
+    #     adata,
+    #     title=f"{donor} - UMAP",
+    #     colors=["volume", "nCount_RNA", "leiden"],
+    #     ncols=3,
+    #     coord_base="spatial",
+    #     pdf_file=pdf_file,
+    # )
 
 
 def plot_resolvi(
