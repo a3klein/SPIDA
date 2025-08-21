@@ -15,7 +15,7 @@ from sklearn.decomposition import TruncatedSVD
 import time
 
 load_dotenv()
-logger = logging.getLogger(__package__)
+logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
 
 def _downsample_reference(

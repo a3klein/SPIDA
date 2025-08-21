@@ -249,16 +249,16 @@ def load_segmentation_region(
                     sdata, KEYS[IMAGE_KEY], KEYS[SHAPES_KEY], cs="global", pdf_file=pdf
                 )
                 # plot_points(sdata, KEYS[POINTS_KEY], KEYS[TABLE_KEY], cs="pixel", cmap="tab10", pdf_file=pdf)
-                plot_overlap(
-                    sdata,
-                    KEYS[IMAGE_KEY],
-                    KEYS[SHAPES_KEY],
-                    KEYS[POINTS_KEY],
-                    KEYS[TABLE_KEY],
-                    image_scale_keys,
-                    cs="pixel",
-                    pdf_file=pdf,
-                )
+                # plot_overlap(
+                #     sdata,
+                #     KEYS[IMAGE_KEY],
+                #     KEYS[SHAPES_KEY],
+                #     KEYS[POINTS_KEY],
+                #     KEYS[TABLE_KEY],
+                #     image_scale_keys,
+                #     cs="pixel",
+                #     pdf_file=pdf,
+                # )
 
 
 def load_segmentation_all(
