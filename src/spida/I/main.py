@@ -14,7 +14,7 @@ from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 from spida.settings import configure_logging_for_runtime
 
 load_dotenv()
-logger = logging.getLogger(__package__)
+logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
 
 def setup_logging(**kwargs):
@@ -666,15 +666,32 @@ def moscot_integration():
 
 if __name__ == "__main__":
     
-    # Move this to inside the top level CLI! 
+    # Configure root logger with INFO level handlers (to allow INFO messages through)
+    # but set the root logger level to WARNING (to suppress other modules)
     env = configure_logging_for_runtime(
-        level=logging.INFO, logger=logger,
+        level=logging.INFO,  # Handlers need to accept INFO level
     )
+    
+    # Set root logger level to WARNING to suppress other modules
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.WARNING)
+    
+    # Set the entire spida package to INFO level as well
+    spida_logger = logging.getLogger('spida')
+    spida_logger.setLevel(logging.INFO)
+
+    # Configure the spida.I module logger (parent for all files in this module)
+    module_logger = logging.getLogger('spida.I')
+    module_logger.setLevel(logging.INFO)
+
+    logger.setLevel(logging.INFO) # Set the level for the current logger
+    
+    # You can also set specific third-party modules to different levels if needed
+    # For example, to suppress verbose output from specific libraries:
+    # logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    # logging.getLogger('anndata').setLevel(logging.WARNING)
+    # logging.getLogger('scanpy').setLevel(logging.WARNING)
+    
     logger.info(f"Logging configured for environment: {env}")
-
-
-    # setup logging here:
-    # if not logging.root.handlers:
-    #     setup_logging(stdout=True, quiet=False)
             
     cli()
