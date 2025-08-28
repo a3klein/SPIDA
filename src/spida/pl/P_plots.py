@@ -119,7 +119,7 @@ def plot_filtering(adata: ad.AnnData, exp_name: str, reg_name: str, prefix_name:
         ax=axes[1][0],
     )
     plot_feature_distribution(
-        adata.obs,
+        adata.obs[adata.obs["pass_qc_pre"]] if "pass_qc_pre" in adata.obs.columns else adata.obs,
         feature="nCount_RNA_per_Volume",
         feature_alias="Transcripts Per Cell Size",
         min_val=adata.uns["cutoffs"]["n_count_per_volume_min"],

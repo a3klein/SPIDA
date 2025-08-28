@@ -114,11 +114,15 @@ def ingest_region_register_subparser(subparser):
         "--root_path", type=parse_path, default=None,
         help="Root path for the processed data (default: None, uses PROCESSED_ROOT_PATH in .env)"
     )
+    parser.add_argument(
+        "--zarr_store", type=parse_path, default=None,
+        help="Path for the Zarr store (default: None, uses ZARR_STORAGE_PATH in .env)"
+    )
+    parser.add_argument(
+        "--image_store", type=parse_path, default=None,
+        help="Path for the image store (default: None, uses IMAGE_STORE_PATH in .env)"
+    )
     return parser
-
-
-### Subparser Registers
-
 
 def ingest_all_register_subparser(subparser):
     """Register subparser for ingest-all command."""
@@ -153,6 +157,14 @@ def ingest_all_register_subparser(subparser):
     parser.add_argument(
         "--root_path", type=parse_path, default=None,
         help="Root path for the processed data (default: None, uses PROCESSED_ROOT_PATH in .env)"
+    )
+    parser.add_argument(
+        "--zarr_store", type=parse_path, default=None,
+        help="Path for the Zarr store (default: None, uses ZARR_STORAGE_PATH in .env)"
+    )
+    parser.add_argument(
+        "--image_store", type=parse_path, default=None,
+        help="Path for the image store (default: None, uses IMAGE_STORE_PATH in .env)"
     )
     return parser
 

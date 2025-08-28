@@ -14,8 +14,10 @@ def run_segmentation(
     type: str,
     exp_name: str,
     reg_name: str,
-    input_dir: str | Path = None,
-    output_dir: str | Path = None,
+    input_dir: str | Path | None = None,
+    output_dir: str | Path | None = None,
+    root_path: str | Path | None = None,
+    segmentation_store: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -23,20 +25,28 @@ def run_segmentation(
 
     Parameters:
     type (str): Type of segmentation to run (e.g., "proseg", "vpt", "cellpose", "mesmer").
-    input_dir (Path): Directory containing the input data.
-    output_dir (Path): Directory to save the output data.
     exp_name (str): Name of the experiment.
     reg_name (str): Name of the region.
+    input_dir (Path): Directory containing the input data.
+    output_dir (Path): Directory to save the output data.
+    root_path (Path, optional): Root path for the data (default is None, uses environment variable).
+    segmentation_store (Path, optional): Default Path to store the segmentation results (default is None, uses environment variable).
+    **kwargs: Additional keyword arguments to pass to the segmentation function.
     """
 
     if input_dir is None:
-        processed_root_path = os.getenv("PROCESSED_ROOT_PATH")
+        if root_path is None: 
+            processed_root_path = os.getenv("PROCESSED_ROOT_PATH")
+        else:
+            processed_root_path = root_path
         input_dir = f"{processed_root_path}/{exp_name}/out"
     if output_dir is None:
-        seg_out_path = os.getenv("SEGMENTATION_OUT_PATH")
+        if segmentation_store is None:
+            seg_out_path = os.getenv("SEGMENTATION_OUT_PATH")
+        else:
+            seg_out_path = segmentation_store
         output_dir = f"{seg_out_path}/{exp_name}/{type}"
 
-    # Printing out info # Implement logging here.
     logger.info(
         f"Running segmentation of type {type} on region {reg_name} in experiment {exp_name}."
     )
@@ -75,7 +85,14 @@ def run_segmentation(
 
 
 def segment_experiment(
-    type: str, exp_name: str, input_dir: Path = None, output_dir: Path = None, **kwargs
+    type: str,
+    exp_name: str,
+    input_dir: Path = None,
+    output_dir: Path = None,
+    root_path: str | Path | None = None,
+    segmentation_store: str | Path | None = None,
+    zarr_store: str | Path | None = None,
+    **kwargs
 ):
     """
     Run segmentation for all regions in an experiment.
@@ -87,8 +104,9 @@ def segment_experiment(
     **kwargs: Additional keyword arguments to pass to the segmentation function.
     """
 
-    root_path = os.getenv("ZARR_STORAGE_PATH")
-    exp_path = Path(f"{root_path}/{exp_name}")
+    if zarr_store is not None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    exp_path = Path(f"{zarr_store}/{exp_name}")
     regions = glob.glob(f"{exp_path}/region_*")
     for reg in regions:
         reg_name = reg.split("/")[-1]
@@ -98,6 +116,8 @@ def segment_experiment(
             reg_name=reg_name,
             input_dir=input_dir,
             output_dir=output_dir,
+            root_path=root_path,
+            segmentation_store=segmentation_store,
             **kwargs,
         )
 
