@@ -1,6 +1,7 @@
 import os
 import glob
 from pathlib import Path
+import tempfile
 import logging
 import warnings
 from dotenv import load_dotenv
@@ -9,7 +10,8 @@ from dotenv import load_dotenv
 import numpy as np
 import pandas as pd
 import anndata as ad
-from ALLCools.clustering import significant_pc_test  # type : ignore
+from ALLCools.clustering import significant_pc_test  # type: ignore
+from ALLCools.integration import confusion_matrix_clustering # type: ignore
 from ALLCools.integration.seurat_class import SeuratIntegration  # type: ignore
 from sklearn.decomposition import TruncatedSVD
 import time
@@ -61,42 +63,48 @@ def _get_joined_deg_list(
     if verbose >= 1: 
         verbosity = True
 
-    deg_ref = call_degs_by_celltype(
-        adata=ref_adata,
-        celltype_col=ref_col_level,
-        min_cells=min_cells,
-        logfc_threshold=logfc_threshold,
-        pval_threshold=pval_threshold,
-        method=method,
-        correction_method=correction_method,
-        save_results=False,
-        verbose=inner_verbose
-    )  
+    try: 
+        deg_ref = call_degs_by_celltype(
+            adata=ref_adata,
+            celltype_col=ref_col_level,
+            min_cells=min_cells,
+            logfc_threshold=logfc_threshold,
+            pval_threshold=pval_threshold,
+            method=method,
+            correction_method=correction_method,
+            save_results=False,
+            verbose=inner_verbose
+        )  
 
-    summary_ref = summarize_deg_results(deg_ref, top_n=top_n)
+        summary_ref = summarize_deg_results(deg_ref, top_n=top_n)
 
-    up_genes = np.unique([item for sublist in summary_ref['top_upregulated'] for item in sublist])
-    down_genes = np.unique([item for sublist in summary_ref['top_downregulated'] for item in sublist])
-    ref_genes = np.unique(np.concatenate((up_genes, down_genes)))
+        up_genes = np.unique([item for sublist in summary_ref['top_upregulated'] for item in sublist])
+        down_genes = np.unique([item for sublist in summary_ref['top_downregulated'] for item in sublist])
+        ref_genes = np.unique(np.concatenate((up_genes, down_genes)))
+    except ValueError as e: 
+        ref_genes = []
     if verbosity: logger.info(f"Total unique genes in top {top_n} reference: {len(ref_genes)}")
 
-    deg_qry = call_degs_by_celltype(
-        adata=qry_adata,
-        celltype_col=qry_col_level,
-        min_cells=min_cells,
-        logfc_threshold=logfc_threshold,
-        pval_threshold=pval_threshold,
-        method=method,
-        correction_method=correction_method,
-        save_results=False,
-        verbose=inner_verbose
-    )  
+    try:
+        deg_qry = call_degs_by_celltype(
+            adata=qry_adata,
+            celltype_col=qry_col_level,
+            min_cells=min_cells,
+            logfc_threshold=logfc_threshold,
+            pval_threshold=pval_threshold,
+            method=method,
+            correction_method=correction_method,
+            save_results=False,
+            verbose=inner_verbose
+        )  
 
-    deg_qry = summarize_deg_results(deg_qry, top_n=top_n)
+        deg_qry = summarize_deg_results(deg_qry, top_n=top_n)
 
-    up_genes = np.unique([item for sublist in deg_qry['top_upregulated'] for item in sublist])
-    down_genes = np.unique([item for sublist in deg_qry['top_downregulated'] for item in sublist])
-    qry_genes = np.unique(np.concatenate((up_genes, down_genes)))
+        up_genes = np.unique([item for sublist in deg_qry['top_upregulated'] for item in sublist])
+        down_genes = np.unique([item for sublist in deg_qry['top_downregulated'] for item in sublist])
+        qry_genes = np.unique(np.concatenate((up_genes, down_genes)))
+    except ValueError as e:
+        qry_genes = []
     if verbosity: logger.info(f"Total unique genes in top {top_n} query: {len(qry_genes)}")
 
     total_genes = np.unique(np.concatenate((ref_genes, qry_genes)))
@@ -244,7 +252,12 @@ def _allcools_seurat_wrapper(ref_adata, qry_adata, **kwargs):
     return adata, integrator
 
 
-def _transfer_labels(adata, integrator, rna_cell_type="supercluster_term"):
+def _transfer_labels(
+    adata,
+    integrator,
+    rna_cell_type="supercluster_term",
+    label_transfer_k=100,
+):
     """
     Transfer labels from the reference to the query AnnData object using the Seurat integration results.
 
@@ -262,6 +275,7 @@ def _transfer_labels(adata, integrator, rna_cell_type="supercluster_term"):
         categorical_key=key_to_transfer,
         continuous_key=None,
         key_dist="X_pca",
+        k_weight=label_transfer_k,
     )
     labels = label_transfer[rna_cell_type].columns.tolist()
     adata.obs[f"allcools_{rna_cell_type}"] = adata.obs.index.to_series().map(
@@ -284,7 +298,6 @@ def _transfer_labels(adata, integrator, rna_cell_type="supercluster_term"):
     ]
     return adata
 
-
 def _joint_embeddings(
     adata : ad.AnnData,
     use_rep: str = "X_pca_integrate",
@@ -299,6 +312,124 @@ def _joint_embeddings(
     from ..P.setup_adata import _calc_embeddings
     return _calc_embeddings(adata, use_rep=use_rep, key_added=key_added, leiden_res=leiden_res, knn=knn, min_dist=min_dist)
 
+def _clust2clust_transfer(
+    adata_comb, 
+    ref_cell_type_column = "Subclass",
+    joint_cluster_column = "integrated_leiden",
+    confusion_matrix_cluster_min_value = 0.25,
+    confusion_matrix_cluster_max_value = 0.9,
+    confusion_matrix_cluster_resolution = 1.5,
+    integration_round: int = 1,
+): 
+    data = adata_comb.obs.loc[~adata_comb.obs[joint_cluster_column].isna(), [joint_cluster_column, ref_cell_type_column]].value_counts().unstack(fill_value=0)
+
+    merfish_only_cluster = data.index[data.sum(axis=1) < 50]
+    rna_only_cluster = data.columns[data.sum(axis=0) < 20]
+
+    data = data.drop(merfish_only_cluster, axis=0)
+    datac = data / data.sum(axis=0)
+    datar = data / data.sum(axis=1).values[:, None]
+    confusion_matrix = datar.where(datar > datac, datac)
+
+    logger.info(f"RNA only clusters: {rna_only_cluster.tolist()}, Merfish only clusters: {merfish_only_cluster.tolist()}")
+
+    # confusion matrix contains RNA only clusters, but not merfish only clusters
+    if data.values.max()>0.1:
+        (query_group, ref_group, confusion_matrix, g, modularity_score1) = confusion_matrix_clustering(
+            confusion_matrix=confusion_matrix.T,
+            min_value=confusion_matrix_cluster_min_value,
+            max_value=confusion_matrix_cluster_max_value,
+            partition_type=None,
+            resolution=confusion_matrix_cluster_resolution,
+            seed=0,
+        )
+    else:
+        ref_group = pd.Series(-1, index=data.index)
+        query_group = pd.Series(-1, index=data.columns)
+        confusion_matrix = confusion_matrix.T
+        modularity_score1 = 0
+    
+    logger.info(f"Modularity score: {modularity_score1}, Ref group unique shapes: {ref_group.unique().shape}, Query group unique shapes: {query_group.unique().shape}")
+
+    integration_group_cluster = {}
+    integration_group_cell = {}
+    for group,xx in ref_group.groupby(ref_group):
+        qry_cluster = xx.index
+        ref_cluster = (datac.loc[qry_cluster].sum(axis=0) > 0.3) | (datar.loc[qry_cluster].max(axis=0) > 0.3)  #parameterize?
+        ref_cluster = ref_cluster.index[ref_cluster].astype(str)
+        ref_cell = adata_comb.obs.index[(adata_comb.obs['Modality']=='ref') & (adata_comb.obs[ref_cell_type_column].isin(ref_cluster))]
+        qry_cell = adata_comb.obs.index[(adata_comb.obs['Modality']=='query') & (adata_comb.obs[joint_cluster_column].isin(qry_cluster))]
+        if (len(qry_cell)>0) and (len(ref_cell)>0):
+            ## integration_group is used for split coclusters into next iteration, so should have cells from both modalities
+            ## qry_cell must already be positive since len(qry_cluster)>0 in the last condition, so this if requires the group to have MERFISH cells
+            integration_group_cluster[f'IG{group}'] = {
+                "ref": ref_cluster.tolist(),
+                "qry": qry_cluster.tolist()
+            }
+            integration_group_cell[f'IG{group}'] = {
+                "ref": ref_cell.tolist(),
+                "qry": qry_cell.tolist()
+            }
+        else:
+            logger.info(f"non_int_group: {group}, {ref_cluster}, {qry_cluster}")
+
+    logger.info(f"Number of integration groups: {len(integration_group_cluster)}, {len(integration_group_cell)}")
+    
+    added_col = f"c2c_allcools_label_{ref_cell_type_column}"
+    adata_comb.obs.loc[:, added_col] = "unknown"
+    for group in integration_group_cell: 
+        ref_cells = integration_group_cell[group]['ref']
+        qry_cells = integration_group_cell[group]['qry']
+        ref_annot = integration_group_cluster[group]['ref']
+        logger.info(f"{group}, {len(ref_cells)}, {len(qry_cells)}, {ref_annot}")
+        if len(ref_annot) > 1: 
+            if integration_round == 1: # Doing a second round of integration with only the ambiguous clusters
+                anndata_dir = tempfile.TemporaryDirectory()
+                _, adata_comb_ret = run_allcools_seurat(
+                    ref_adata = adata_comb[ref_cells,:].copy(),
+                    qry_adata = adata_comb[qry_cells,:].copy(),
+                    anndata_store_path=anndata_dir,
+                    annotations_store_path=None,
+                    rna_cell_type_column = ref_cell_type_column,
+                    qry_cluster_column = joint_cluster_column,
+                    top_deg_genes = 20,
+                    max_cells_per_cluster=2000,
+                    min_cells_per_cluster=0,
+                    save_adata_comb=False,
+                    save_integrator=False,
+                    save_query=False,
+                    run_joint_embeddings=True,
+                    run_clust_label_transfer=True,
+                    integration_round=2,
+                    leiden_res=0.5,  
+                    confusion_matrix_cluster_resolution=1,
+                    confusion_matrix_cluster_min_value = 0.1,
+                )
+                # adata_comb.obs[added_col] = adata_comb.obs[added_col].astype("str")
+                adata_comb.obs.loc[qry_cells,added_col] = adata_comb_ret.obs.loc[qry_cells, added_col].astype("str").values
+                # adata_comb.obs[added_col] = adata_comb.obs[added_col].astype("category")
+            else: #TODO: Decide on an R2 strategy
+                # On the second round just take the majority of annotations if there is still an ambiguous cluster type
+                annot = adata_comb.obs.loc[ref_cells, ref_cell_type_column].mode()[0]
+                adata_comb.obs.loc[qry_cells, added_col] = annot
+                # If there is still ambiguity on the second round just call it unknown
+                # adata_comb.obs.loc[qry_cells, added_col] = "unknown"
+        else: 
+            annot = ref_annot[0]
+            if added_col in adata_comb.obs.columns:
+                if isinstance(adata_comb.obs[added_col].dtype, pd.CategoricalDtype):
+                    if annot not in adata_comb.obs[added_col].cat.categories:
+                        adata_comb.obs[added_col] = adata_comb.obs[added_col].cat.add_categories([annot])
+            adata_comb.obs.loc[qry_cells, added_col] = annot
+
+    adata_comb.uns['c2c_allcools_integration_results'] = {
+        "ref_group" : pd.DataFrame(ref_group , columns=['ref_group']),
+        "qry_group": pd.DataFrame(query_group, columns=['qry_group']),
+        "confusion_matrix": confusion_matrix,
+        "integration_group_cluster": integration_group_cluster
+    }
+    return adata_comb
+
 def run_allcools_seurat(
     ref_adata: ad.AnnData,
     qry_adata: ad.AnnData,
@@ -309,9 +440,16 @@ def run_allcools_seurat(
     top_deg_genes:int = -1,
     max_cells_per_cluster:int = 3000,
     min_cells_per_cluster:int = 0,
+    label_transfer_k:int = 100,
+    save_query: bool = True,
     save_integrator:bool = True, 
     save_adata_comb: bool = True,
     run_joint_embeddings: bool = False,
+    run_clust_label_transfer: bool = True,
+    confusion_matrix_cluster_min_value = 0.25,
+    confusion_matrix_cluster_max_value = 0.9,
+    confusion_matrix_cluster_resolution = 1.5,
+    integration_round: int = 1,
     **kwargs,
 ):
     """
@@ -371,16 +509,39 @@ def run_allcools_seurat(
     adata_comb, integrator = _allcools_seurat_wrapper(ref_adata, qry_adata_ds, **kwargs)
 
     # Transfer labels to adata:
-    adata_comb = _transfer_labels(adata_comb, integrator, rna_cell_type=rna_cell_type_column)
+    adata_comb = _transfer_labels(
+        adata_comb,
+        integrator,
+        rna_cell_type=rna_cell_type_column,
+        label_transfer_k=label_transfer_k
+    )
+
+    # Run joint embeddings if needed
+    if run_joint_embeddings:
+        logger.info("Calculating joint embeddings")
+        _joint_embeddings(adata_comb, use_rep="X_pca_integrate", key_added="integrated_", **kwargs)
+        
+    # Running the cluster2cluster label transfer
+    if run_clust_label_transfer: 
+        adata_comb = _clust2clust_transfer(
+            adata_comb,
+            ref_cell_type_column = rna_cell_type_column,
+            joint_cluster_column = "integrated_leiden",
+            confusion_matrix_cluster_min_value = confusion_matrix_cluster_min_value,
+            confusion_matrix_cluster_max_value = confusion_matrix_cluster_max_value,
+            confusion_matrix_cluster_resolution = confusion_matrix_cluster_resolution,
+            integration_round = integration_round,
+            )
+
 
     pre_cols = set(qry_adata_ds.obs.columns).union(ref_adata.obs.columns)
     post_cols = adata_comb.obs.columns
     cols_to_add = list(set(post_cols) - set(pre_cols))
-    logger.info(f"Added columns to adata.obs: {cols_to_add}")
-    qry_adata.obs[cols_to_add] = adata_comb.obs[cols_to_add].copy()
+    qry_adata = _add_obs_columns(adata_comb, qry_adata, cols_to_add)
 
-    qry_path.parent.mkdir(parents=True, exist_ok=True)
-    qry_adata.write_h5ad(qry_path)
+    if save_query:
+        qry_path.parent.mkdir(parents=True, exist_ok=True)
+        qry_adata.write_h5ad(qry_path)
 
     if save_integrator:
         ### Making sure that there are no category dtypes in the integrator (they have nan's)
@@ -403,102 +564,34 @@ def run_allcools_seurat(
         logger.info(f"Saving combined adata to {adata_comb_path}/adata_comb_rna_merfish.h5ad")
         adata_comb.write_h5ad(f"{adata_comb_path}/adata_comb_rna_merfish.h5ad")
 
-    if run_joint_embeddings and save_adata_comb: 
-        logger.info("Calculating joint embeddings")
-        _joint_embeddings(adata_comb, use_rep="X_pca_integrate", key_added="integrated_", **kwargs)
-        adata_comb.write_h5ad(f"{adata_comb_path}/adata_comb_rna_merfish.h5ad")
-
-    return qry_adata
+    return qry_adata, adata_comb
 
 
-# ### Runners
-# def allcools_integration_region(
-#     exp_name: str,
-#     reg_name: str,
-#     prefix_name: str,
-#     ref_path: str,
-#     suffix:str = "_filt",
-#     anndata_store_path: str = None,
-#     annotations_store_path: str = None,
-#     **kwargs,
-# ):
-#     """
-#     Run ALLCools integration on a given experiment and region.
-#     Parameters:
-#     exp_name (str): Name of the experiment.
-#     reg_name (str): Name of the region.
-#     prefix_name (str): Prefix for the keys in the spatialdata object.
-#     ref_path (str): Path to the reference RNA AnnData object .
-#     anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
-#     annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults
-#     to None.
-#     **kwargs: Additional keyword arguments for ALLCools integration.
-#     """
-#     logger.info(
-#         "RUNNING ALLCOOLS INTEGRATION, EXPERIMENT %s, REGION %s, PREFIX %s"
-#         % (exp_name, reg_name, prefix_name)
-#     )
-#     if kwargs is not None: 
-#         kwargs = kwargs['kwargs']
-#     logger.info(f"ALLCOOLS kwargs: {kwargs}")
 
-#     # # Getting the sdata object (right now from a constant zarr store path)
-#     zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
-#     logger.info(f"reading data, zarr_store {zarr_store}")
-#     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
-#     logger.info(f"zarr_path: {zarr_path}")
-#     ad_path = f"{zarr_path}/tables/{prefix_name}_table{suffix}"
-#     logger.info(f"ad_path: {ad_path}")
-#     adata = ad.read_zarr(ad_path)
-#     logger.info(f"adata shape: {adata.shape}")
-
-#     ref_adata = ad.read_h5ad(ref_path)
-#     logger.info(f"ref_adata shape: {ref_adata.shape}")
-
-#     logger.info("read data and calling the function")
-#     adata = run_allcools_seurat(
-#         ref_adata, adata, anndata_store_path, annotations_store_path, **kwargs
-#     )
-
-#     logger.info("DONE WITH ALLCOOLS INTEGRATION")
-
-
-# def allcools_integration_experiment(
-#     exp_name: str,
-#     prefix_name: str,
-#     ref_path: str,
-#     suffix:str = "_filt",
-#     anndata_store_path: str = None,
-#     annotations_store_path: str = None,
-#     **kwargs,
-# ):
-#     """
-#     Run ALLCools integration for an entire experiment.
-
-#     Parameters:
-#     exp_name (str): Name of the experiment.
-#     prefix_name (str): Prefix for the keys in the spatialdata object.
-#     ref_path (str): Path to the reference RNA AnnData object .
-#     anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
-#     annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults
-#     to None.
-#     **kwargs: Additional keyword arguments for ALLCools integration.
-#     """
-
-#     # Getting the regions for the experiment
-#     zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
-#     exp_path = Path(f"{zarr_store}/{exp_name}")
-#     regions = glob.glob(f"{exp_path}/region_*")
-
-#     for reg in regions:
-#         reg_name = reg.split("/")[-1]
-#         allcools_integration_region(
-#             exp_name,
-#             reg_name,
-#             prefix_name,
-#             ref_path,
-#             suffix=suffix,
-#             anndata_store_path=anndata_store_path,
-#             annotations_store_path=annotations_store_path,
-#             **kwargs,
-#         )
+def _add_obs_columns(adata_source, adata_target, cols_to_add): 
+    """
+    Add new columns from adata_comb to qry_adata.obs, ensuring categorical columns have matching categories.
+    """
+    logger.info(f"Adding columns to qry_adata.obs: {cols_to_add}")
+    # Ensure categorical columns have matching categories before assignment
+    for col in cols_to_add:
+        if col in adata_source.obs.columns:
+            source_series = adata_source.obs[col].copy()
+            if source_series.dtype.name == 'category':
+                # If the column already exists in qry_adata.obs and is categorical
+                if col in adata_target.obs.columns and adata_target.obs[col].dtype.name == 'category':
+                    # Union the categories from both series
+                    combined_categories = source_series.cat.categories.union(adata_target.obs[col].cat.categories)
+                    source_series = source_series.cat.add_categories(
+                        combined_categories.difference(source_series.cat.categories)
+                    )
+                    adata_target.obs[col] = adata_target.obs[col].cat.add_categories(
+                        combined_categories.difference(adata_target.obs[col].cat.categories)
+                    )
+            adata_target.obs[col] = source_series
+        
+    # For any remaining columns, use the original assignment
+    remaining_cols = [col for col in cols_to_add if col not in adata_target.obs.columns]
+    if remaining_cols:
+        adata_target.obs[remaining_cols] = adata_source.obs[remaining_cols].copy()
+    return adata_target

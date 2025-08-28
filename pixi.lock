@@ -1115,6 +1115,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/absl-py-2.3.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/access-1.1.9-pyhd8ed1ab_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/adjusttext-1.3.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/affine-2.4.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/aiobotocore-2.24.0-pyhe01879c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/aiohappyeyeballs-2.6.1-pyhd8ed1ab_0.conda
@@ -1631,12 +1632,12 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py312h66e93f0_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
       - pypi: git+https://github.com/DingWB/ALLCools#d28a575d79a76a8c0f82a9239032ca81f4dd001a
+      - pypi: https://files.pythonhosted.org/packages/cc/cd/9479dd66e503af191edc016a302d2125c4f02ea777ebea1e48f6b944b073/harmonypy-0.0.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/ca/cf/23ea4b6f9460312604ed67b74e7db3e702fcaefc04743224ef1cdda663f4/plottable-0.1.5-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/89/93/5878b1eed2e0b6662002d069763025e4374c16ad3d18d8e10a9fefac7b16/pybedtools-0.12.0.tar.gz
       - pypi: https://files.pythonhosted.org/packages/7e/1c/a9952c5c5598c9e5c501fea855049577a499dd5f15cd6b716c373ab3ee27/pyBigWig-0.3.24-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/df/a6/c100df6c8118b4ce1f9c086bb9cf5bccd4f71d05ceb2ecf474f3b0ea87b8/pysam-0.23.3-cp312-cp312-manylinux_2_28_x86_64.whl
-      - pypi: ../sqc-metrics
       - pypi: ./
   preprocessing-gpu:
     channels:
@@ -1652,6 +1653,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/absl-py-2.3.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/access-1.1.9-pyhd8ed1ab_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/adjusttext-1.3.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/affine-2.4.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/aiobotocore-2.24.0-pyhe01879c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/aiohappyeyeballs-2.6.1-pyhd8ed1ab_0.conda
@@ -2211,12 +2213,12 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py312h66e93f0_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
       - pypi: git+https://github.com/DingWB/ALLCools#d28a575d79a76a8c0f82a9239032ca81f4dd001a
+      - pypi: https://files.pythonhosted.org/packages/cc/cd/9479dd66e503af191edc016a302d2125c4f02ea777ebea1e48f6b944b073/harmonypy-0.0.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/ca/cf/23ea4b6f9460312604ed67b74e7db3e702fcaefc04743224ef1cdda663f4/plottable-0.1.5-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/89/93/5878b1eed2e0b6662002d069763025e4374c16ad3d18d8e10a9fefac7b16/pybedtools-0.12.0.tar.gz
       - pypi: https://files.pythonhosted.org/packages/7e/1c/a9952c5c5598c9e5c501fea855049577a499dd5f15cd6b716c373ab3ee27/pyBigWig-0.3.24-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/df/a6/c100df6c8118b4ce1f9c086bb9cf5bccd4f71d05ceb2ecf474f3b0ea87b8/pysam-0.23.3-cp312-cp312-manylinux_2_28_x86_64.whl
-      - pypi: ../sqc-metrics
       - pypi: ./
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -2293,6 +2295,20 @@ packages:
   - pkg:pypi/access?source=hash-mapping
   size: 25269
   timestamp: 1734970173917
+- conda: https://conda.anaconda.org/conda-forge/noarch/adjusttext-1.3.0-pyhd8ed1ab_0.conda
+  sha256: 1fce2ff1859d1494c053387b241b44a12cd6ac97c0e27cd0edba70bce268c97f
+  md5: 57a40ccb7b409dfae9d340629b71d73e
+  depends:
+  - matplotlib-base
+  - numpy
+  - python >=3.6
+  - scipy
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/adjusttext?source=hash-mapping
+  size: 18280
+  timestamp: 1730725098822
 - conda: https://conda.anaconda.org/conda-forge/noarch/affine-2.4.0-pyhd8ed1ab_1.conda
   sha256: 0deeaf0c001d5543719db9b2686bc1920c86c7e142f9bec74f35e1ce611b1fc2
   md5: 8c4061f499edec6b8ac7000f6d586829
@@ -5922,6 +5938,16 @@ packages:
   purls: []
   size: 1802972
   timestamp: 1753107252406
+- pypi: https://files.pythonhosted.org/packages/cc/cd/9479dd66e503af191edc016a302d2125c4f02ea777ebea1e48f6b944b073/harmonypy-0.0.10-py3-none-any.whl
+  name: harmonypy
+  version: 0.0.10
+  sha256: dab528052f909204e521c9c2bd980221c64003538b0c0fe25be2e43c1199282b
+  requires_dist:
+  - numpy
+  - pandas
+  - scikit-learn
+  - scipy
+  requires_python: '>=3.6'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/hdf4-4.2.15-h2a13503_7.conda
   sha256: 0d09b6dc1ce5c4005ae1c6a19dc10767932ef9a5e9c755cfdbb5189ac8fb0684
   md5: bd77f8da987968ec3927990495dc22e4
@@ -14771,59 +14797,6 @@ packages:
   - pkg:pypi/spvcm?source=hash-mapping
   size: 4813747
   timestamp: 1734886868564
-- pypi: ../sqc-metrics
-  name: sqc-metrics
-  version: 0.5.6
-  sha256: 1e7a8f5a395b22066f6733a8dbf60ec3492976eef7083b0bf02842224db59e55
-  requires_dist:
-  - anndata
-  - chex
-  - jax
-  - jaxlib
-  - numpy
-  - pandas
-  - scipy
-  - scikit-learn
-  - scanpy>=1.9
-  - rich
-  - pynndescent
-  - igraph>0.9.0
-  - matplotlib
-  - plottable
-  - tqdm
-  - umap-learn>=0.5.0
-  - pre-commit ; extra == 'dev'
-  - twine>=4.0.2 ; extra == 'dev'
-  - sphinx>=4 ; extra == 'doc'
-  - sphinx-book-theme>=1.0 ; extra == 'doc'
-  - myst-nb ; extra == 'doc'
-  - sphinxcontrib-bibtex>=1.0.0 ; extra == 'doc'
-  - scanpydoc[typehints]>=0.7.4 ; extra == 'doc'
-  - sphinxext-opengraph ; extra == 'doc'
-  - ipython ; extra == 'doc'
-  - ipykernel ; extra == 'doc'
-  - sphinx-copybutton ; extra == 'doc'
-  - numba>=0.57.1 ; extra == 'doc'
-  - pytest ; extra == 'test'
-  - coverage ; extra == 'test'
-  - scib>=1.1.4 ; extra == 'test'
-  - harmonypy ; extra == 'test'
-  - joblib ; extra == 'test'
-  - flake8 ; extra == 'test'
-  - black ; extra == 'test'
-  - numba>=0.57.1 ; extra == 'test'
-  - joblib ; extra == 'parallel'
-  - rich ; extra == 'tutorial'
-  - scanorama ; extra == 'tutorial'
-  - harmony-pytorch ; extra == 'tutorial'
-  - scvi-tools ; extra == 'tutorial'
-  - pyliger ; extra == 'tutorial'
-  - numexpr ; extra == 'tutorial'
-  - plotnine ; extra == 'tutorial'
-  - mygene ; extra == 'tutorial'
-  - goatools ; extra == 'tutorial'
-  - adjusttext ; extra == 'tutorial'
-  requires_python: '>=3.10'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/sqlite-3.50.3-heff268d_1.conda
   sha256: 2095648f2cc4e518f86499a2dd784acb0db16af3f8c7bf0e55ec66431e615686
   md5: a4cfbd4bc4cf834779a5383519f9eb5a

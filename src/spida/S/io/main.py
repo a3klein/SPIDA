@@ -24,8 +24,6 @@ with warnings.catch_warnings():
 from matplotlib.backends.backend_pdf import PdfPages
 
 load_dotenv()
-
-
 logger = logging.getLogger(__package__)
 
 
@@ -37,6 +35,8 @@ def ingest_region(
     source: str = "machine",
     plot: bool = False,
     root_path : str | Path | None = None,
+    zarr_store : str | Path | None = None,
+    image_store : str | Path | None = None,
     **kwargs,
 ):
     """
@@ -47,7 +47,12 @@ def ingest_region(
     reg_name (str): Name of the region.
     type (str): Type of the data to ingest (default is "merscope").
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
-
+    source (str): Source of the data (default is "machine").
+    plot (bool): Whether to generate plots (default is False).
+    root_path (str|Path): Root path for the data (default is None, uses environment variable).
+    zarr_store (str|Path): Path to store the zarr files (default is None, uses environment variable).
+    image_store (str|Path): Path to store the images (default is None, uses environment variable).
+    kwargs: Additional keyword arguments for the ingestion functions.
     """
 
     logger.info("INGESTING REGION; EXPERIMENT %s, REGION %s " % (exp_name, reg_name))
@@ -56,9 +61,12 @@ def ingest_region(
     if type == "merscope" and source == "machine":
         if root_path is None:
             root_path = os.getenv("PROCESSED_ROOT_PATH")
-        processed_path = os.getenv("ZARR_STORAGE_PATH")
+        if zarr_store is None:
+            zarr_store = os.getenv("ZARR_STORAGE_PATH")
+        if image_store is None:
+            image_store = os.getenv("IMAGE_STORE_PATH")
         input_path = f"{root_path}/{exp_name}/out/{reg_name}"
-        zarr_path = f"{processed_path}/{exp_name}/{reg_name}"
+        zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
 
         sdata = read_merscope(
             input_path,
@@ -71,10 +79,9 @@ def ingest_region(
         image_channels = sd.models.get_channel_names(sdata[KEYS[IMAGE_KEY]])
         image_scale_keys = list(sdata[KEYS[IMAGE_KEY]].keys())
 
-        logging.info(sdata.tables.keys())
+        logger.info(sdata.tables.keys())
         if plot:
-            image_path = os.getenv("IMAGE_STORE_PATH")
-            image_path = f"{image_path}/{exp_name}/default/{reg_name}/pixi-ing.pdf"
+            image_path = f"{image_store}/{exp_name}/default/{reg_name}/pixi-ing.pdf"
             Path(image_path).parent.mkdir(parents=True, exist_ok=True)
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
@@ -121,6 +128,8 @@ def ingest_all(
     source: str = "machine",
     plot: bool = False,
     root_path: str | Path | None = None,
+    zarr_store : str | Path | None = None,
+    image_store : str | Path | None = None,
     **kwargs,
 ):
     """
@@ -131,6 +140,11 @@ def ingest_all(
     type (str): Type of the data to ingest (default is "merscope").
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     source (str): Source of the data (default is "machine").
+    plot (bool): Whether to generate plots (default is False).
+    root_path (str|Path): Root path for the data (default is None, uses environment variable).
+    zarr_store (str|Path): Path to store the zarr files (default is None, uses environment variable).
+    image_store (str|Path): Path to store the images (default is None, uses environment variable).
+    kwargs: Additional keyword arguments for the ingestion functions
     """
 
     logger.info("INGESTING ALL REGIONS; EXPERIMENT %s" % (exp_name))
@@ -148,6 +162,9 @@ def ingest_all(
                 prefix_name=prefix_name,
                 source=source,
                 plot=plot,
+                root_path=root_path,
+                zarr_store=zarr_store,
+                image_store=image_store,
             )
 
 
@@ -158,6 +175,8 @@ def load_segmentation_region(
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
+    zarr_store: str | Path | None = None,
+    image_store: str | Path | None = None,
     **load_kwargs,
 ):
     """
@@ -169,19 +188,17 @@ def load_segmentation_region(
     type (str): Type of the segmentation data to load (default is "vpt").
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     """
-    if load_kwargs is None:
-        load_kwargs = {}
-        print("here")
-    else:
-        load_kwargs = load_kwargs["load_kwargs"]
+
+    load_kwargs = load_kwargs.get("load_kwargs", load_kwargs)
 
     logger.info(
         "LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s"
         % (exp_name, reg_name, type)
     )
 
-    zarr_root = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
-    zarr_path = f"{zarr_root}/{exp_name}/{reg_name}"
+    if zarr_store is None: 
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     logger.info(zarr_path)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
@@ -227,10 +244,9 @@ def load_segmentation_region(
         image_scale_keys = list(sdata[KEYS[IMAGE_KEY]].keys())
 
         # define plot pdf
-        image_root = os.getenv(
-            "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
-        )
-        image_path = f"{image_root}/{exp_name}/{prefix_name}/{reg_name}/pixi-load.pdf"
+        if image_store is None:
+            image_store = os.getenv("IMAGE_STORE_PATH")
+        image_path = f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/pixi-load.pdf"
         Path(image_path).parent.mkdir(parents=True, exist_ok=True)
 
         # plot
@@ -300,6 +316,9 @@ def load_deconvolution_region(
     image_name: str = "decon_image",
     suffix: str = ".decon.tif",
     plot: bool = False,
+    root_path: str | Path | None = None,
+    zarr_store: str | Path | None = None,
+    image_store: str | Path | None = None,
     **load_kwargs,
 ):
     """
@@ -309,7 +328,13 @@ def load_deconvolution_region(
     exp_name (str): Name of the experiment.
     reg_name (str): Name of the region.
     image_dir (str|Path): Directory containing the deconvolution images.
-    prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
+    image_name (str): Name of the image key in the spatialdata object (default is "decon_image").
+    suffix (str): Suffix of the deconvolution image files (default is ".decon.tif").
+    plot (bool): Whether to generate plots (default is False).
+    root_path (str|Path): Root path for the data (default is None, uses environment variable).
+    zarr_store (str|Path): Path to store the zarr files (default is
+    image_store (str|Path): Path to store the images (default is None, uses environment variable).
+    load_kwargs: Additional keyword arguments for the load_decon_images function.
     """
 
     logger.info(
@@ -317,12 +342,16 @@ def load_deconvolution_region(
     )
 
     if image_dir is None:
-        image_dir = os.getenv("PROCESSED_ROOT_PATH")
+        if root_path is None:
+            image_dir = os.getenv("PROCESSED_ROOT_PATH")
+        else: 
+            image_dir = root_path
     image_dir = f"{image_dir}/{exp_name}/out/{reg_name}/images"
     logger.info(f"Loading deconvolution images from {image_dir}")
 
-    zarr_root = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
-    zarr_path = f"{zarr_root}/{exp_name}/{reg_name}"
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     logger.info(zarr_path)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
@@ -334,10 +363,10 @@ def load_deconvolution_region(
         image_channels = sd.models.get_channel_names(sdata[image_name])
         image_scale_keys = list(sdata[image_name].keys())
 
-        image_path = os.getenv(
-            "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
-        )
-        image_path = f"{image_path}/{exp_name}/default/{reg_name}/pixi-decon.pdf"
+        if image_store is None:
+            image_store = os.getenv("IMAGE_STORE_PATH")
+
+        image_path = f"{image_store}/{exp_name}/default/{reg_name}/pixi-decon.pdf"
         Path(image_path).parent.mkdir(parents=True, exist_ok=True)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")

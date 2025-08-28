@@ -1,0 +1,59 @@
+
+Currently Loaded Modules:
+  1) gmp/6.2.1    4) zlib/1.2.11        7) numactl/2.0.14      10) modtree/cpu
+  2) mpfr/4.0.2   5) gcc/11.2.0         8) openmpi/4.0.6
+  3) mpc/1.1.0    6) libfabric/1.12.0   9) xalt/2.10.45   (S)
+
+  Where:
+   S:  Module is Sticky, requires --force to unload or purge
+
+ 
+
+
+Running ProSeg - region_UCI5224 - GP
+
+Running ProSeg proseg_v3.20
+[INFO|cli|L599] 2025-08-25T19:59:36-0400 - Logging configured for environment: slurm-batch
+['--voxel-layers', '7', '--ncomponents=10', '--enforce-connectivity=True', '--max-transcript-nucleus-distance=40', '--nuclear-reassignment-prob=0.01', '--prior-seg-reassignment-prob=0.05', '--no-diffusion=True', '--cell-compactness=0.05']
+{'voxel-layers': 7, 'ncomponents': 10, 'enforce-connectivity': True, 'max-transcript-nucleus-distance': 40, 'nuclear-reassignment-prob': 0.01, 'prior-seg-reassignment-prob': 0.05, 'no-diffusion': True, 'cell-compactness': 0.05}
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed voxel-layers = 7;  <class 'int'>
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed ncomponents = 10;  <class 'int'>
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed enforce-connectivity = True;  <class 'bool'>
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed max-transcript-nucleus-distance = 40;  <class 'int'>
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed nuclear-reassignment-prob = 0.01;  <class 'float'>
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed prior-seg-reassignment-prob = 0.05;  <class 'float'>
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed no-diffusion = True;  <class 'bool'>
+[INFO|cli|L337] 2025-08-25T19:59:37-0400 - Parsed cell-compactness = 0.05;  <class 'float'>
+[INFO|main|L50] 2025-08-25T19:59:38-0400 - Running segmentation of type proseg on region region_UCI5224 in experiment 202506171319_BICAN-4x1-GP-E-05_VMSC31910.
+[INFO|main|L53] 2025-08-25T19:59:38-0400 - Input directory: /home/x-aklein2/projects/aklein/BICAN/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/cellpose/
+[INFO|main|L54] 2025-08-25T19:59:38-0400 - Output directory: /home/x-aklein2/projects/aklein/BICAN/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/proseg_v3.20
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: voxel-layers = 7
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: ncomponents = 10
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: enforce-connectivity = True
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: max-transcript-nucleus-distance = 40
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: nuclear-reassignment-prob = 0.01
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: prior-seg-reassignment-prob = 0.05
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: no-diffusion = True
+[INFO|proseg|L163] 2025-08-25T19:59:38-0400 - Proseg parameter: cell-compactness = 0.05
+[INFO|proseg|L61] 2025-08-25T19:59:38-0400 - Proseg version 3.x detected: True
+[INFO|proseg|L76] 2025-08-25T19:59:38-0400 - proseg binary added to PATH successfully.
+[INFO|proseg|L140] 2025-08-25T19:59:38-0400 - Adding proseg parameter: --voxel-layers 7
+[INFO|proseg|L140] 2025-08-25T19:59:38-0400 - Adding proseg parameter: --ncomponents 10
+[INFO|proseg|L137] 2025-08-25T19:59:38-0400 - Adding boolean proseg parameter: --enforce-connectivity
+[INFO|proseg|L140] 2025-08-25T19:59:38-0400 - Adding proseg parameter: --max-transcript-nucleus-distance 40
+[INFO|proseg|L140] 2025-08-25T19:59:38-0400 - Adding proseg parameter: --nuclear-reassignment-prob 0.01
+[INFO|proseg|L140] 2025-08-25T19:59:38-0400 - Adding proseg parameter: --prior-seg-reassignment-prob 0.05
+[INFO|proseg|L137] 2025-08-25T19:59:38-0400 - Adding boolean proseg parameter: --no-diffusion
+[INFO|proseg|L140] 2025-08-25T19:59:38-0400 - Adding proseg parameter: --cell-compactness 0.05
+[INFO|proseg|L144] 2025-08-25T19:59:38-0400 - Running proseg with command:
+
+        proseg --merscope         /home/x-aklein2/projects/aklein/BICAN/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/cellpose//region_UCI5224/detected_transcripts.csv         --output-path /home/x-aklein2/projects/aklein/BICAN/data/segmented/202506171319_BICAN-4x1-GP-E-05_VMSC31910/proseg_v3.20/region_UCI5224         --output-spatialdata proseg_outputs.zarr         --output-cell-polygons cell-polygons.geojson.gz         --voxel-layers 7 
+--ncomponents 10 
+--enforce-connectivity 
+--max-transcript-nucleus-distance 40 
+--nuclear-reassignment-prob 0.01 
+--prior-seg-reassignment-prob 0.05 
+--no-diffusion 
+--cell-compactness 0.05 
+
+slurmstepd: error: *** JOB 13716142 ON a240 CANCELLED AT 2025-08-25T20:00:12 ***

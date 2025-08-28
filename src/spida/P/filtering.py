@@ -187,6 +187,28 @@ class Filter:
         self.adata.uns["cutoffs"]["n_count_per_volume_min"] = n_count_per_volume_min
         self.adata.uns["cutoffs"]["n_count_per_volume_max"] = n_count_per_volume_max
 
+       # Apply the filtering (in 2 rounds)
+        judge = df_feature.filter(
+            pl.col("volume").is_between(volume_min, volume_max)
+            & pl.col("nCount_RNA").is_between(n_count_min, n_count_max)
+            & pl.col("nFeature_RNA").is_between(n_gene_min, n_gene_max)
+            & pl.col("nBlank").is_between(n_blank_min, n_blank_max)
+            # & pl.col("nCount_RNA_per_Volume").is_between(
+            #     n_count_per_volume_min, n_count_per_volume_max
+            # )
+        ).select(CELL_ID)
+
+        # df_tt.select(pl.col(CELL_ID).is_in(judge[CELL_ID].implode()))
+        df_feature = df_feature.with_columns(
+            pl.col(CELL_ID).is_in(judge[CELL_ID].implode()).alias("pass_qc_pre")
+        )
+
+        n_count_per_volume = df_feature.filter(pl.col("pass_qc_pre"))["nCount_RNA_per_Volume"].to_numpy()
+        qMax = np_quant(n_count_per_volume, ncpv_max_quantile)
+        qMin = np_quant(n_count_per_volume, ncpv_min_quantile)
+        n_count_per_volume_min = qMin
+        n_count_per_volume_max = qMax
+
         # Apply the filtering
         judge = df_feature.filter(
             pl.col("volume").is_between(volume_min, volume_max)
@@ -198,7 +220,9 @@ class Filter:
             )
         ).select(CELL_ID)
 
-        # df_tt.select(pl.col(CELL_ID).is_in(judge[CELL_ID].implode()))
+        self.adata.uns["cutoffs"]["n_count_per_volume_min"] = n_count_per_volume_min
+        self.adata.uns["cutoffs"]["n_count_per_volume_max"] = n_count_per_volume_max
+
         df_feature = df_feature.with_columns(
             pl.col(CELL_ID).is_in(judge[CELL_ID].implode()).alias("pass_qc")
         )
@@ -267,8 +291,9 @@ def run_filtering(
     res = (
         filtered_features.to_pandas()
         .set_index("Index")
-        .join(ff, on=CELL_ID, how="inner", lsuffix="", rsuffix="_old")
+        .merge(ff, on=CELL_ID, how="inner", suffixes=["", "_old"])
     )
+
     # Removing duplicate columns
     to_delete = []
     for c in res.columns:

@@ -109,13 +109,14 @@ def backup_adata_experiment(exp_name: str, prefix_name: str, adata_path: str = N
               default=None,
               help='JSON string (representing a dict), path to a JSON file, or a dict when calling programmatically. Defaults to None.'
 )
-@click.option("--max_cells_per_cluster", type=int, default=3000, help='Maximum number of cells per cluster when downsampling the reference AnnData object. Defaults to 3000.')
-@click.option("--min_cells_per_cluster", type=int, default=0, help='Minimum number of cells per cluster when downsampling the reference AnnData object. Defaults to 0.')
 @click.option(
     "--top_deg_genes",
     type=int,
     default=-1,
     help='Number of top differentially expressed genes to use from each cluster, set to -1 to turn off. Defaults to -1.')
+@click.option("--max_cells_per_cluster", type=int, default=3000, help='Maximum number of cells per cluster when downsampling the reference AnnData object. Defaults to 3000.')
+@click.option("--min_cells_per_cluster", type=int, default=0, help='Minimum number of cells per cluster when downsampling the reference AnnData object. Defaults to 0.')
+@click.option("--label_transfer_k", type=int, default=100, help='Number of neighbors to use for label transfer. Defaults to 100.')
 @click.option("--downsample_ref", type=bool, is_flag=True, default=False, help='Whether to downsample the reference AnnData object. Defaults to False.')
 @click.option("--min_ref_cells", type=int, default=50000, help='Minimum number of cells to downsample to in the reference AnnData object. Defaults to 50000.')
 @click.option("--save_integrator", type=bool, is_flag=True, default=True, help='Whether to save the integrator object. Defaults to True.')
@@ -123,6 +124,10 @@ def backup_adata_experiment(exp_name: str, prefix_name: str, adata_path: str = N
 @click.option("--rna_cell_type_column", type=click.STRING, default="supercluster_name", help='Column name in the AnnData object for RNA cell types. Defaults to "supercluster_name".')
 @click.option("--qry_cluster_column", type=click.STRING, default="leiden", help='Column name in the AnnData object for query clusters. Defaults to "leiden".')
 @click.option("--run_joint_embeddings", type=bool, is_flag=True, default=False, help='Whether to run joint embeddings on the integrated data. Defaults to False.')
+@click.option("--run_clust_label_transfer", type=bool, is_flag=True, default=True, help='Whether to run cluster-to-cluster label transfer on the integrated data. Defaults to True.')
+@click.option("--confusion_matrix_cluster_min_value", type=float, default=0.25, help='Minimum value for the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 0.25.')
+@click.option("--confusion_matrix_cluster_max_value", type=float, default=0.9, help='Maximum value for the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 0.9.')
+@click.option("--confusion_matrix_cluster_resolution", type=float, default=1.5, help='Resolution for clustering the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 1.5.')
 @click.option("--plot", type=bool, is_flag=True, default=False, help='Whether to plot the results of the ALLCools integration. Defaults to False.')
 @click.option("--image_path", type=click.Path(exists=False, file_okay=False, path_type=str, dir_okay=True), default=None, help='Path to the image file for plotting. Defaults to None.')
 @click.option("--backup_to_spatialdata", type=bool, is_flag=True, default=True, help='Whether to backup the results to the spatialdata object. Defaults to True.')
@@ -140,6 +145,7 @@ def allcools_integration_region(
     top_deg_genes: int = -1, 
     max_cells_per_cluster = 3000,
     min_cells_per_cluster = 0,
+    label_transfer_k: int = 100,
     downsample_ref: bool = False,
     min_ref_cells: int = 50000,
     save_integrator:bool = True, 
@@ -147,6 +153,10 @@ def allcools_integration_region(
     rna_cell_type_column: str = "supercluster_name",
     qry_cluster_column:str = "leiden",
     run_joint_embeddings:bool = False,
+    run_clust_label_transfer: bool = True,
+    confusion_matrix_cluster_min_value: float = 0.25,
+    confusion_matrix_cluster_max_value: float = 0.9,
+    confusion_matrix_cluster_resolution: float = 1.5,
     plot:bool = False,
     image_path:str | Path | None = None,
     backup_to_spatialdata:bool = True, 
@@ -222,7 +232,7 @@ def allcools_integration_region(
             )
 
     logger.info("read data and calling the function")
-    adata = run_allcools_seurat(
+    adata, _ = run_allcools_seurat(
         ref_adata=ref_adata, 
         qry_adata=adata, 
         anndata_store_path=anndata_store_path,
@@ -233,6 +243,10 @@ def allcools_integration_region(
         max_cells_per_cluster=max_cells_per_cluster,
         min_cells_per_cluster=min_cells_per_cluster,
         run_joint_embeddings=run_joint_embeddings,
+        run_clust_label_transfer=run_clust_label_transfer,
+        confusion_matrix_cluster_min_value=confusion_matrix_cluster_min_value,
+        confusion_matrix_cluster_max_value=confusion_matrix_cluster_max_value,
+        confusion_matrix_cluster_resolution=confusion_matrix_cluster_resolution,
         save_integrator=save_integrator,
         save_adata_comb=save_adata_comb,
         **kwargs,
@@ -263,6 +277,8 @@ def allcools_integration_region(
             annotations_store_path=annotations_store_path,
             output_path=image_path,
             plot_joint_embeddings=run_joint_embeddings,
+            plot_c2c_transfer=run_clust_label_transfer,
+            ref_cell_type_column=rna_cell_type_column,
         )
 
 @cli.command(
@@ -295,7 +311,11 @@ def allcools_integration_region(
     help='Path to the output directory for results. Defaults to None.'
 )
 @click.option("--plot_joint_embeddings", type=bool, is_flag=True, default=False, help='Whether to plot the joint embeddings. Defaults to False.')
+@click.option("--plot_c2c_transfer", type=bool, is_flag=True, default=False, help='Whether to plot the cluster-to-cluster label transfer results. Defaults to False.')
+@click.option("--ref_cell_type_column", type=click.STRING, default="supercluster_name", help='Column name in the AnnData object for RNA cell types. Defaults to "supercluster_name".')
+@click.pass_context
 def plot_allcools_integration(
+    ctx,
     exp_name: str,
     seg_name: str,
     donor: str,
@@ -303,6 +323,8 @@ def plot_allcools_integration(
     annotations_store_path: str = None,
     output_path: str = None,
     plot_joint_embeddings:bool = False,
+    plot_c2c_transfer:bool = False,
+    ref_cell_type_column:str = "supercluster_name",
 ):
     """
     Plot the results of ALLCools integration for a given EXP_NAME, SEG_NAME, and DONOR.
@@ -315,7 +337,6 @@ def plot_allcools_integration(
     import anndata as ad # type: ignore
     from spida.pl import plot_allcools_joint_embeddings, plot_allcools_spatial_annot
     from matplotlib.backends.backend_pdf import PdfPages
-
 
     # TODO: Click configuration files (handled within the cli group function to get all of these filepaths)
     if not anndata_store_path:
@@ -350,8 +371,15 @@ def plot_allcools_integration(
     if plot_joint_embeddings:
         plot_allcools_joint_embeddings(adata_comb, exp_name=exp_name, seg_name=seg_name, donor=donor, pdf_file=pdf_file)
     plot_allcools_spatial_annot(qry_adata, exp_name=exp_name, seg_name=seg_name, donor=donor, pdf_file=pdf_file)
+    if plot_c2c_transfer:
+        from spida.pl.I_plots import plot_allcools_c2c
+        ref_group = adata_comb.uns['c2c_allcools_integration_results'].get("ref_group", None)
+        ref_group = ref_group['ref_group'] if ref_group is not None else None
+        query_group = adata_comb.uns['c2c_allcools_integration_results'].get("qry_group", None)
+        query_group = query_group['qry_group'] if query_group is not None else None
+        conf_mat = adata_comb.uns['c2c_allcools_integration_results'].get("confusion_matrix", None)
+        plot_allcools_c2c(adata_comb, qry_adata, ref_group, query_group, conf_mat, ref_cell_type_column=ref_cell_type_column, pdf_file=pdf_file)
     pdf_file.close()
-
 
 @cli.command(
     name='allcools-integration-experiment',

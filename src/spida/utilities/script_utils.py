@@ -117,32 +117,58 @@ def parse_kwargs(kwargs_list):
     return kwargs_dict
 
 def parse_click_kwargs(item_list): 
-    kwargs_dict = {}
-    num_items = len(item_list) / 2
-    if num_items != int(num_items):
-        raise ValueError("kwargs must be in pairs of key and value")
-    
-    # TODO: use ast literal eval to simplify this code!
-    for i in range(0, len(item_list), 2):
-        key = item_list[i]
-        value = item_list[i + 1]
-        if not key.startswith("--"):
-            raise ValueError(f"Expected key to start with '--', got {key}")
-        if i + 1 >= len(item_list):
-            raise ValueError(f"Missing value for key {key}")
-        key = key[2:]  # Remove the leading '--'
+    """Parse click-style extra args into a kwargs dict.
 
-        if value.lower() in ("true", "false"):
-            kwargs_dict[key] = value.lower() == "true"
-        elif value.replace(".", "").replace("-", "").isdigit():
-            if "." in value:
-                kwargs_dict[key] = float(value)
-            else:
-                kwargs_dict[key] = int(value)
-        elif "," in value:
-            kwargs_dict[key] = [v.strip() for v in value.split(",")]
+    Accepts either:
+      --key value --other_key value
+    or:
+      --key=value --other=value
+
+    Values are interpreted with ast.literal_eval when possible, with these fallbacks:
+      - case-insensitive 'true'/'false' -> bool
+      - comma-separated -> list of strings (if literal_eval fails)
+      - otherwise -> raw string
+    """
+    if not item_list:
+        return {}
+
+    kwargs_dict = {}
+    i = 0
+    n = len(item_list)
+
+    while i < n:
+        token = item_list[i]
+        if not token.startswith("--"):
+            raise ValueError(f"Expected key starting with '--', got {token}")
+
+        # support --key=value and --key value
+        if "=" in token:
+            key, raw_val = token[2:].split("=", 1)
+            i += 1
         else:
-            kwargs_dict[key] = value
+            key = token[2:]
+            if i + 1 >= n:
+                raise ValueError(f"Missing value for key {token}")
+            raw_val = item_list[i + 1]
+            i += 2
+
+        # Normalize boolean-like lower-case tokens
+        if isinstance(raw_val, str) and raw_val.lower() in ("true", "false"):
+            val = raw_val.lower() == "true"
+        else:
+            # Try to interpret with literal_eval (numbers, lists, dicts, quoted strings)
+            try:
+                val = ast.literal_eval(raw_val)
+            except Exception:
+                # Fallback: comma-separated -> list of strings
+                if isinstance(raw_val, str) and "," in raw_val:
+                    val = [v.strip() for v in raw_val.split(",")]
+                else:
+                    # keep raw string
+                    val = raw_val
+
+        kwargs_dict[key] = val
+
     return kwargs_dict
 
 def parse_json_dict(arg: dict | Path | str) -> dict:
