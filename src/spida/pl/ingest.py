@@ -101,8 +101,9 @@ def plot_points(
     import spatialdata_plot  # noqa: F401
 
     fig, axes = plt.subplots(1, 3, figsize=(20, 8))
+    genes = list(sdata[POINTS_KEY]["gene"].unique())
     for i in range(3):
-        gene_ex = sdata[TABLE_KEY].var.index[i]
+        gene_ex = genes[i]
         sdata.pl.render_points(
             POINTS_KEY, groups=gene_ex, color="gene", cmap=cmap
         ).pl.show(ax=axes[i], title=gene_ex, coordinate_systems=cs)

@@ -23,8 +23,9 @@ cd /anvil/projects/x-mcb130189/aklein/SPIDA
 
 echo "Running Cellpose SAM on Region {REG_N} of Experiment {EXP_N}"
 
-pixi run -e cellpose \
-    python -m spida.S run \
+pixi run -e preprocessing \
+    python -m spida.S.cli {CONFIG} \
+    run \
     cellpose \
     {EXPERIMENT} \
     {REGION} \
@@ -39,10 +40,9 @@ pixi run -e cellpose \
     cellprob_threshold=-4 \
     tile_norm_blocksize=0
 
-
-# Loading in the segmentation into the zarr store
 pixi run -e preprocessing \
-    python -m spida.S load_segmentation_region \
+    python -m spida.S.cli {CONFIG} \
+    load_segmentation_region \
     {EXPERIMENT} \
     {REGION} \
     {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose \
@@ -50,9 +50,46 @@ pixi run -e preprocessing \
     --prefix_name cellpose_SAM \
     --plot
 
-pixi run -e preprocessing python \
-    -m spida.S load_decon_images \
+pixi run -e preprocessing \
+    python -m spida.S.cli {CONFIG} \
+    load_decon_images \
     {EXPERIMENT} \
     {REGION} \
     --image_dir {ROOT_PATH} \
     --plot
+
+
+
+# pixi run -e cellpose \
+#     python -m spida.S run \
+#     cellpose \
+#     {EXPERIMENT} \
+#     {REGION} \
+#     --input_dir {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
+#     --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose \
+#     --kwargs \
+#     scale=4 \
+#     image_ext=.decon.tif \
+#     nuc_stain_name=DAPI \
+#     cyto_stain_name=PolyT \
+#     flow_threshold=0 \
+#     cellprob_threshold=-4 \
+#     tile_norm_blocksize=0
+
+
+# Loading in the segmentation into the zarr store
+# pixi run -e preprocessing \
+#     python -m spida.S load_segmentation_region \
+#     {EXPERIMENT} \
+#     {REGION} \
+#     {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose \
+#     --type vpt \
+#     --prefix_name cellpose_SAM \
+#     --plot
+
+# pixi run -e preprocessing python \
+#     -m spida.S load_decon_images \
+#     {EXPERIMENT} \
+#     {REGION} \
+#     --image_dir {ROOT_PATH} \
+#     --plot

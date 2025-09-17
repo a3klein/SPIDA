@@ -279,6 +279,15 @@ def seg_to_vpt(root_dir: str, seg_out_dir: str, region: str, **vpt_filepaths):
         f"Converted geometry saved to {seg_out_dir}/{region}/cellpose_micron_space.parquet."
     )
 
+    dt_fname = vpt_filepaths.get("input_transcripts", "detected_transcripts.parquet")
+    dt_parquet = Path(f"{root_dir}/{region}/{dt_fname}")
+    logger.info(f"Checking for detected transcripts file at {dt_parquet}")
+    if not dt_parquet.exists():
+        dt_fname = "detected_transcripts.csv"
+        assert Path(
+            f"{root_dir}/{region}/{dt_fname}"
+        ).exists(), "detected_transcripts.csv file does not exist in the specified root directory."
+
     # Run VPT partition transcripts
     _cli_partition_transcripts(
         root_dir=root_dir,
@@ -287,9 +296,7 @@ def seg_to_vpt(root_dir: str, seg_out_dir: str, region: str, **vpt_filepaths):
         input_boundaries=vpt_filepaths.get(
             "output_boundaries", "cellpose_micron_space.parquet"
         ),
-        input_transcripts=vpt_filepaths.get(
-            "input_transcripts", "detected_transcripts.parquet"
-        ),
+        input_transcripts=dt_fname,
         output_entity_by_gene=vpt_filepaths.get(
             "output_entity_by_gene", "cell_by_gene.csv"
         ),

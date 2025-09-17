@@ -28,16 +28,31 @@ cd /anvil/projects/x-mcb130189/aklein/SPIDA
 
 echo "Running whole image deconvolution - PolyT - {REG_N} - {EXP_N}"
 
-pixi run -e preprocessing \
-    python -m spida.S decon_image \
+pixi run -e preprocessing-gpu \
+    python -m spida.S.cli {CONFIG} \
+    decon_image \
     -i {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {ROOT_PATH}/{EXPERIMENT}/raw/dataorganization.csv \
     -o {ROOT_PATH}/{EXPERIMENT}/analysis/{REGION}/tile_images \
     --channels PolyT \
-    -ts 2960 \
+    --tile_size 2960 \
     --overlap 400 \
     --z_step 1.5 \
     --filter deconwolf \
-    --filter_args tilesize=1500 \
-    --gpu True \
-    --plot_thr True
+    --filter_args tilesize 1500 \
+    --gpu \
+    --plot_thr
+
+# pixi run -e preprocessing \
+#     python -m spida.S decon_image \
+#     -i {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
+#     --data_org_path {ROOT_PATH}/{EXPERIMENT}/raw/dataorganization.csv \
+#     -o {ROOT_PATH}/{EXPERIMENT}/analysis/{REGION}/tile_images \
+#     --channels PolyT \
+#     -ts 2960 \
+#     --overlap 400 \
+#     --z_step 1.5 \
+#     --filter deconwolf \
+#     --filter_args tilesize=1500 \
+#     --gpu True \
+#     --plot_thr True

@@ -15,6 +15,7 @@ from natsort import natsorted
 import skimage as ski
 from shapely.geometry import Polygon
 import geopandas as gpd
+import cv2
 from spida.utilities.tiling import (
     tile_image_with_overlap,
     merge_tile_polygons,
@@ -58,31 +59,55 @@ def _load_image(
     )
     logger.info(f"Found {len(files)} images in {image_path}")
 
-    nuc_file = None
+    nuc_files = []
     for f in files:
         if nuc_stain_name in f.name:
-            nuc_file = f
+            nuc_files.append(f)
 
-    if nuc_file is None:
+    if len(nuc_files) == 0:
         raise ValueError(
             f"No nuclear stain file found with name '{nuc_stain_name}' in {image_path}"
         )
+    elif len(nuc_files) == 1: 
+        nuc_file = nuc_files[0]
+        nuc_img = io.imread(nuc_file)
+    else: 
+        # Stack 3D image
+        nuc_files = natsorted(nuc_files)
+        stack_3d = []
+        for _fn in nuc_files:
+            logger.info(f"  {_fn}")
+            _img = io.imread(_fn)
+            stack_3d.append(_img)
+        nuc_img = np.stack(stack_3d, axis=0)
 
-    nuc_img = io.imread(nuc_file)
-    logger.info(f"Loaded images: Nuclear - {nuc_file}, Image Shape: {nuc_img.shape}")
+    logger.info(f"Loaded images: Nuclear - {nuc_files}, Image Shape: {nuc_img.shape}")
 
     if cyto_stain_name is not None:
+        cyto_files = []
         for f in files:
             if cyto_stain_name in f.name:
-                cyto_file = f
+                cyto_files.append(f)
 
-        cyto_img = io.imread(cyto_file)
-        logger.info(
-            f"Loaded images: Cytoplasmic - {cyto_file}, Image Shape: {cyto_img.shape}"
-        )
-        img = np.stack([nuc_img, cyto_img], axis=0)
-        return img
+        if len(cyto_files) == 0:
+            raise ValueError(
+                f"No cytoplasmic stain file found with name '{cyto_stain_name}' in {image_path}"
+            )
+        elif len(cyto_files) == 1: 
+            cyto_file = cyto_files[0]
+            cyto_img = io.imread(cyto_file)
+        else: 
+            # Stack 3D image
+            cyto_files = natsorted(cyto_files)
+            stack_3d = []
+            for _fn in cyto_files:
+                logger.info(f"  {_fn}")
+                _img = io.imread(_fn)
+                stack_3d.append(_img)
+            cyto_img = np.stack(stack_3d, axis=0)
 
+        logger.info(f"Loaded images: Cytoplasmic - {cyto_files}, Image Shape: {cyto_img.shape}")
+        return np.stack([nuc_img, cyto_img], axis=0)
     else:
         logger.info(
             f"No cytoplasmic stain file found with name '{cyto_stain_name}' in {image_path}, returning nuclear image only."
@@ -112,6 +137,7 @@ def _cellpose_wrapper(
     tile_norm_blocksize=0,
     diameter=None,
     min_size=100,
+    do_3D=False,
     **kwargs,
 ):
     """
@@ -130,16 +156,30 @@ def _cellpose_wrapper(
 
     model = _load_model(**kwargs)
 
-    return model.eval(
-        img,
-        batch_size=batch_size,
-        flow_threshold=flow_threshold,
-        cellprob_threshold=cellprob_threshold,
-        diameter=diameter,
-        channel_axis=0,
-        min_size=min_size,
-        normalize={"tile_norm_blocksize": tile_norm_blocksize},
-    )
+    if do_3D: 
+        return model.eval(
+            img,
+            batch_size=batch_size,
+            flow_threshold=flow_threshold,
+            cellprob_threshold=cellprob_threshold,
+            diameter=diameter,
+            channel_axis=0,
+            min_size=min_size,
+            do_3D=True,
+            z_axis=1,
+            normalize={"tile_norm_blocksize": tile_norm_blocksize},
+        )
+    else: 
+        return model.eval(
+            img,
+            batch_size=batch_size,
+            flow_threshold=flow_threshold,
+            cellprob_threshold=cellprob_threshold,
+            diameter=diameter,
+            channel_axis=0,
+            min_size=min_size,
+            normalize={"tile_norm_blocksize": tile_norm_blocksize},
+        )
 
 
 def convert_mask(mask_id, masks, tolerance=0.5):
@@ -191,7 +231,8 @@ def _masks_to_polygons(masks: np.ndarray, tolerance: float = 0.5):
     """
     mask_ids = np.unique(masks)[1:]
 
-    masks = np.expand_dims(masks, axis=0)
+    if masks.ndim == 2: 
+        masks = np.expand_dims(masks, axis=0)
     masks = masks.swapaxes(-1, -2)
     mask_ids = np.unique(masks)[1:]  # Exclude background (0)
 
@@ -262,6 +303,8 @@ def run_cellposeSAM(
     image_ext: str = ".tif",
     nuc_stain_name: str = "DAPI",
     cyto_stain_name: str = None,
+    project_3d_to_2d: bool = False,
+    apply_clahe: bool = False,
     **kwargs,
 ):
     """
@@ -307,6 +350,26 @@ def run_cellposeSAM(
 
     og_shape = img.shape
     logger.info(f"OG image shape: {og_shape}")
+
+    if project_3d_to_2d and img.ndim == 4:
+        logger.info("Converting 3D image to 2D by maximum intensity projection.")
+        img = np.max(img, axis=1)
+        logger.info(f"Image shape after 3D to 2D conversion: {img.shape}")
+
+    if apply_clahe and img.ndim == 3:
+        clahe_clipLimit = kwargs.pop("clahe_clipLimit", 20)
+        clahe_tileGridSize = kwargs.pop("clahe_tileGridSize", 8)
+        logger.info(
+            f"Applying CLAHE with clipLimit={clahe_clipLimit} and tileGridSize={clahe_tileGridSize}."
+        )
+        clahe = cv2.createCLAHE(
+            clipLimit=clahe_clipLimit,
+            tileGridSize=(clahe_tileGridSize, clahe_tileGridSize)
+        )
+        img = img.astype(np.uint16)
+        for _channels in range(img.shape[0]):
+            img[_channels] = clahe.apply((img[_channels]))
+        img = (img/256).astype('uint8')
 
     downscale = (1,) * (img.ndim - 2) + (scale, scale)
     img = ski.transform.downscale_local_mean(img, downscale)

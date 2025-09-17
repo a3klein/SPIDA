@@ -462,6 +462,7 @@ def load_proseg_segmentation_v3(
 def load_decon_images(
     sdata: sd.SpatialData,
     image_dir: str | Path,
+    z_layer: int | str = 3,
     image_name: str = "decon_images",
     suffix: str = ".decon.tif",
     **image_models_kwargs,
@@ -481,7 +482,7 @@ def load_decon_images(
     image_models_kwargs["scale_factors"] = [2, 2, 2, 2]
 
     sdata[image_name] = _read_decon_images(
-        image_dir, suffix=suffix, **image_models_kwargs
+        image_dir, suffix=suffix,  z_layer=z_layer, **image_models_kwargs
     )
     if f"images/{image_name}" not in sdata.elements_paths_on_disk():
         sdata.write_element(image_name)
@@ -493,11 +494,17 @@ def load_decon_images(
     return sdata
 
 
-def _read_decon_images(image_dir, suffix: str = ".decon.tif", **image_models_kwargs):
+def _read_decon_images(
+    image_dir,
+    suffix: str = ".decon.tif",
+    z_layer: int | str = 3,
+    **image_models_kwargs):
     """
     Read deconvolution images from the specified directory.
 
     Parameters:
+    suffix (str): The suffix of the image files (default is ".decon.tif").
+    z_layer (int): The z-layer to read (default is 3).
     image_dir (str|Path): The directory containing the deconvolution images.
     **image_models_kwargs: Additional keyword arguments for the image model.
 
@@ -510,7 +517,6 @@ def _read_decon_images(image_dir, suffix: str = ".decon.tif", **image_models_kwa
 
     if isinstance(image_dir, str):
         image_dir = Path(image_dir)
-    z_layer = 3
     stainings = ["DAPI", "PolyT"]
     im = da.stack(
         [

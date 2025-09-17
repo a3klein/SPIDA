@@ -206,6 +206,7 @@ def plot_spatial_categorical(
     combined_legend : bool = False,
     output : str = None, 
     show : bool = False,
+    legend_labelsize : int = 10,
     **kwargs
 ): 
     """
@@ -289,7 +290,7 @@ def plot_spatial_categorical(
         if combined_legend: 
             # TODO: a function to determine labelsize! 
             _data = pd.concat(_data_list, ignore_index=True)
-            fig_make_legend(fig, _data=_data, hue=color_key, palette_dict=_colors, labelsize=10)
+            fig_make_legend(fig, _data=_data, hue=color_key, palette_dict=_colors, labelsize=legend_labelsize, **kwargs)
         plt.suptitle(f"{_level1} - {color_key}", fontsize=16)
         plt.subplots_adjust(top = 0.9, bottom = 0.1, left = 0.1, right = 0.9, hspace = 0.4, wspace = 0.2)
         

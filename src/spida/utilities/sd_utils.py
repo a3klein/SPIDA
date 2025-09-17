@@ -98,7 +98,7 @@ def _validate_adata(adata):
     return adata
 
 
-def _backup_adata(exp_name: str, reg_name: str, element: ad.AnnData, element_name: str):
+def _backup_adata(exp_name: str, reg_name: str, element: ad.AnnData, element_name: str, zarr_store=None):
     """
     Backup the current state of a spatialdata element before modifying it.
     This function deletes the existing element from disk and writes the new element to the spatialdata object.
@@ -117,7 +117,8 @@ def _backup_adata(exp_name: str, reg_name: str, element: ad.AnnData, element_nam
         import spatialdata as sd
 
     # Getting the sdata object (right now from a constant zarr store path)
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     sdata = sd.read_zarr(zarr_path)
 
@@ -130,7 +131,7 @@ def _backup_adata(exp_name: str, reg_name: str, element: ad.AnnData, element_nam
     sdata.write_element(element_name)
 
 
-def _backup_element(exp_name: str, reg_name: str, element, element_name: str):
+def _backup_element(exp_name: str, reg_name: str, element, element_name: str, zarr_store=None):
     """
     Backup the current state of a spatialdata element before modifying it.
     This function deletes the existing element from disk and writes the new element to the spatialdata object.
@@ -148,7 +149,8 @@ def _backup_element(exp_name: str, reg_name: str, element, element_name: str):
         import spatialdata as sd
 
     # Getting the sdata object (right now from a constant zarr store path)
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     sdata = sd.read_zarr(zarr_path)
 
@@ -158,7 +160,7 @@ def _backup_element(exp_name: str, reg_name: str, element, element_name: str):
     sdata.write_element(element_name)
 
 
-def _write_adata(exp_name, reg_name, prefix_name, output_path: Path):
+def _write_adata(exp_name, reg_name, prefix_name, output_path: Path, zarr_store=None):
     """
     Write the AnnData object to an H5AD file.
     Parameters:
@@ -173,7 +175,8 @@ def _write_adata(exp_name, reg_name, prefix_name, output_path: Path):
         parents=True, exist_ok=True
     )  # Ensure the output directory exists
 
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
 
     adata = ad.read_zarr(f"{zarr_path}/tables/{prefix_name}_table")
@@ -181,7 +184,7 @@ def _write_adata(exp_name, reg_name, prefix_name, output_path: Path):
 
 
 def _get_adata(
-    exp_name: str, reg_name: str, prefix_name: str, suffix: str = ""
+    exp_name: str, reg_name: str, prefix_name: str, suffix: str = "", zarr_store=None,
 ) -> ad.AnnData:
     """
     Retrieve the AnnData object from a spatialdata object based on the experiment and region names.
@@ -201,9 +204,12 @@ def _get_adata(
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
     full_name = f"{KEYS[TABLE_KEY]}{suffix}"
 
+    logger.info("Zarr Store Path: %s" % zarr_store)
     # Getting the sdata object (right now from a constant zarr store path)
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
+    logger.info(f"Loading SpatialData object from {zarr_path}")
     sdata = sd.read_zarr(zarr_path)
     adata = sdata[full_name].copy()
     return adata
@@ -215,6 +221,7 @@ def _assign_new_table(
     element: ad.AnnData,
     element_name: str,
     suffix: str = "",
+    zarr_store=None,
 ):
     """
     Backup the current state of a spatialdata element before modifying it.
@@ -233,7 +240,8 @@ def _assign_new_table(
         import spatialdata as sd
 
     # Getting the sdata object (right now from a constant zarr store path)
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     sdata = sd.read_zarr(zarr_path)
 

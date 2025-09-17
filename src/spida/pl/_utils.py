@@ -939,7 +939,8 @@ def fig_make_legend(
     marker_pad=0.1,
     marker_fontsize=4,
     rectangle_marker=False,     
-    space=0
+    space=0,
+	**kwargs
 ):
     """
     Adding legend to the axis.

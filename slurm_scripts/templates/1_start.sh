@@ -21,8 +21,17 @@ echo "Setting up .zarr file for region {REG_N} of experiment {EXP_N}"
 
 
 pixi run -e preprocessing \
-    python -m spida.S ingest-region \
+    python -m spida.S.cli {CONFIG} \
+    ingest-region \
     {EXPERIMENT} \
     {REGION} \
     --root_path {ROOT_PATH} \
     --plot
+
+
+# pixi run -e preprocessing \
+#     python -m spida.S --config ingest-region \
+#     {EXPERIMENT} \
+#     {REGION} \
+#     --root_path {ROOT_PATH} \
+#     --plot

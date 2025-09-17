@@ -170,3 +170,34 @@ def configure_logging_for_runtime(level: int = logging.INFO, logger: logging.Log
     return env
 
 
+
+
+def config_warnings():
+    """
+    Turning off warnings for some internal libraries that are not relevant for the user.
+    """
+    import warnings
+    warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
+    warnings.filterwarnings("ignore", category=UserWarning, module="anndata")
+    warnings.filterwarnings("ignore", category=UserWarning, module="scanpy")
+    warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
+    warnings.filterwarnings("ignore", category=UserWarning, module="xarray_schema")
+    warnings.filterwarnings("ignore", category=FutureWarning, module="dask")
+    warnings.filterwarnings("ignore", category=UserWarning, module="ome_zarr")
+    warnings.filterwarnings("ignore", category=SyntaxWarning, module="leidenalg")
+
+
+
+# OLD
+# def setup_logging(stdout=False, quiet=False, **kwargs):
+#     stream_handler = logging.StreamHandler(sys.stdout if stdout else sys.stderr)
+#     stream_handler.setLevel(logging.INFO if not quiet else logging.WARNING)
+#     stream_handler.setFormatter(
+#         logging.Formatter(
+#             "[%(levelname)s | %(name)s | %(module)s | L%(lineno)d] %(asctime)s - %(message)s",
+#             datefmt="%Y-%m-%dT%H:%M:%S%z",
+#         )
+#     )
+
+#     logger.addHandler(stream_handler)
+#     logger.setLevel(logging.INFO if not quiet else logging.WARNING)

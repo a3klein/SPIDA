@@ -94,7 +94,8 @@ def aggregate_experiments(
             points_name = f"{ename}_{rname}_points"
 
             images[image_name] = sdata[KEYS[IMAGE_KEY]]
-            images[decon_image_name] = sdata["decon_images"]
+            if "decon_images" in sdata.images.keys():
+                images[decon_image_name] = sdata["decon_images"]
             shapes[shapes_name] = sdata[KEYS[SHAPES_KEY]]
             points[points_name] = sdata[KEYS[POINTS_KEY]]
             tables[table_name] = sdata[f"{KEYS[TABLE_KEY]}{suffix}"]
@@ -114,13 +115,12 @@ def aggregate_experiments(
             tables[table_name].obs["donor"] = rname
             tables[table_name].obs["replicate"] = lab_name
             tables[table_name].obs['dataset_id'] = f"{ename}_{rname}_{lab_name}"
+            
             # unique coordinate system for each experiment!
-            for elem in [
-                images[image_name],
-                images[decon_image_name],
-                shapes[shapes_name],
-                points[points_name],
-            ]:
+            elem_list = [images[image_name], shapes[shapes_name], points[points_name]]
+            if decon_image_name in images.keys():
+                elem_list.append(images[decon_image_name])
+            for elem in elem_list:
                 sd.transformations.set_transformation(
                     elem,
                     sd.transformations.get_transformation(

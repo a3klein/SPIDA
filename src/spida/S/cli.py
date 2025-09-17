@@ -10,7 +10,7 @@ import logging
 # from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
-from spida.utilities.script_utils import parse_click_kwargs
+from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 
 logger = logging.getLogger(__name__)
 # warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
@@ -250,6 +250,7 @@ def load_segmentation_all(
 @click.argument("image_dir", type=click.Path(exists=True, dir_okay=True))
 @click.option("image_name", "--image_name", default="decon_image", type=str, help="Name of the image key in the spatialdata object (default: decon_image)")
 @click.option("suffix", "--suffix", default=".decon.tif", type=str, help="Suffix of the deconvolution image files (default: .decon.tif)")
+@click.option("z_layer", "--z_layer", default=3, type=str, help="Z-layer to read from the deconvolution images (default: 3)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
@@ -262,6 +263,7 @@ def load_deconvolution_region(
     image_dir: str,
     image_name: str = "decon_image",
     suffix: str = ".decon.tif",
+    z_layer: int | str = 3,
     plot: bool = False,
     root_path: str | Path | None = None,
     zarr_store: str | Path | None = None,
@@ -284,6 +286,7 @@ def load_deconvolution_region(
         image_dir=image_dir,
         image_name=image_name,
         suffix=suffix,
+        z_layer=z_layer,
         plot=plot,
         root_path=root_path,
         zarr_store=zarr_store,
@@ -514,23 +517,25 @@ def filt_to_ids(
     cls=RichCommand,
     help="['decon_image', 'decon-image'] - Deconvolve an image  using Deconwolf.",
 )
-@click.argument("image_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("image_path", "--image_path", "-i", default=None, type=click.Path(exists=True, dir_okay=True), help="Path to the image file to be deconvolved (default: None, throws an error if not provided)")
 @click.option("data_org_path", "--data_org_path", default="{input}/dataorganization.csv", type=click.Path(), help="Path to the data organization CSV file (default: {input}/dataorganization.csv)")
 @click.option("channels", "--channels", default="DAPI", type=str, help="Channels to use for deconvolution, comma-separated if multiple (default: DAPI)")
 @click.option("tile_size", "--tile_size", default=2960, type=int, help="Tile size for processing (default: 2960)")
 @click.option("overlap", "--overlap", default=100, type=int, help="Overlap size between tiles (default: 100)")
-@click.option("output_dir", "--output_dir", default="tiles_output", type=click.Path(), help="Directory to save the output tiles (default: tiles_output)")
-@click.option("filter_args", "--filter_args", default=None, type=str, help="Additional filter arguments as a JSON string (default: None)")
+@click.option("output_dir", "--output_dir", '-o', default="tiles_output", type=click.Path(), help="Directory to save the output tiles (default: tiles_output)")
+@click.option("filter_args", "--filter_args", default=None, type=(str,int), multiple=True, help="Additional filter arguments as a JSON string (default: None)")
 @click.option("filter", "--filter", default="deconwolf", type=str, help="Filter to use for deconvolution (default: deconwolf)")
 @click.option("gpu", "--gpu", is_flag=True, default=True, help="Whether to use GPU for deconvolution (default: True)")
 @click.option("z_step", "--z_step", default=1.5, type=float, help="Z-step size for 3D images (default: 1.5)")
 @click.option("continue_stalled", "--continue_stalled", is_flag=True, default=False, help="Whether to continue stalled processes (default: False)")
-@click.option("plot_thr", "--plot_thr", is_flag=True, default=False, help="Whether to plot the thresholding intermediary (default: False)")
+@click.option("thr_tiles", "--thr_tiles/--no_thr_tiles", is_flag=True, default=True, help="Whether to threshold tiles after deconvolution (default: True)")
+@click.option("plot_thr", "--plot_thr/--no_plot_thr", is_flag=True, default=False, help="Whether to plot the thresholding intermediary (default: False)")
 @click.option("match_pre", "--match_pre", is_flag=True, default=False, help="Whether to match pre-existing tiles histogram distribution (default: False)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
 @click.pass_context
 def decon_image(
     ctx,
-    image_path: str | Path,
+    image_path: str | Path | None = None,
     data_org_path: str | Path = "{input}/dataorganization.csv",
     channels: str | list[str] = "DAPI",
     tile_size: int | tuple = 2960,
@@ -541,13 +546,24 @@ def decon_image(
     gpu: bool = True,
     z_step: float = 1.5,
     continue_stalled: bool = False,
+    thr_tiles: bool = True,
     plot_thr: bool = False,
     match_pre: bool = False,
+    image_store: str | Path | None = None,
     **kwargs,
 ):
     """
     Deconvolve an image using Deconwolf.
     """
+    if image_path is None:
+        raise ValueError("image_path must be provided.")
+        
+    filter_args = dict(filter_args) if filter_args is not None else None
+    logger.info(f"Running decon_image")
+    for key, value in ctx.params.items():
+        logger.info(f"{key}: {value} ({type(value)})")
+
+
     from .decon_script import decon_image as func
     func(
         image_path=image_path,
@@ -561,8 +577,10 @@ def decon_image(
         gpu=gpu,
         z_step=z_step,
         continue_stalled=continue_stalled,
+        thr_tiles=thr_tiles,
         plot_thr=plot_thr,
         match_pre=match_pre,
+        image_store=image_store,
         **kwargs,
     ) 
 

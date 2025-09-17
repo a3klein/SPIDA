@@ -3,7 +3,7 @@
 # DESCRIPTION: This script chains together the processing steps for a given experiment and region.
 
 
-cd /home/x-aklein2/projects/aklein/BICAN/image_processing/{EXP_N}/{REG_N}
+cd {OUTPUT_DIR}
 echo "Starting processing chain for Experiment {EXP_N} and Region {REG_N}"
 
 jid1=$(sbatch 1_start.sh | awk '{{print $4}}')

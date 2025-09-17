@@ -48,6 +48,7 @@ def deconwolf(
     gpu: bool = False,
     tilesize: int = None,
     lock=None,
+    **kwargs,
 ) -> np.ndarray:
     """Deconwolf deconvolution.
 
