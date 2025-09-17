@@ -37,6 +37,25 @@ def _downsample_reference(
         ref_adata = _downsample_ref_clusters(ref_adata, cluster_col, max_cells=max_cluster_size)
     return ref_adata
 
+#TODO: cef calls from ALLCools here instead?
+def _allcools_cef(
+    ref_adata, 
+    qry_adata,
+    ref_col_level: str = 'Subclass_label',
+    top_n: int = 200,
+    alpha: float = 0.05,
+): 
+    from ALLCools.clustering import cluster_enriched_features # type: ignore
+    cluster_enriched_features(ref_adata,
+                            cluster_col=ref_col_level,
+                            top_n=top_n,
+                            alpha=alpha,
+                            stat_plot=False,
+                            method="rna")
+    cef = ref_adata.var[f'{ref_col_level}_enriched_features']
+    cef = cef[cef].index
+    return cef
+
 def _get_joined_deg_list(
     ref_adata, 
     ref_col_level,
@@ -319,12 +338,14 @@ def _clust2clust_transfer(
     confusion_matrix_cluster_min_value = 0.25,
     confusion_matrix_cluster_max_value = 0.9,
     confusion_matrix_cluster_resolution = 1.5,
+    qry_only_cluster_threshold = 50,
+    ref_only_cluster_threshold = 20,
     integration_round: int = 1,
 ): 
     data = adata_comb.obs.loc[~adata_comb.obs[joint_cluster_column].isna(), [joint_cluster_column, ref_cell_type_column]].value_counts().unstack(fill_value=0)
 
-    merfish_only_cluster = data.index[data.sum(axis=1) < 50]
-    rna_only_cluster = data.columns[data.sum(axis=0) < 20]
+    merfish_only_cluster = data.index[data.sum(axis=1) < qry_only_cluster_threshold]
+    rna_only_cluster = data.columns[data.sum(axis=0) < ref_only_cluster_threshold]
 
     data = data.drop(merfish_only_cluster, axis=0)
     datac = data / data.sum(axis=0)
@@ -376,7 +397,7 @@ def _clust2clust_transfer(
     logger.info(f"Number of integration groups: {len(integration_group_cluster)}, {len(integration_group_cell)}")
     
     added_col = f"c2c_allcools_label_{ref_cell_type_column}"
-    adata_comb.obs.loc[:, added_col] = "unknown"
+    adata_comb.obs.loc[adata_comb.obs['Modality']=='query', added_col] = "unknown"
     for group in integration_group_cell: 
         ref_cells = integration_group_cell[group]['ref']
         qry_cells = integration_group_cell[group]['qry']
@@ -395,22 +416,29 @@ def _clust2clust_transfer(
                     top_deg_genes = 20,
                     max_cells_per_cluster=2000,
                     min_cells_per_cluster=0,
+                    label_transfer_k=20,
                     save_adata_comb=False,
                     save_integrator=False,
                     save_query=False,
                     run_joint_embeddings=True,
+                    joint_embedding_leiden_res=0.5,
                     run_clust_label_transfer=True,
                     integration_round=2,
-                    leiden_res=0.5,  
                     confusion_matrix_cluster_resolution=1,
-                    confusion_matrix_cluster_min_value = 0.1,
+                    confusion_matrix_cluster_min_value=0.1,
+                    qry_only_cluster_threshold=10,
+                    ref_only_cluster_threshold=10,
                 )
-                # adata_comb.obs[added_col] = adata_comb.obs[added_col].astype("str")
+                adata_comb.obs[added_col] = adata_comb.obs[added_col].astype("str")
                 adata_comb.obs.loc[qry_cells,added_col] = adata_comb_ret.obs.loc[qry_cells, added_col].astype("str").values
-                # adata_comb.obs[added_col] = adata_comb.obs[added_col].astype("category")
+                adata_comb.obs[added_col] = adata_comb.obs[added_col].astype("category")
             else: #TODO: Decide on an R2 strategy
                 # On the second round just take the majority of annotations if there is still an ambiguous cluster type
                 annot = adata_comb.obs.loc[ref_cells, ref_cell_type_column].mode()[0]
+                if added_col in adata_comb.obs.columns:
+                    if isinstance(adata_comb.obs[added_col].dtype, pd.CategoricalDtype):
+                        if annot not in adata_comb.obs[added_col].cat.categories:
+                            adata_comb.obs[added_col] = adata_comb.obs[added_col].cat.add_categories([annot])
                 adata_comb.obs.loc[qry_cells, added_col] = annot
                 # If there is still ambiguity on the second round just call it unknown
                 # adata_comb.obs.loc[qry_cells, added_col] = "unknown"
@@ -445,10 +473,13 @@ def run_allcools_seurat(
     save_integrator:bool = True, 
     save_adata_comb: bool = True,
     run_joint_embeddings: bool = False,
+    joint_embedding_leiden_res: float = 1.5,
     run_clust_label_transfer: bool = True,
     confusion_matrix_cluster_min_value = 0.25,
     confusion_matrix_cluster_max_value = 0.9,
     confusion_matrix_cluster_resolution = 1.5,
+    qry_only_cluster_threshold = 50,
+    ref_only_cluster_threshold = 20,
     integration_round: int = 1,
     **kwargs,
 ):
@@ -489,14 +520,24 @@ def run_allcools_seurat(
 
     # TODO: call DEGs between clusters / cell types in ref and qry
     if top_deg_genes > 0:
-        deg_genes =_get_joined_deg_list(
+        # add a flag for this choice? 
+        deg_genes = _allcools_cef(
             ref_adata,
-            rna_cell_type_column,
             qry_adata_ds,
-            qry_cluster_column,
-            top_n=top_deg_genes
+            ref_col_level=rna_cell_type_column,
+            top_n=top_deg_genes,
+            alpha=0.05,
         )
+        # deg_genes = _get_joined_deg_list(
+        #     ref_adata,
+        #     rna_cell_type_column,
+        #     qry_adata_ds,
+        #     qry_cluster_column,
+        #     top_n=top_deg_genes
+        # )
         logger.info(f"Using {len(deg_genes)} DEGs for integration")
+        # qry_adata._inplace_subset_var(qry_adata.var_names.isin(cef))
+        # ref_adata._inplace_subset_var(ref_adata.var_names.isin(cef))
         ref_adata = ref_adata[:, ref_adata.var_names.isin(deg_genes)].copy()
         qry_adata_ds = qry_adata_ds[:, qry_adata_ds.var_names.isin(deg_genes)].copy()
 
@@ -519,7 +560,12 @@ def run_allcools_seurat(
     # Run joint embeddings if needed
     if run_joint_embeddings:
         logger.info("Calculating joint embeddings")
-        _joint_embeddings(adata_comb, use_rep="X_pca_integrate", key_added="integrated_", **kwargs)
+        _joint_embeddings(
+            adata_comb,
+            use_rep="X_pca_integrate",
+            key_added="integrated_",
+            leiden_res=joint_embedding_leiden_res,
+            **kwargs)
         
     # Running the cluster2cluster label transfer
     if run_clust_label_transfer: 
@@ -530,6 +576,8 @@ def run_allcools_seurat(
             confusion_matrix_cluster_min_value = confusion_matrix_cluster_min_value,
             confusion_matrix_cluster_max_value = confusion_matrix_cluster_max_value,
             confusion_matrix_cluster_resolution = confusion_matrix_cluster_resolution,
+            qry_only_cluster_threshold = qry_only_cluster_threshold,
+            ref_only_cluster_threshold = ref_only_cluster_threshold,
             integration_round = integration_round,
             )
 

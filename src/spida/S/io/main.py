@@ -1,4 +1,4 @@
-from spida._utilities import _gen_keys
+from spida.utilities.sd_utils import _gen_keys
 from spida._constants import *
 from .ingest_exp import (
     read_merscope,
@@ -315,6 +315,7 @@ def load_deconvolution_region(
     image_dir: str,
     image_name: str = "decon_image",
     suffix: str = ".decon.tif",
+    z_layer: int | str = 3,
     plot: bool = False,
     root_path: str | Path | None = None,
     zarr_store: str | Path | None = None,
@@ -357,7 +358,14 @@ def load_deconvolution_region(
         warnings.filterwarnings("ignore")
         sdata = sd.read_zarr(zarr_path)
 
-    sdata = load_decon_images(sdata, image_dir, image_name, suffix, **load_kwargs)
+    sdata = load_decon_images(
+        sdata,
+        image_dir=image_dir,
+        image_name=image_name,
+        suffix=suffix,
+        z_layer=z_layer,
+        **load_kwargs
+    )
 
     if plot:
         image_channels = sd.models.get_channel_names(sdata[image_name])

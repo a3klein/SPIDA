@@ -28,6 +28,8 @@ def filter_cells_region(
     cutoffs_path: Path = None,
     plot: bool = False,
     image_path: Path = None,
+    image_store: Path = None,
+    zarr_store: str | Path | None = None
 ):
     """
     Filter cells for a specific region in an experiment.
@@ -50,10 +52,7 @@ def filter_cells_region(
 
     # default cutoffs path
     if cutoffs_path is None:
-        cutoffs_path = os.getenv(
-            "DEF_CUTOFFS_PATH",
-            "/ceph/cephatlas/aklein/bican/reference/filtering_cutoffs.json",
-        )
+        cutoffs_path = os.getenv("CUTOFFS_PATH",)
 
     # determining donor from region name
     donor_name = _region_to_donor(reg_name)
@@ -61,7 +60,8 @@ def filter_cells_region(
     # Get KEYS
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
     # Get the AnnData object
-    adata = _get_adata(exp_name, reg_name, prefix_name)
+    logger.info("ZARR STORE: %s" % zarr_store)
+    adata = _get_adata(exp_name, reg_name, prefix_name, zarr_store=zarr_store)
     # Run the filtering
     adata = run_filtering(
         adata=adata,
@@ -74,14 +74,14 @@ def filter_cells_region(
     )
     # backup the AnnData object
     # _assign_new_table(exp_name, reg_name, adata, KEYS[TABLE_KEY], suffix="_filt") # double the storage but allows for iteration on filts.
-    _backup_adata(exp_name, reg_name, adata, KEYS[TABLE_KEY])
+    _backup_adata(exp_name, reg_name, adata, KEYS[TABLE_KEY], zarr_store=zarr_store)
 
     logger.info(
         f"Passed QC Cells: {adata.obs['pass_qc'].sum()} out of {adata.n_obs} total cells"
     )
     logger.info("DONE")
     if plot:
-        plot_filtering_region(exp_name, reg_name, prefix_name, image_path=image_path)
+        plot_filtering_region(exp_name, reg_name, prefix_name, image_path=image_path, image_store=image_store, zarr_store=zarr_store)
 
 
 def plot_filtering_region(
@@ -89,7 +89,9 @@ def plot_filtering_region(
     reg_name: str,
     prefix_name: str,
     image_path: Path = None,
+    image_store: Path = None,
     suffix: str = "",
+    zarr_store: str | Path | None = None
 ):
     """
     Plot the filtering results for a specific region in an experiment.
@@ -102,12 +104,11 @@ def plot_filtering_region(
     from spida.pl import plot_filtering
     from matplotlib.backends.backend_pdf import PdfPages
 
-    adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix)
+    adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix, zarr_store=zarr_store)
 
     if image_path is None:
-        image_store = os.getenv(
-            "IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images"
-        )
+        if image_store is None:
+            image_store = os.getenv("IMAGE_STORE_PATH")
         image_path = Path(
             f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/pixi_filt.pdf"
         )
@@ -126,6 +127,7 @@ def filter_cells_all(
     seg_fam:str = None,
     plot: bool = False,
     image_path: Path = None,
+    zarr_store: str | Path | None = None,
 ):
     """
     Filter cells for all regions in an experiment (calls filter_cells_all).
@@ -150,6 +152,7 @@ def filter_cells_all(
             cutoffs_path=cutoffs_path,
             plot=plot,
             image_path=image_path,
+            zarr_store=zarr_store
         )
 
 
@@ -158,9 +161,13 @@ def write_adata(
     reg_name: str = None,
     prefix_names: list[str] = None,
     output_path: Path = "/ceph/cephatlas/aklein/bican/data/anndatas/",
+    zarr_store: str | Path | None = None,
 ):
     """ """
-    print(exp_name, reg_name, prefix_names, output_path)
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+
+    logger.info(f"{exp_name}, {reg_name}, {prefix_names}, {output_path}")
     # Iterating over all prefixes
     for p in prefix_names:
         logger.info("PREFIX: %s" % p)
@@ -170,12 +177,11 @@ def write_adata(
             _write_adata(exp_name, reg_name, p, fout)
         # if no region is provided, write all regions
         else:
-            zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
             region_list = glob.glob(f"{zarr_store}/{exp_name}/region_*")
             for reg in region_list:
                 rname = reg.split("/")[-1]
                 fout = f"{output_path}/{exp_name}/{p}"
-                _write_adata(exp_name, rname, p, fout)
+                _write_adata(exp_name, rname, p, fout, zarr_store)
 
 
 def setup_adata_region(
@@ -185,6 +191,8 @@ def setup_adata_region(
     suffix: str = "",
     plot=False,
     image_path: Path = None,
+    image_store: Path = None,
+    zarr_store: str | Path | None = None,
 ):
     """
     Setup the AnnData object for downstream analysis.
@@ -209,24 +217,24 @@ def setup_adata_region(
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
     # Get the AnnData object
     adata = _get_adata(
-        exp_name, reg_name, prefix_name
+        exp_name, reg_name, prefix_name, zarr_store=zarr_store
     )  # Use the filtered data if available
     # Run the setup
     adata = run_setup(adata, exp_name, reg_name, prefix_name, donor_name)
     # backup the adata object
     try:
         _assign_new_table(
-            exp_name, reg_name, adata, KEYS[TABLE_KEY], suffix=suffix
+            exp_name, reg_name, adata, KEYS[TABLE_KEY], suffix=suffix, zarr_store=zarr_store
         )  # double the storage but allows for iteration on filts.
     except Exception as e:
         logger.warning("Failed to assign new table, using backup instead")
         logger.warning(f"Error: {e}", exc_info=True)
-        _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+        _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}", zarr_store=zarr_store)
 
     logger.info("DONE SETUP")
     if plot:
         plot_setup_region(
-            exp_name, reg_name, prefix_name, image_path=image_path, suffix=suffix
+            exp_name, reg_name, prefix_name, image_path=image_path, image_store=image_store, suffix=suffix, zarr_store=zarr_store
         )
 
 
@@ -236,6 +244,8 @@ def setup_adata_all(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    image_store: Path = None,
+    zarr_store: str | Path | None = None,
 ):
     """
     Setup the AnnData objects for all regions in an experiment.
@@ -248,7 +258,8 @@ def setup_adata_all(
     """
 
     # Getting the regions for the experiment
-    zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     exp_path = Path(f"{zarr_store}/{exp_name}")
     regions = glob.glob(f"{exp_path}/region_*")
 
@@ -261,6 +272,8 @@ def setup_adata_all(
             suffix=suffix,
             plot=plot,
             image_path=image_path,
+            image_store=image_store,
+            zarr_store=zarr_store,
         )
 
 
@@ -268,8 +281,10 @@ def plot_setup_region(
     exp_name: str,
     reg_name: str,
     prefix_name: str,
-    image_path: Path = None,
     suffix: str = "",
+    image_path: Path = None,
+    image_store: Path = None,
+    zarr_store: str | Path | None = None
 ):
     """
     Plot the setup results for a specific region in an experiment.
@@ -284,10 +299,11 @@ def plot_setup_region(
     from spida.pl import plot_setup
     from matplotlib.backends.backend_pdf import PdfPages
 
-    adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix)
+    adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix, zarr_store=zarr_store)
 
     if image_path is None:
-        image_store = os.getenv("IMAGE_STORE_PATH")
+        if image_store is None:
+            image_store = os.getenv("IMAGE_STORE_PATH")
         image_path = Path(
             f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/pixi_setup.pdf"
         )
@@ -306,6 +322,7 @@ def remove_doublets_region(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    zarr_store: str | Path | None = None,
     **model_kwargs,
 ):
     """
@@ -329,7 +346,7 @@ def remove_doublets_region(
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
     # Get the AnnData object
     adata = _get_adata(
-        exp_name, reg_name, prefix_name, suffix=suffix
+        exp_name, reg_name, prefix_name, suffix=suffix, zarr_store=zarr_store
     )  # Use the filtered data if available
 
     # Identify doublets
@@ -339,7 +356,7 @@ def remove_doublets_region(
     )
 
     # backup the adata object
-    _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+    _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}", zarr_store=zarr_store)
 
     logger.info("DONE REMOVING DOUBLETS")
 
@@ -353,7 +370,8 @@ def remove_doublets_region(
 
         KEYS = _gen_keys(prefix_name, exp_name, reg_name)
 
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+        if zarr_store is None:
+            zarr_store = os.getenv("ZARR_STORAGE_PATH")
         zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
@@ -384,6 +402,7 @@ def remove_doublets_all(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    zarr_store: str | Path | None = None,
     **model_kwargs,
 ):
     """
@@ -397,7 +416,8 @@ def remove_doublets_all(
     """
 
     # Getting the regions for the experiment
-    zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     exp_path = Path(f"{zarr_store}/{exp_name}")
     regions = glob.glob(f"{exp_path}/region_*")
 
@@ -414,6 +434,7 @@ def remove_doublets_all(
             plot=plot,
             image_path=image_path,
             suffix=suffix,
+            zarr_store=zarr_store,
             **model_kwargs,
         )
 
@@ -431,6 +452,7 @@ def resolvi_cluster_region(
     layer: str = "raw",
     batch_key: str = None,
     categorical_covariates: list = None,
+    zarr_store: str | Path | None = None,
     **model_kwargs,
 ):
     """
@@ -460,7 +482,7 @@ def resolvi_cluster_region(
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
     # Get the AnnData object
     adata = _get_adata(
-        exp_name, reg_name, prefix_name, suffix=suffix
+        exp_name, reg_name, prefix_name, suffix=suffix, zarr_store=zarr_store
     )  # Use the filtered data if available
 
     logger.info("arguments passing into resolvi")
@@ -493,12 +515,12 @@ def resolvi_cluster_region(
     _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
 
     # backup the adata object
-    _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+    _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}", zarr_store=zarr_store)
 
     logger.info("DONE RESOLVI CLUSTERING")
     if plot:
         plot_resolvi_region(
-            exp_name, reg_name, prefix_name, image_path=image_path, suffix="_filt"
+            exp_name, reg_name, prefix_name, image_path=image_path, suffix="_filt", zarr_store=zarr_store
         )
 
 
@@ -509,6 +531,7 @@ def resolvi_cluster_all(
     plot: bool = False,
     image_path: Path = None,
     model_save_path : Path = None, 
+    zarr_store: str | Path | None = None,
     **model_kwargs,
 ):
     """
@@ -521,7 +544,8 @@ def resolvi_cluster_all(
     image_path (Path, optional): Path to save the plot. If None, uses a default path.
     """
     # Getting the regions for the experiment
-    zarr_store = os.getenv("ZARR_STORAGE_PATH", "/data/aklein/bican_zarr")
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
     exp_path = Path(f"{zarr_store}/{exp_name}")
     regions = glob.glob(f"{exp_path}/region_*")
 
@@ -535,6 +559,7 @@ def resolvi_cluster_all(
             plot=plot,
             image_path=image_path,
             model_save_path=model_save_path,
+            zarr_store=zarr_store,
             **model_kwargs,
         )
 
@@ -545,6 +570,7 @@ def plot_resolvi_region(
     prefix_name: str,
     image_path: Path = None,
     suffix: str = "",
+    zarr_store: str | Path | None = None,
 ):
     """
     Plot the setup results for a specific region in an experiment.
@@ -559,7 +585,7 @@ def plot_resolvi_region(
     from spida.pl import plot_resolvi
     from matplotlib.backends.backend_pdf import PdfPages
 
-    adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix)
+    adata = _get_adata(exp_name, reg_name, prefix_name, suffix=suffix, zarr_store=zarr_store)
 
     if image_path is None:
         image_store = os.getenv(
@@ -581,8 +607,8 @@ def combine_datasets(
     suffix: str = "_filt",
     lab_name: str = "salk",
     project_name: str = "BG_salk",
-    zarr_path: Path = None,
-    output_path: Path = None,
+    zarr_store: Path = None,
+    anndata_store: Path = None,
     table_keys: list[str] = None,
 ):
     """
@@ -594,19 +620,19 @@ def combine_datasets(
         suffix (str): Suffix to append to the table keys
         lab_name (str): Name of the lab, used for renaming experiments and regions
         project_name (str): Name of the project, used for naming the aggregated data
-        zarr_path (Path): Path to the Zarr store containing the experiments
-        output_path (Path): Path to save the aggregated AnnData object
+        zarr_store (Path): Path to the Zarr store containing the experiments
+        anndata_store (Path): Path to save the aggregated AnnData object
         table_keys (list[str]): List of table keys to concatenate from the SpatialData object
     """
     from spida.P.project_level import aggregate_experiments, concatenate_tables
 
-    if zarr_path is None:
+    if zarr_store is None:
         zarr_store = os.getenv("ZARR_STORAGE_PATH")
-        zarr_path = Path(zarr_store)
+    zarr_path = Path(zarr_store)
 
-    if output_path is None:
-        output_path = Path(os.getenv("ANNDATA_STORE_PATH"))
-        output_path = output_path / f"{project_name}_{lab_name}_{prefix_name}{suffix}.h5ad"
+    if anndata_store is None:
+        anndata_store = Path(os.getenv("ANNDATA_STORE_PATH"))
+    output_path = Path(anndata_store) / f"{project_name}_{lab_name}_{prefix_name}{suffix}.h5ad"
 
     # aggregate the spatialdata objects
     sdata = aggregate_experiments(
@@ -624,7 +650,7 @@ def combine_datasets(
 def setup_dataset(
     dataset_name : str,
     scale : bool = False,
-    anndata_path : Path = None,
+    anndata_store : Path = None,
 ): 
     """
     This function runs resolvi on a dataset level object. Takes more time and memory than resolvi_region.
@@ -633,9 +659,9 @@ def setup_dataset(
     import anndata as ad
 
     logger.info(f"SETUP ON {dataset_name}")
-    if anndata_path is None: 
-        anndata_path = Path(os.getenv("ANNDATA_STORE_PATH"))
-    anndata_path = anndata_path / dataset_name
+    if anndata_store is None: 
+        anndata_store = Path(os.getenv("ANNDATA_STORE_PATH"))
+    anndata_path = Path(anndata_store) / dataset_name
     try: 
         adata = ad.read_h5ad(anndata_path.with_suffix(".h5ad"))
     except FileNotFoundError:
@@ -650,7 +676,7 @@ def setup_dataset(
 
 def resolvi_dataset(
     dataset_name:str,
-    anndata_path:Path = None,
+    anndata_store:Path = None,
     model_save_path:Path = None, 
     trained:bool = False,
     image_path:Path = None,
@@ -670,9 +696,9 @@ def resolvi_dataset(
     model_kwargs = model_kwargs['model_kwargs']
     
     logger.info(f"RESOLVI ON {dataset_name}")
-    if anndata_path is None: 
-        anndata_path = Path(os.getenv("ANNDATA_STORE_PATH"))
-    anndata_path = anndata_path / dataset_name
+    if anndata_store is None: 
+        anndata_store = Path(os.getenv("ANNDATA_STORE_PATH"))
+    anndata_path = anndata_store / dataset_name
     try: 
         adata = ad.read_h5ad(anndata_path.with_suffix(".h5ad"))
     except FileNotFoundError:
@@ -706,13 +732,13 @@ def resolvi_dataset(
     logger.info(f"DONE RESOLVI ON {dataset_name}")
 
     logger.info("PLOTTING DATASET")
-    plot_dataset_setup(dataset_name, image_path=image_path, show=False)
+    plot_dataset_setup(dataset_name, anndata_store=anndata_store, image_path=image_path, show=False)
     
     return 0
 
 def plot_dataset_setup(
     dataset_name : str,
-    anndata_path: str | Path = None,
+    anndata_store: str | Path = None,
     image_path: str | Path | None = None,
     show: bool = False
 ):
@@ -721,7 +747,7 @@ def plot_dataset_setup(
     """
     from spida.pl import plot_dataset
 
-    adata = _read_adata(dataset_name, anndata_path=anndata_path)
+    adata = _read_adata(dataset_name, anndata_store=anndata_store)
 
     if image_path is None:
         image_store = os.getenv(
@@ -737,14 +763,14 @@ def plot_dataset_setup(
 
 def _read_adata(
     dataset_name: str | Path,
-    anndata_path: str | Path = None
+    anndata_store: str | Path = None
 ): 
     """ handle adata reading with different suffixes and paths """
     import anndata as ad
 
-    if anndata_path is None: 
-        anndata_path = Path(os.getenv("ANNDATA_STORE_PATH"))
-    path = anndata_path / dataset_name
+    if anndata_store is None: 
+        anndata_store = Path(os.getenv("ANNDATA_STORE_PATH"))
+    path = anndata_store / dataset_name
     try: 
         adata = ad.read_h5ad(path.with_suffix(".h5ad"))
     except FileNotFoundError:

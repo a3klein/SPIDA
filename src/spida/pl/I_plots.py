@@ -134,7 +134,7 @@ def plot_allcools_c2c(
         plt.close()
 
     fig, ax = plt.subplots(1, 3,figsize=(20, 6), dpi=200)
-    plot_categorical(adata_comb, coord_base="integrated_umap", cluster_col=f"c2c_allcools_label_{ref_cell_type_column}", show=False, coding=True, text_anno=True, ax=ax[0])
+    plot_categorical(adata_comb[adata_comb.obs['Modality'] == 'query'], coord_base="integrated_umap", cluster_col=f"c2c_allcools_label_{ref_cell_type_column}", show=False, coding=True, text_anno=True, ax=ax[0])
     plot_categorical(adata_merf, coord_base="base_umap", cluster_col=f"c2c_allcools_label_{ref_cell_type_column}", show=False, coding=True, text_anno=True, ax=ax[1])
     plot_categorical(adata_merf, coord_base="spatial", cluster_col=f"c2c_allcools_label_{ref_cell_type_column}", show=False, coding=True, ax=ax[2])
     if pdf_file:

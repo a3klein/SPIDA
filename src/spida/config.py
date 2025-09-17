@@ -17,6 +17,7 @@ RENAME_CONFIG_KEYS = {
     "ANNDATA_STORE_PATH": "anndata_store",
     "ANNOTATION_STORE_PATH": "annotation_store",
     "IMAGE_STORE_PATH": "image_store",
+    "CUTOFFS_PATH": "cutoffs_path",
 }
 
 
@@ -124,6 +125,15 @@ except Exception as e:
     help="Path to the image storage (default: None, uses IMAGE_STORE_PATH in .env)"
 )
 @click.option(
+    "cutoffs_path",
+    "--cutoffs_path",
+    default=lambda: os.getenv("CUTOFFS_PATH", "/path/to/cutoffs.json"),
+    show_default="CUTOFFS_PATH in .env",
+    prompt=True,
+    type=click.Path(),
+    help="Path to the cutoffs file (default: None, uses CUTOFFS_PATH in .env)"
+)
+@click.option(
     "overwrite",
     "--overwrite",
     is_flag=True,
@@ -150,6 +160,7 @@ def setup_config(
     anndata_store_dir: str | Path | None = None,
     annotation_store_dir: str | Path | None = None,
     image_store_path: str | Path | None = None,
+    cutoffs_path: str | Path | None = None,
     overwrite: bool = False,
     ext_type: str = "env",
 ):
@@ -167,7 +178,8 @@ def setup_config(
         "SEGMENTATION_OUT_PATH": segmentation_output_dir or os.getenv("SEGMENTATION_OUT_PATH", "/path/to/segmentation/output"),
         "ANNDATA_STORE_PATH": anndata_store_dir or os.getenv("ANNDATA_STORE_PATH", "/path/to/anndata/store"),
         "ANNOTATION_STORE_PATH": annotation_store_dir or os.getenv("ANNOTATION_STORE_PATH", "/path/to/annotation/store"),
-        "IMAGE_STORE_PATH": image_store_path or os.getenv("IMAGE_STORE_PATH", "/path/to/image/store")
+        "IMAGE_STORE_PATH": image_store_path or os.getenv("IMAGE_STORE_PATH", "/path/to/image/store"),
+        "CUTOFFS_PATH": cutoffs_path or os.getenv("CUTOFFS_PATH", "/path/to/cutoffs.json"),
     }
 
     config_path = Path(config_store_path)
@@ -273,35 +285,35 @@ class ConfigDefaultGroup(RichGroup):
         # Robust extraction of extra args: find the invoked subcommand in the original
         # argv (`args`) and take the tokens after it as the raw extra args. This avoids
         # relying on click internals like ctx.args which may be empty depending on parsing.
-        # try:
-        #     subcmd_index = None
-        #     subcmd_name = None
-        #     for i, token in enumerate(args):
-        #         # skip option tokens
-        #         if token.startswith("-"):
-        #             continue
-        #         # first non-option token that matches a registered command name
-        #         if token in self.commands:
-        #             subcmd_index = i
-        #             subcmd_name = token
-        #             break
+        try:
+            subcmd_index = None
+            subcmd_name = None
+            for i, token in enumerate(args):
+                # skip option tokens
+                if token.startswith("-"):
+                    continue
+                # first non-option token that matches a registered command name
+                if token in self.commands:
+                    subcmd_index = i
+                    subcmd_name = token
+                    break
 
-        #     if subcmd_index is not None and subcmd_name is not None:
-        #         # get the Command object
-        #         cmd_obj = self.commands.get(subcmd_name)
-        #         cmd_cs = getattr(cmd_obj, 'context_settings', {}) or {}
+            if subcmd_index is not None and subcmd_name is not None:
+                # get the Command object
+                cmd_obj = self.commands.get(subcmd_name)
+                cmd_cs = getattr(cmd_obj, 'context_settings', {}) or {}
 
-        #         if cmd_cs.get('allow_extra_args') or cmd_cs.get('ignore_unknown_options'):
-        #             raw_extra = args[subcmd_index + 1 :]
-        #             if raw_extra:
-        #                 try:
-        #                     parsed = parse_click_kwargs(raw_extra)
-        #                 except Exception:
-        #                     parsed = {'_raw_extra_args': raw_extra}
-        #                 ctx.obj['extra_kwargs'] = parsed
-        # except Exception:
-        #     # Don't raise from the group context creation if parsing extra args fails.
-        #     pass
+                if cmd_cs.get('allow_extra_args') or cmd_cs.get('ignore_unknown_options'):
+                    raw_extra = args[subcmd_index + 1 :]
+                    if raw_extra:
+                        try:
+                            parsed = parse_click_kwargs(raw_extra)
+                        except Exception:
+                            parsed = {'_raw_extra_args': raw_extra}
+                        ctx.obj['extra_kwargs'] = parsed
+        except Exception:
+            # Don't raise from the group context creation if parsing extra args fails.
+            pass
 
         return ctx
     

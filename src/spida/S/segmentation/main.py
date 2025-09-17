@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv  # type: ignore
 from pathlib import Path
-import fire  # type: ignore
 import glob
 import logging
 
@@ -265,11 +264,11 @@ def align_proseg(
     #     )
 
 
-if __name__ == "__main__":
-    fire.Fire(
-        {
-            "run_segmentation": run_segmentation,
-            "segment_experiment": segment_experiment,
-            "align_proseg": align_proseg,
-        }
-    )
+# if __name__ == "__main__":
+#     fire.Fire(
+#         {
+#             "run_segmentation": run_segmentation,
+#             "segment_experiment": segment_experiment,
+#             "align_proseg": align_proseg,
+#         }
+#     )

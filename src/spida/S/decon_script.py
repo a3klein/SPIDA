@@ -55,7 +55,6 @@ def project_down_2D(input_file, output_file: str | Path = None):
     # Save the 2D projected tile
     iio.imwrite(output_file, decon_img_2d)
 
-
 def continue_stalled_run(_file, **filter_args):
     """
     Continue processing stalled runs by checking for existing files.
@@ -76,8 +75,9 @@ def continue_stalled_run(_file, **filter_args):
         decon_file = deconwolf(_file, decon_path=decon_file, **filter_args)
 
     # Project to 2D and save immediately to avoid memory overhead
-    project_down_2D(decon_file, projected_file)
-    logger.info(f"Saved 2D projected tile to {projected_file}")
+    if not is_3d: 
+        project_down_2D(decon_file, projected_file)
+        logger.info(f"Saved 2D projected tile to {projected_file}")
     return projected_file
 
 
@@ -89,9 +89,11 @@ def fresh_run(_file, **filter_args):
     projected_file = _file.with_suffix(".decon.2d.tif")
 
     decon_file = deconwolf(_file, decon_path=decon_file, **filter_args)
-    # Project to 2D and save immediately to avoid memory overhead
-    project_down_2D(decon_file, projected_file)
-    logger.info(f"Saved 2D projected tile to {projected_file}")
+
+    if not is_3d:
+        # Project to 2D and save immediately to avoid memory overhead
+        project_down_2D(decon_file, projected_file)
+        logger.info(f"Saved 2D projected tile to {projected_file}")
     return projected_file
 
 
@@ -107,8 +109,10 @@ def decon_image(
     gpu: bool = True,
     z_step: float = 1.5,
     continue_stalled: bool = False,
+    thr_tiles: bool = True,
     plot_thr: bool = False,
     match_pre: bool = False,
+    image_store: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -116,6 +120,12 @@ def decon_image(
     """
 
     logger.info(f"Starting deconvolution of image: {image_path}")
+
+    if image_store is None:
+        image_store = Path(output_dir)
+    exp_name = Path(data_org_path).parents[2].name
+    image_save_dir = Path(image_store) / exp_name / "decon_plots"
+    image_save_dir.mkdir(parents=True, exist_ok=True)
 
     if isinstance(image_path, str):
         image_path = Path(image_path)
@@ -132,12 +142,25 @@ def decon_image(
     channels = df_info.set_index("channel").loc[use_channels, :].reset_index()
 
     for _channel in channels["channel"]:
-        print(_channel)
-        # Load image
+        logger.info(f"Loading channel: {_channel}")
         channel_image_path = [
-            fn for fn in image_path.glob("*.tif") if _channel in fn.name
-        ][0]
-        large_img = iio.imread(channel_image_path)
+            fn for fn in image_path.glob("*.tif") if (_channel in fn.name) & ("decon" not in fn.name)
+        ]
+        global is_3d
+        is_3d = len(channel_image_path) > 1
+
+        if is_3d:
+            channel_image_path = sorted(channel_image_path)
+            stack_3d = []
+            for _fn in channel_image_path:
+                logger.info(f"..{_fn}")
+                large_img = iio.imread(_fn)
+                stack_3d.append(large_img)
+            large_img = np.stack(stack_3d, axis=0)
+            channel_image_path = channel_image_path[0].parent / f"{channel_image_path[0].stem[:-1]}_stack.tif"
+        else:
+            channel_image_path = channel_image_path[0]
+            large_img = iio.imread(channel_image_path)
         logger.info(
             f"Loaded Image with shape: {large_img.shape} from {channel_image_path}"
         )
@@ -154,24 +177,32 @@ def decon_image(
         )
 
         ### Filtering the Tiles to remove empty tiles
-        for _t, _ti in zip(tiles, tile_info):  # calculating maximum intensity in tile
-            _ti["max_intensity"] = np.max(_t)
-        tile_maxes = [
-            tile["max_intensity"] for tile in tile_info
-        ]  # aggregating max intensities
-        thr = (
-            ski.filters.threshold_otsu(np.asarray(tile_maxes)) / 2
-        )  # calculating liberal threshold
-        for _ti in tile_info:  # applying threshold to tile info
-            _ti["thresholded"] = _ti["max_intensity"] > thr
-        logger.info(f"Applied Minimum threshold: {thr} to tile max intensities")
-        # Getting the subsetted list of tiles
-        ret = [(t, ti) for t, ti in zip(tiles, tile_info) if ti["thresholded"]]
-        tiles = [t for t, _ in ret]
-        sub_tile_info = [ti for _, ti in ret]
-        logger.info(
-            f"Filtered tiles to {len(tiles)} with max intensity above threshold: {thr}"
-        )
+        if thr_tiles:
+            for _t, _ti in zip(tiles, tile_info):  # calculating maximum intensity in tile
+                _ti["max_intensity"] = np.max(_t)
+            tile_maxes = [
+                tile["max_intensity"] for tile in tile_info
+            ]  # aggregating max intensities
+            thr = (
+                ski.filters.threshold_otsu(np.asarray(tile_maxes)) / 2
+            )  # calculating liberal threshold
+            for _ti in tile_info:  # applying threshold to tile info
+                _ti["thresholded"] = _ti["max_intensity"] > thr
+            logger.info(f"Applied Minimum threshold: {thr} to tile max intensities")
+            # Getting the subsetted list of tiles
+            ret = [(t, ti) for t, ti in zip(tiles, tile_info) if ti["thresholded"]]
+            tiles = [t for t, _ in ret]
+            sub_tile_info = [ti for _, ti in ret]
+            logger.info(
+                f"Filtered tiles to {len(tiles)} with max intensity above threshold: {thr}"
+            )
+        else: 
+            sub_tile_info = tile_info
+            for _t, _ti in zip(tiles, tile_info):  # calculating maximum intensity in tile
+                _ti["max_intensity"] = np.max(_t)
+            # aggregating max intensities
+            tile_maxes = [tile["max_intensity"] for tile in tile_info] 
+            thr = 0
 
         # plotting threshold decision
         if plot_thr:
@@ -181,16 +212,16 @@ def decon_image(
             fig, ax = plt.subplots(figsize=(10, 10), dpi=200)
             sns.histplot(tile_maxes, bins=100, kde=True, ax=ax)
             ax.axvline(thr, c="red", linestyle="--", label="Threshold")
-            fig.savefig(output_dir / f"plot_tile_maxes_{_channel}.png")
+            fig.savefig(image_save_dir / f"plot_tile_maxes_{_channel}.png")
 
             fig = visualize_tiling_grid(
                 tile_info, large_img.shape, color_prop="max_intensity"
             )
-            fig.savefig(output_dir / f"plot_tile_grid_max_{_channel}.png")
+            fig.savefig(image_save_dir / f"plot_tile_grid_max_{_channel}.png")
             fig = visualize_tiling_grid(
                 tile_info, large_img.shape, color_prop="thresholded"
             )
-            fig.savefig(output_dir / f"plot_tile_grid__thr{_channel}.png")
+            fig.savefig(image_save_dir / f"plot_tile_grid__thr{_channel}.png")
 
             # Reconstruct the image and plot the difference
             reconstructed = reconstruct_image_from_tiles(
@@ -204,22 +235,32 @@ def decon_image(
             downscale = (1,) * (diff.ndim - 2) + (10, 10)
             diff = ski.transform.downscale_local_mean(diff, downscale)
 
-            fig, ax = plt.subplots(figsize=(10, 10))
-            ax.imshow(diff, cmap="Grays_r")
-            fig.savefig(output_dir / f"plot_tile_diff_{_channel}.png")
+            if is_3d:
+                num_d = 1 if diff.ndim == 2 else diff.shape[0]
+                fig, ax = plt.subplots(1, num_d, figsize=(5*num_d, 5))
+                for i in range(num_d):
+                    ax[i].imshow(diff[i], cmap="Grays_r")  # for 3D
+                    ax[i].set_title(f"Slice {i}")
+            else:
+                fig, ax = plt.subplots(figsize=(10, 10))
+                ax.imshow(diff, cmap="Grays_r")
+            fig.savefig(image_save_dir / f"plot_tile_diff_{_channel}.png")
 
             del diff, reconstructed
-
-        # Save Tiles (applying 7 slice expansion):
-        def to_3D(x):
-            return np.asarray([x] * 7)
-
-        saved_files = save_tiles(tiles, sub_tile_info, output_dir, func=to_3D)
+        
+        # save tiles 
+        if is_3d:
+            saved_files = save_tiles(tiles, sub_tile_info, output_dir) 
+        else: 
+            # applying 7 slice expansion
+            def to_3D(x):
+                return np.asarray([x] * 7)
+            saved_files = save_tiles(tiles, sub_tile_info, output_dir, func=to_3D)
         logger.info(f"Saved {len(saved_files)} tiles to {output_dir}")
 
         del tiles  # Clear memory
 
-        logger.info(f"Applying {filter} filter from fishtank")
+        logger.info(f"Applying {filter} filter")
         # Setting the deconwolf args
         filter_args = filter_args if filter_args else {}
         filter_args["colors"] = channels["color"].values
@@ -266,14 +307,24 @@ def decon_image(
 
         logger.info("Completed deconvolution and 2D projection for all tiles.")
 
-        # Reconstruct deconvolved image from saved 2D tiles
-        deconed_image = reconstruct_image_from_tile_files(
-            output_dir=output_dir,
-            tile_info=sub_tile_info,
-            original_shape=large_img.shape,
-            suffix=".decon.2d",
-            match_pre=match_pre,
-        )
+        if is_3d: 
+            # Reconstruct deconvolved image from saved 3D tiles
+            deconed_image = reconstruct_image_from_tile_files(
+                output_dir=output_dir,
+                tile_info=sub_tile_info,
+                original_shape=large_img.shape,
+                suffix=".decon",
+                match_pre=match_pre,
+            )
+        else: 
+            # Reconstruct deconvolved image from saved 2D tiles
+            deconed_image = reconstruct_image_from_tile_files(
+                output_dir=output_dir,
+                tile_info=sub_tile_info,
+                original_shape=large_img.shape,
+                suffix=".decon.2d",
+                match_pre=match_pre,
+            )
         logger.info(
             f"Reconstructed deconvolved image with shape: {deconed_image.shape}"
         )

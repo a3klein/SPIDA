@@ -70,7 +70,12 @@ def tile_image_with_overlap(
 
     # Convert overlap to tuple if it's an integer
     if isinstance(overlap, int):
-        overlap = tuple([overlap] * len(tile_size))
+        if image.ndim == 2:
+            overlap = tuple([overlap] * len(tile_size))
+        elif image.ndim == 3:
+            overlap = (0,) + tuple([overlap] * (len(tile_size) - 1))
+        else:
+            raise ValueError("Unsupported image dimensions")
 
     # Validate dimensions
     if len(tile_size) != image.ndim:
@@ -199,9 +204,246 @@ def tile_image_with_overlap(
             tile_info.append(info)
             tile_id += 1
 
-    # TODO: Implement for 3D images if needed
+    elif image.ndim == 3:
+        depth, height, width = image.shape
+        tile_d, tile_h, tile_w = tile_size
+        step_d, step_h, step_w = step_size
+
+        # Main grid of tiles
+        for d in range(0, depth - tile_d + 1, step_d):
+            for row in range(0, height - tile_h + 1, step_h):
+                for col in range(0, width - tile_w + 1, step_w):
+                    # Handle edge cases where we might go beyond image boundaries
+                    end_d = min(d + tile_d, depth)
+                    end_row = min(row + tile_h, height)
+                    end_col = min(col + tile_w, width)
+
+                    # Extract tile
+                    tile = image[d:end_d, row:end_row, col:end_col]
+
+                    # Store tile information
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (end_d, end_row, end_col),
+                        "actual_size": tile.shape,
+                        "overlap_region": {
+                            "front": d > 0,
+                            "back": end_d < depth,
+                            "top": row > 0,
+                            "bottom": end_row < height,
+                            "left": col > 0,
+                            "right": end_col < width,
+                        },
+                        "color": color,
+                    }
+
+                    tiles.append(tile)
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Handle edge tiles for 3D
+        # Right edge tiles
+        if width % step_w != 0:
+            col = width - tile_w
+            for d in range(0, depth - tile_d + 1, step_d):
+                for row in range(0, height - tile_h + 1, step_h):
+                    end_d = min(d + tile_d, depth)
+                    end_row = min(row + tile_h, height)
+                    tile = image[d:end_d, row:end_row, col:width]
+
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (end_d, end_row, width),
+                        "actual_size": tile.shape,
+                        "overlap_region": {
+                            "front": d > 0,
+                            "back": end_d < depth,
+                            "top": row > 0,
+                            "bottom": end_row < height,
+                            "left": True,
+                            "right": False,
+                        },
+                        "color": color,
+                    }
+
+                    tiles.append(tile)
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Bottom edge tiles
+        if height % step_h != 0:
+            row = height - tile_h
+            for d in range(0, depth - tile_d + 1, step_d):
+                for col in range(0, width - tile_w + 1, step_w):
+                    end_d = min(d + tile_d, depth)
+                    end_col = min(col + tile_w, width)
+                    tile = image[d:end_d, row:height, col:end_col]
+
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (end_d, height, end_col),
+                        "actual_size": tile.shape,
+                        "overlap_region": {
+                            "front": d > 0,
+                            "back": end_d < depth,
+                            "top": True,
+                            "bottom": False,
+                            "left": col > 0,
+                            "right": end_col < width,
+                        },
+                        "color": color,
+                    }
+
+                    tiles.append(tile)
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Back edge tiles
+        if depth % step_d != 0:
+            d = depth - tile_d
+            for row in range(0, height - tile_h + 1, step_h):
+                for col in range(0, width - tile_w + 1, step_w):
+                    end_row = min(row + tile_h, height)
+                    end_col = min(col + tile_w, width)
+                    tile = image[d:depth, row:end_row, col:end_col]
+
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (depth, end_row, end_col),
+                        "actual_size": tile.shape,
+                        "overlap_region": {
+                            "front": True,
+                            "back": False,
+                            "top": row > 0,
+                            "bottom": end_row < height,
+                            "left": col > 0,
+                            "right": end_col < width,
+                        },
+                        "color": color,
+                    }
+
+                    tiles.append(tile)
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Corner edge tiles
+        # Bottom-right edge
+        if height % step_h != 0 and width % step_w != 0:
+            row = height - tile_h
+            col = width - tile_w
+            for d in range(0, depth - tile_d + 1, step_d):
+                end_d = min(d + tile_d, depth)
+                tile = image[d:end_d, row:height, col:width]
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (d, row, col),
+                    "end_position": (end_d, height, width),
+                    "actual_size": tile.shape,
+                    "overlap_region": {
+                        "front": d > 0,
+                        "back": end_d < depth,
+                        "top": True,
+                        "bottom": False,
+                        "left": True,
+                        "right": False,
+                    },
+                    "color": color,
+                }
+
+                tiles.append(tile)
+                tile_info.append(info)
+                tile_id += 1
+
+        # Back-right edge
+        if depth % step_d != 0 and width % step_w != 0:
+            d = depth - tile_d
+            col = width - tile_w
+            for row in range(0, height - tile_h + 1, step_h):
+                end_row = min(row + tile_h, height)
+                tile = image[d:depth, row:end_row, col:width]
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (d, row, col),
+                    "end_position": (depth, end_row, width),
+                    "actual_size": tile.shape,
+                    "overlap_region": {
+                        "front": True,
+                        "back": False,
+                        "top": row > 0,
+                        "bottom": end_row < height,
+                        "left": True,
+                        "right": False,
+                    },
+                    "color": color,
+                }
+
+                tiles.append(tile)
+                tile_info.append(info)
+                tile_id += 1
+
+        # Back-bottom edge
+        if depth % step_d != 0 and height % step_h != 0:
+            d = depth - tile_d
+            row = height - tile_h
+            for col in range(0, width - tile_w + 1, step_w):
+                end_col = min(col + tile_w, width)
+                tile = image[d:depth, row:height, col:end_col]
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (d, row, col),
+                    "end_position": (depth, height, end_col),
+                    "actual_size": tile.shape,
+                    "overlap_region": {
+                        "front": True,
+                        "back": False,
+                        "top": True,
+                        "bottom": False,
+                        "left": col > 0,
+                        "right": end_col < width,
+                    },
+                    "color": color,
+                }
+
+                tiles.append(tile)
+                tile_info.append(info)
+                tile_id += 1
+
+        # Back-bottom-right corner
+        if depth % step_d != 0 and height % step_h != 0 and width % step_w != 0:
+            d = depth - tile_d
+            row = height - tile_h
+            col = width - tile_w
+            tile = image[d:depth, row:height, col:width]
+
+            info = {
+                "tile_id": tile_id,
+                "position": (d, row, col),
+                "end_position": (depth, height, width),
+                "actual_size": tile.shape,
+                "overlap_region": {
+                    "front": True,
+                    "back": False,
+                    "top": True,
+                    "bottom": False,
+                    "left": True,
+                    "right": False,
+                },
+                "color": color,
+            }
+
+            tiles.append(tile)
+            tile_info.append(info)
+            tile_id += 1
+
     else:
-        raise ValueError("Only 2D images are supported")
+        raise ValueError(f"Unsupported image dimensions: {image.ndim}D images are not supported")
 
     return tiles, tile_info
 
@@ -225,24 +467,56 @@ def colormap_mapper(values, colormap="viridis"):
 def visualize_tiling_grid(tile_info: list, image_shape: tuple, color_prop: str = None):
     """
     Visualize the tiling grid on the image to preview how tiles will be arranged.
+    For 3D images, visualizes the middle z-slice.
 
     Parameters:
     -----------
+    tile_info : list
+        List of tile information dictionaries
     image_shape : tuple
-        Shape of the original image
-    tile_size : int or tuple
-        Size of each tile
-    overlap : int or tuple, optional
-        Overlap between tiles
-    max_tiles_to_show : int, optional
-        Maximum number of tiles to show in visualization
+        Shape of the original image (2D or 3D)
+    color_prop : str, optional
+        Property name to use for coloring tiles
 
     Returns:
     --------
     fig : matplotlib figure
         Figure showing the tiling grid
     """
-    if len(image_shape) == 2:
+    if len(image_shape) == 3:
+        # Handle 3D case - extract middle z-slice and create 2D tile info
+        depth, height, width = image_shape
+        middle_z = depth // 2
+        
+        # Filter tiles that include the middle z-slice and convert to 2D
+        middle_z_tiles = []
+        for tile in tile_info:
+            pos = tile["position"]
+            end_pos = tile["end_position"]
+            
+            # Check if this tile includes the middle z-slice
+            if len(pos) == 3 and pos[0] <= middle_z < end_pos[0]:
+                # Convert 3D tile info to 2D for visualization
+                tile_2d = tile.copy()
+                tile_2d["position"] = (pos[1], pos[2])  # (row, col)
+                tile_2d["end_position"] = (end_pos[1], end_pos[2])
+                tile_2d["actual_size"] = (tile["actual_size"][1], tile["actual_size"][2])
+                
+                # Update overlap region to 2D
+                overlap_3d = tile["overlap_region"]
+                tile_2d["overlap_region"] = {
+                    "top": overlap_3d["top"],
+                    "bottom": overlap_3d["bottom"],
+                    "left": overlap_3d["left"],
+                    "right": overlap_3d["right"],
+                }
+                
+                middle_z_tiles.append(tile_2d)
+        
+        # Recursively call with 2D image shape and filtered tiles
+        return visualize_tiling_grid(middle_z_tiles, (height, width), color_prop)
+    
+    elif len(image_shape) == 2:
         height, width = image_shape
 
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -303,14 +577,23 @@ def visualize_tiling_grid(tile_info: list, image_shape: tuple, color_prop: str =
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7),
                 )
 
-        overlap = tile_info[0]["end_position"][1] - tile_info[1]["position"][1]
+        overlap = tile_info[0]["end_position"][1] - tile_info[1]["position"][1] if len(tile_info) > 1 else 0
 
         ax.set_xlim(0, width)
         ax.set_ylim(0, height)
         ax.set_aspect("equal")
-        ax.set_title(
-            f"Tiling Grid Preview\nImage: {width}x{height}, Tile: {tile_w}x{tile_h}, Overlap: {overlap}"
-        )
+        
+        # Update title based on whether this is 3D visualization
+        if len(image_shape) == 3:
+            depth = image_shape[0]
+            middle_z = depth // 2
+            ax.set_title(
+                f"Tiling Grid Preview (Z-slice {middle_z}/{depth-1})\nImage: {width}x{height}x{depth}, Tile: {tile_w}x{tile_h}, Overlap: {overlap}"
+            )
+        else:
+            ax.set_title(
+                f"Tiling Grid Preview\nImage: {width}x{height}, Tile: {tile_w}x{tile_h}, Overlap: {overlap}"
+            )
         ax.set_xlabel("Width")
         ax.set_ylabel("Height")
 
@@ -318,7 +601,7 @@ def visualize_tiling_grid(tile_info: list, image_shape: tuple, color_prop: str =
         return fig
 
     else:
-        print("Visualization only supports 2D images")
+        print(f"Visualization only supports 2D and 3D images, got {len(image_shape)}D")
         return None
 
 

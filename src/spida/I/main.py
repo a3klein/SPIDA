@@ -124,10 +124,13 @@ def backup_adata_experiment(exp_name: str, prefix_name: str, adata_path: str = N
 @click.option("--rna_cell_type_column", type=click.STRING, default="supercluster_name", help='Column name in the AnnData object for RNA cell types. Defaults to "supercluster_name".')
 @click.option("--qry_cluster_column", type=click.STRING, default="leiden", help='Column name in the AnnData object for query clusters. Defaults to "leiden".')
 @click.option("--run_joint_embeddings", type=bool, is_flag=True, default=False, help='Whether to run joint embeddings on the integrated data. Defaults to False.')
+@click.option("--joint_embedding_leiden_res", type=float, default=1.5, help='Resolution for clustering the joint embeddings when running joint embeddings. Defaults to 1.5.')
 @click.option("--run_clust_label_transfer", type=bool, is_flag=True, default=True, help='Whether to run cluster-to-cluster label transfer on the integrated data. Defaults to True.')
 @click.option("--confusion_matrix_cluster_min_value", type=float, default=0.25, help='Minimum value for the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 0.25.')
 @click.option("--confusion_matrix_cluster_max_value", type=float, default=0.9, help='Maximum value for the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 0.9.')
 @click.option("--confusion_matrix_cluster_resolution", type=float, default=1.5, help='Resolution for clustering the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 1.5.')
+@click.option("--qry_only_cluster_threshold", type=int, default=50, help='Min Reference cell number for defining query-only clusters during cluster-to-cluster label transfer. Defaults to 50.')
+@click.option("--ref_only_cluster_threshold", type=int, default=20, help='Min Query cell number for defining reference-only clusters during cluster-to-cluster label transfer. Defaults to 20.')
 @click.option("--plot", type=bool, is_flag=True, default=False, help='Whether to plot the results of the ALLCools integration. Defaults to False.')
 @click.option("--image_path", type=click.Path(exists=False, file_okay=False, path_type=str, dir_okay=True), default=None, help='Path to the image file for plotting. Defaults to None.')
 @click.option("--backup_to_spatialdata", type=bool, is_flag=True, default=True, help='Whether to backup the results to the spatialdata object. Defaults to True.')
@@ -153,10 +156,13 @@ def allcools_integration_region(
     rna_cell_type_column: str = "supercluster_name",
     qry_cluster_column:str = "leiden",
     run_joint_embeddings:bool = False,
+    joint_embedding_leiden_res: float = 1.5,
     run_clust_label_transfer: bool = True,
     confusion_matrix_cluster_min_value: float = 0.25,
     confusion_matrix_cluster_max_value: float = 0.9,
     confusion_matrix_cluster_resolution: float = 1.5,
+    qry_only_cluster_threshold: int = 50,
+    ref_only_cluster_threshold: int = 20,
     plot:bool = False,
     image_path:str | Path | None = None,
     backup_to_spatialdata:bool = True, 
@@ -242,11 +248,15 @@ def allcools_integration_region(
         top_deg_genes=top_deg_genes,
         max_cells_per_cluster=max_cells_per_cluster,
         min_cells_per_cluster=min_cells_per_cluster,
+        label_transfer_k=label_transfer_k,
         run_joint_embeddings=run_joint_embeddings,
+        joint_embedding_leiden_res=joint_embedding_leiden_res,
         run_clust_label_transfer=run_clust_label_transfer,
         confusion_matrix_cluster_min_value=confusion_matrix_cluster_min_value,
         confusion_matrix_cluster_max_value=confusion_matrix_cluster_max_value,
         confusion_matrix_cluster_resolution=confusion_matrix_cluster_resolution,
+        qry_only_cluster_threshold=qry_only_cluster_threshold,
+        ref_only_cluster_threshold=ref_only_cluster_threshold,
         save_integrator=save_integrator,
         save_adata_comb=save_adata_comb,
         **kwargs,

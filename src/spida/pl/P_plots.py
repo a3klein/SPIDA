@@ -7,7 +7,7 @@ import seaborn as sns
 
 from spida._constants import CELL_X, CELL_Y
 from spida.pl import plot_scatter # TODO: depreceate this! 
-from spida._utilities import _region_to_donor
+from spida.utilities.sd_utils import _region_to_donor
 from ._scatteplot import plot_categorical, plot_continuous
 from ._spatial import plot_spatial_continuous, plot_spatial_categorical
 

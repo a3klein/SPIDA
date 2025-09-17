@@ -4,7 +4,7 @@ import polars as pl
 from numpy import quantile as np_quant
 import anndata as ad
 
-from spida._utilities import _validate_adata
+from spida.utilities.sd_utils import _validate_adata
 from spida._constants import (
     CELL_ID,
     CELL_X,
@@ -288,11 +288,20 @@ def run_filtering(
         ff = adata.obs.copy()
 
     # Performing Merging
-    res = (
-        filtered_features.to_pandas()
-        .set_index("Index")
-        .merge(ff, on=CELL_ID, how="inner", suffixes=["", "_old"])
-    )
+    if CELL_ID not in ff.columns:
+        res = (
+            filtered_features.to_pandas()
+            .set_index("Index")
+            .join(ff, on=CELL_ID, how="inner", lsuffix="", rsuffix="_old")
+        )
+    else: 
+        # TODO: 
+        res = (
+            filtered_features.to_pandas()
+            .set_index("Index")
+            .merge(ff, on=CELL_ID, how="inner", suffixes=["", "_old"])
+            .set_index("Index")
+        )
 
     # Removing duplicate columns
     to_delete = []
