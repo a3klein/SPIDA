@@ -651,7 +651,7 @@ def categorical_scatter(
 		y="y",
 		data=_data,
 		ax=ax,
-		hue="hue",
+		hue="hue" if hue is not None else None,
 		size=size,
 		sizes=sizes,
 		size_norm=size_norm,

@@ -37,6 +37,17 @@ def _downsample_reference(
         ref_adata = _downsample_ref_clusters(ref_adata, cluster_col, max_cells=max_cluster_size)
     return ref_adata
 
+# Apply normalization to the .X in either AnnData Object
+def normalize_adata(
+    adata: ad.AnnData,
+    target_sum: float = 1e4,
+    log1p: bool = True,
+): 
+    n_counts = np.ravel(adata.X.sum(axis=1))
+    adata.X.data = adata.X.data/np.repeat(n_counts, adata.X.getnnz(axis=1)) * np.median(n_counts)
+    sc.pp.log1p(adata)
+
+
 #TODO: cef calls from ALLCools here instead?
 def _allcools_cef(
     ref_adata, 
@@ -248,8 +259,8 @@ def _allcools_seurat_wrapper(ref_adata, qry_adata, **kwargs):
         k_score=30,
         # k_filter=min(200, ref_adata.shape[0] // 10),
         k_filter=None,
-        scale1=True,
-        scale2=True,
+        scale1=False,
+        scale2=False,
         # scale =[False, True]
         n_components=ncc,
         alignments=[[[0], [1]]],
@@ -324,12 +335,13 @@ def _joint_embeddings(
     min_dist:float = 0.25,
     leiden_res:int = 1,
     knn:int = 50,
+    **kwargs
 ): 
     """
     For calculating the joint embeddings from the integrated PCA space
     """
     from ..P.setup_adata import _calc_embeddings
-    return _calc_embeddings(adata, use_rep=use_rep, key_added=key_added, leiden_res=leiden_res, knn=knn, min_dist=min_dist)
+    return _calc_embeddings(adata, use_rep=use_rep, key_added=key_added, leiden_res=leiden_res, knn=knn, min_dist=min_dist, **kwargs)
 
 def _clust2clust_transfer(
     adata_comb, 
@@ -341,8 +353,11 @@ def _clust2clust_transfer(
     qry_only_cluster_threshold = 50,
     ref_only_cluster_threshold = 20,
     integration_round: int = 1,
+    ref_batch_modality_key: str = "ref", 
+    qry_batch_modality_key: str = "query",
 ): 
     data = adata_comb.obs.loc[~adata_comb.obs[joint_cluster_column].isna(), [joint_cluster_column, ref_cell_type_column]].value_counts().unstack(fill_value=0)
+    data = data.drop(columns=['nan']) if 'nan' in data.columns else data
 
     merfish_only_cluster = data.index[data.sum(axis=1) < qry_only_cluster_threshold]
     rna_only_cluster = data.columns[data.sum(axis=0) < ref_only_cluster_threshold]
@@ -378,8 +393,8 @@ def _clust2clust_transfer(
         qry_cluster = xx.index
         ref_cluster = (datac.loc[qry_cluster].sum(axis=0) > 0.3) | (datar.loc[qry_cluster].max(axis=0) > 0.3)  #parameterize?
         ref_cluster = ref_cluster.index[ref_cluster].astype(str)
-        ref_cell = adata_comb.obs.index[(adata_comb.obs['Modality']=='ref') & (adata_comb.obs[ref_cell_type_column].isin(ref_cluster))]
-        qry_cell = adata_comb.obs.index[(adata_comb.obs['Modality']=='query') & (adata_comb.obs[joint_cluster_column].isin(qry_cluster))]
+        ref_cell = adata_comb.obs.index[(adata_comb.obs['Modality']==ref_batch_modality_key) & (adata_comb.obs[ref_cell_type_column].isin(ref_cluster))]
+        qry_cell = adata_comb.obs.index[(adata_comb.obs['Modality']==qry_batch_modality_key) & (adata_comb.obs[joint_cluster_column].isin(qry_cluster))]
         if (len(qry_cell)>0) and (len(ref_cell)>0):
             ## integration_group is used for split coclusters into next iteration, so should have cells from both modalities
             ## qry_cell must already be positive since len(qry_cluster)>0 in the last condition, so this if requires the group to have MERFISH cells
@@ -397,7 +412,7 @@ def _clust2clust_transfer(
     logger.info(f"Number of integration groups: {len(integration_group_cluster)}, {len(integration_group_cell)}")
     
     added_col = f"c2c_allcools_label_{ref_cell_type_column}"
-    adata_comb.obs.loc[adata_comb.obs['Modality']=='query', added_col] = "unknown"
+    adata_comb.obs.loc[adata_comb.obs['Modality']==qry_batch_modality_key, added_col] = "unknown"
     for group in integration_group_cell: 
         ref_cells = integration_group_cell[group]['ref']
         qry_cells = integration_group_cell[group]['qry']
@@ -473,7 +488,11 @@ def run_allcools_seurat(
     save_integrator:bool = True, 
     save_adata_comb: bool = True,
     run_joint_embeddings: bool = False,
-    joint_embedding_leiden_res: float = 1.5,
+    joint_embedding_leiden_res: float = 2.5,
+    run_harmony_joint_embeddings: bool = False,
+    harmony_nclust_joint_embeddings: int = 30,
+    max_iter_harmony_joint_embeddings: int = 20,
+    harmony_batch_keys: str | list[str] = "Modality",
     run_clust_label_transfer: bool = True,
     confusion_matrix_cluster_min_value = 0.25,
     confusion_matrix_cluster_max_value = 0.9,
@@ -481,6 +500,10 @@ def run_allcools_seurat(
     qry_only_cluster_threshold = 50,
     ref_only_cluster_threshold = 20,
     integration_round: int = 1,
+    normalize_ref: bool = False,
+    normalize_qry: bool = False,
+    deg_type: str = "deg", # "cef" or "deg" - whether to use cluster enriched features (cef) or differentially expressed genes (deg) for integration
+    cef_column : str = None,  # if using cef, the column in ref_adata.var to use for cefs
     **kwargs,
 ):
     """
@@ -521,25 +544,36 @@ def run_allcools_seurat(
     # TODO: call DEGs between clusters / cell types in ref and qry
     if top_deg_genes > 0:
         # add a flag for this choice? 
-        deg_genes = _allcools_cef(
-            ref_adata,
-            qry_adata_ds,
-            ref_col_level=rna_cell_type_column,
-            top_n=top_deg_genes,
-            alpha=0.05,
-        )
-        # deg_genes = _get_joined_deg_list(
-        #     ref_adata,
-        #     rna_cell_type_column,
-        #     qry_adata_ds,
-        #     qry_cluster_column,
-        #     top_n=top_deg_genes
-        # )
+        if deg_type == "cef":
+            logger.info("Using Cluster Enriched Features (CEF) for integration")
+            cef_col = cef_column if cef_column is not None else rna_cell_type_column
+            deg_genes = _allcools_cef(
+                ref_adata,
+                qry_adata_ds,
+                ref_col_level=rna_cell_type_column,
+                top_n=top_deg_genes,
+                alpha=0.05,
+            )
+        else: 
+            logger.info("Using Differentially Expressed Genes (DEG) for integration")
+            deg_genes = _get_joined_deg_list(
+                ref_adata,
+                rna_cell_type_column,
+                qry_adata_ds,
+                qry_cluster_column,
+                top_n=top_deg_genes
+            )
         logger.info(f"Using {len(deg_genes)} DEGs for integration")
-        # qry_adata._inplace_subset_var(qry_adata.var_names.isin(cef))
-        # ref_adata._inplace_subset_var(ref_adata.var_names.isin(cef))
         ref_adata = ref_adata[:, ref_adata.var_names.isin(deg_genes)].copy()
         qry_adata_ds = qry_adata_ds[:, qry_adata_ds.var_names.isin(deg_genes)].copy()
+
+    # Normalize the data if needed
+    if normalize_ref:
+        logger.info("Normalizing reference data")
+        normalize_adata(ref_adata)
+    if normalize_qry:
+        logger.info("Normalizing query data")
+        normalize_adata(qry_adata_ds)
 
     # Run PCA on the reference and query data
     ref_adata, qry_adata_ds = _allcools_pca(
@@ -565,21 +599,25 @@ def run_allcools_seurat(
             use_rep="X_pca_integrate",
             key_added="integrated_",
             leiden_res=joint_embedding_leiden_res,
+            run_harmony=run_harmony_joint_embeddings,
+            batch_key=harmony_batch_keys,
+            harmony_nclust=harmony_nclust_joint_embeddings,
+            max_iter_harmony=max_iter_harmony_joint_embeddings,
             **kwargs)
         
     # Running the cluster2cluster label transfer
     if run_clust_label_transfer: 
         adata_comb = _clust2clust_transfer(
             adata_comb,
-            ref_cell_type_column = rna_cell_type_column,
-            joint_cluster_column = "integrated_leiden",
-            confusion_matrix_cluster_min_value = confusion_matrix_cluster_min_value,
-            confusion_matrix_cluster_max_value = confusion_matrix_cluster_max_value,
-            confusion_matrix_cluster_resolution = confusion_matrix_cluster_resolution,
-            qry_only_cluster_threshold = qry_only_cluster_threshold,
-            ref_only_cluster_threshold = ref_only_cluster_threshold,
-            integration_round = integration_round,
-            )
+            ref_cell_type_column=rna_cell_type_column,
+            joint_cluster_column="integrated_leiden",
+            confusion_matrix_cluster_min_value=confusion_matrix_cluster_min_value,
+            confusion_matrix_cluster_max_value=confusion_matrix_cluster_max_value,
+            confusion_matrix_cluster_resolution=confusion_matrix_cluster_resolution,
+            qry_only_cluster_threshold=qry_only_cluster_threshold,
+            ref_only_cluster_threshold=ref_only_cluster_threshold,
+            integration_round=integration_round,
+        )
 
 
     pre_cols = set(qry_adata_ds.obs.columns).union(ref_adata.obs.columns)
