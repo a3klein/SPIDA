@@ -19,6 +19,6 @@ from .I_plots import (
     plot_allcools_joint_embeddings,
     plot_allcools_spatial_annot
 )
-from ._scatteplot import plot_categorical, plot_continuous
+from ._scatteplot import plot_categorical, plot_continuous, categorical_scatter, continuous_scatter
 from ._spatial import plot_spatial_continuous, plot_spatial_categorical
 from .qc_plots import plot_violin_QC

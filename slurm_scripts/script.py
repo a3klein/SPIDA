@@ -113,22 +113,18 @@ def config_templates(
     else: 
         region_names = [region_name]
 
-    skip_this_part = False
     for region_name in region_names:
-        if skip_this_part:
-            if lab is None:
-                reg_n = reg_n if reg_n is not None else region_name
-                skip_this_part = True
+        if lab is None:
+            reg_n = reg_n if reg_n is not None else region_name
+        else:
+            if lab == "salk":
+                reg_n = rename_reg_salk(region_name)
+            elif lab == "ucsd":
+                reg_n = rename_reg_ucsd(region_name)
+                click.echo(f"Using region {region_name} with shortened name {reg_n}")
             else:
-                if lab == "salk":
-                    reg_n = rename_reg_salk(region_name)
-                elif lab == "ucsd":
-                    reg_n = rename_reg_ucsd(region_name)
-                else:
-                    print("Invalid lab name. Use 'salk' or 'ucsd'.")
-                    sys.exit(1)
-        else: 
-            reg_n = region_name
+                print("Invalid lab name. Use 'salk' or 'ucsd'.")
+                sys.exit(1)
 
         click.echo(f"Experiment Name: {exp_n}")
         click.echo(f"Region Name: {reg_n}")
