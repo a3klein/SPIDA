@@ -91,8 +91,10 @@ def config_templates(
     if region_name is None and data_path is None: 
         print("If region_name is None, provide the path to the experiment directory to generate all regions")
         sys.exit(1)
-    if lab is None: 
-        exp_n = exp_n if exp_n is not None else experiment_name
+    if exp_n is not None: 
+        exp_n = exp_n
+    elif lab is None: 
+        exp_n = experiment_name
     else: 
         lab = lab.lower()
         if lab == "salk":

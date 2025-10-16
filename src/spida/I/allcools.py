@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import numpy as np
 import pandas as pd
 import anndata as ad
+import scanpy as sc
 from ALLCools.clustering import significant_pc_test  # type: ignore
 from ALLCools.integration import confusion_matrix_clustering # type: ignore
 from ALLCools.integration.seurat_class import SeuratIntegration  # type: ignore

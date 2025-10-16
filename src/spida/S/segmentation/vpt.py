@@ -19,6 +19,7 @@ def _add_vpt_binary():
     vpt_path = os.getenv(
         "VPT_BIN_PATH", "/gale/netapp/home2/aklein/miniconda3/envs/vpt/bin"
     )
+    logger.info(f"Using VPT binary path: {vpt_path}")
     if not os.path.exists(vpt_path):
         raise FileNotFoundError(
             f"VPT binary not found at {vpt_path}. Please check the installation."

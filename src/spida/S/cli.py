@@ -294,6 +294,32 @@ def load_deconvolution_region(
         **load_kwargs,
     )
 
+
+@cli.command(
+    name="test-vpt", 
+    cls=RichCommand,
+    help="Test VPT binary",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.pass_context
+def test_vpt(ctx):
+    """
+    Test the VPT binary by running a simple command.
+    """
+    extra_args = ctx.args
+    click.echo(extra_args)
+    kwargs = parse_click_kwargs(extra_args)
+    click.echo(kwargs)
+    for key, value in kwargs.items():
+        logger.info(f"Parsed {key} = {value};  {type(value)}")
+
+    from .segmentation.vpt import _add_vpt_binary as func
+    func()
+
+
 @cli.command(
     name="run-segmentation-region",
     aliases=["run", "run_segmentation_region"],
