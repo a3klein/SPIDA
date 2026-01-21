@@ -8,8 +8,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=128
 #SBATCH --mem=128gb
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/CORTEX/logs/{EXP_N}/proseg_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/CORTEX/logs/{EXP_N}/proseg_{EXP_N}_{REG_N}.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/proseg_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/proseg_{EXP_N}_{REG_N}.out
 #SBATCH --export=ALL
 
 
@@ -61,7 +61,7 @@ pixi run -e preprocessing \
     ${{PREFIX}} \
     --seg_fam proseg \
     --plot \
-    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/CORTEX/config/filtering_cutoffs_proseg.json
+    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/HIPP/config/filtering_cutoffs_proseg.json
 
 # SETUP ADATA 
 pixi run -e preprocessing \

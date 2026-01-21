@@ -1,6 +1,6 @@
 [workspace]
 authors = ["Amit Klein <a3klein@ucsd.edu>"]
-channels = ["conda-forge", "pypi", "pytorch", "nvidia"]
+channels = ["conda-forge", "pypi", "pytorch", "nvidia", "bioconda"]
 name = "spida"
 platforms = ["linux-64"]
 version = "0.1.0"
@@ -74,6 +74,13 @@ shapely = ">=2.1.1,<3"
 adjusttext = ">=1.3.0,<2"
 openpyxl = ">=3.1.5,<4"
 mscorefonts = ">=0.0.1,<0.0.2"
+h3-py = ">=4.3.0,<5"
+pytables = ">=3.10.2,<4"
+hdbscan = ">=0.8.39,<0.9"
+matplotlib-venn = ">=1.1.2,<2"
+bedtools = ">=2.31.1,<3"
+deeptools = ">=3.5.6,<4"
+pybiomart = ">=0.2.0,<0.3"
 # graph-tool = ">=2.98,<3"
 [feature.preprocessing.pypi-dependencies] 
 allcools = { git = "https://github.com/DingWB/ALLCools" }
@@ -82,6 +89,7 @@ plottable = ">=0.1.5, <0.2"
 harmonypy = ">=0.0.10, <0.0.11"
 pycomplexheatmap = ">=1.8.2, <2"
 hotspotsc = ">=1.1.3, <2"
+alphashape = { git = "https://github.com/bellockk/alphashape" }
 #scib-metrics = ">=0.5.6, <0.6"
 
 [feature.deepcell.pypi-dependencies]
@@ -104,11 +112,53 @@ scikit-image = "*"
 [feature.cellpose.pypi-dependencies]
 cellpose = "==4.0.4"
 
-[feature.mapmycells.dependencies]
-python="3.10.*"
-zarr = "*"
-[feature.mapmycells.pypi-dependencies]
-cell_type_mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" }
+#[feature.mapmycells.dependencies]
+#python="3.10.*"
+#zarr = "*"
+#[feature.mapmycells.pypi-dependencies]
+#cell_type_mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" }
+
+[feature.distribution.dependencies]
+python = ">=3.12.0"
+r-base = "*"
+r-essentials = "*"
+anndata = ">=0.12.0"
+numpy = "*"
+pandas = "*"
+scipy = "*"
+statsmodels = "*"
+scanpy = "*"
+rpy2 = "*"
+r-devtools = ">=2.4.6,<3"
+r-argparse = ">=2.3.1,<3"
+pyarrow = ">=20.0.0,<21"
+r-arrow = ">=20.0.0,<21"
+r-matrix = ">=1.7_4,<2"
+bioconductor-s4vectors = ">=0.44.0,<0.45"
+bioconductor-edger = ">=4.4.0,<5"
+bioconductor-delayedarray = ">=0.32.0,<0.33"
+bioconductor-biocparallel = ">=1.40.0,<2"
+bioconductor-singlecellexperiment = ">=1.28.0,<2"
+bioconductor-tradeseq = ">=1.20.0,<2"
+r-mgcv = ">=1.9_4,<2"
+bioconductor-genomeinfodb = ">=1.42.0,<2"
+bioconductor-genomeinfodbdata = ">=1.2.13,<2"
+r-rcpp = ">=1.1.0,<2"
+r-rcppeigen = ">=0.3.4.0.2,<0.4"
+r-tidyverse = ">=2.0.0,<3"
+r-remotes = ">=2.5.0,<3"
+r-rlang = ">=1.1.6,<2"
+r-dplyr = ">=1.1.4,<2"
+r-mass = ">=7.3_65,<8"
+nlopt = ">=2.10.0,<3"
+r-vctrs = ">=0.6.5,<0.7"
+r-tibble = ">=3.3.0,<4"
+r-tidyr = ">=1.3.1,<2"
+r-purrr = ">=1.2.0,<2"
+r-ggplot2 = ">=4.0.1,<5"
+r-nloptr = ">=2.2.1,<3"
+libsodium = ">=1.0.20,<2"
+openssl = ">=3.6.0,<4"
 
 # Setting environment names for all the features 
 [environments]
@@ -116,7 +166,9 @@ preprocessing-gpu = ['preprocessing', 'gpu']
 preprocessing = ['preprocessing', 'cpu']
 deepcell = ["deepcell"]
 cellpose = ["cellpose"]
-mapmycells = ["mapmycells"]
+#mapmycells = ["mapmycells"]
+dist = ["distribution"]
+
 
 # Preprocssing Tasks 
 [feature.preprocessing.tasks]
@@ -129,6 +181,8 @@ spida-I = {cmd = "python -m spida.I"}
 
 [tasks]
 lint-fast = "ruff --fix src/"
+config = {cmd = "python -m spida.config"}
+template = {cmd = "python -m slurm_scripts.script"}
 
 # [feature.gpu.tasks.install-triton]
 # cmd = "pip install triton==2.1.0 --foce-reinstall --no-cache-dir"

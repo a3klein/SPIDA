@@ -57,17 +57,24 @@ def read_merscope(
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         sdata = merscope(path, slide_name=f"{prefix_name}_{exp_name}")
-        sdata.write(zarr_path, overwrite=True)
-        # Renaming the default table from "table" to "default_table"
-        subprocess.run(
-            [
-                "mv",
-                f"{zarr_path}/tables/table",
-                f"{zarr_path}/tables/{KEYS[TABLE_KEY]}",
-            ],
-            check=True,
-        )
-        sdata = sd.read_zarr(zarr_path)
+        if sd.__version__ <= "0.6.0": 
+            sdata.write(zarr_path, overwrite=True)
+            # Renaming the default table from "table" to "default_table"
+            subprocess.run(
+                [
+                    "mv",
+                    f"{zarr_path}/tables/table",
+                    f"{zarr_path}/tables/{KEYS[TABLE_KEY]}",
+                ],
+                check=True,
+            )
+            sdata = sd.read_zarr(zarr_path, on_bad_files="warn")
+        else: 
+            sdata['default_table'] = sd.deepcopy(sdata['table'])
+            del sdata['table']
+            sdata.write(zarr_path, overwrite=True)
+            sdata = sd.read_zarr(zarr_path, on_bad_files="warn")
+
 
     # All MultiPolygons to Polygons
     sdata = _cast_multipolygons_to_polygons(
@@ -93,7 +100,10 @@ def read_merscope(
     set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
     set_transformation(sdata[KEYS[IMAGE_KEY]], affine_inv, to_coordinate_system="pixel")
     set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
-    sd.save_transformations(sdata)
+    if sd.__version__ <= "0.6.0": 
+        sd.save_transformations(sdata)
+    else: 
+        sdata.write_transformations()
 
     return sdata
 
@@ -256,7 +266,11 @@ def load_vpt_segmentation(
             f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
         )
 
-    sd.save_transformations(sdata)
+    if sd.__version__ <= "0.6.0": 
+        sd.save_transformations(sdata)
+    else:
+        sdata.write_transformations()
+    # sd.save_transformations(sdata)
 
     return sdata
 
@@ -364,7 +378,10 @@ def load_proseg_segmentation_v2(
             f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
         )
 
-    sd.save_transformations(sdata)
+    if sd.__version__ <= "0.6.0":
+        sd.save_transformations(sdata)
+    else:
+        sdata.write_transformations()
 
     return sdata
 
@@ -454,7 +471,11 @@ def load_proseg_segmentation_v3(
         logger.warning(
             f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
         )
-    sd.save_transformations(sdata)
+    
+    if sd.__version__ <= "0.6.0":   
+        sd.save_transformations(sdata)
+    else:
+        sdata.write_transformations()
 
     return sdata
 

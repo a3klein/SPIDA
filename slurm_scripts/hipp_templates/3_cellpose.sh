@@ -8,8 +8,8 @@
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=64
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/CORTEX/logs/{EXP_N}/cellpose_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/CORTEX/logs/{EXP_N}/cellpose_{EXP_N}_{REG_N}.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/cellpose_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/cellpose_{EXP_N}_{REG_N}.out
 #SBATCH --export=ALL
 
 # module purge

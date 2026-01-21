@@ -1216,3 +1216,97 @@ def merge_overlapping_polygons(merged_gdf, buffer_distance=0.1, area_threshold=N
     result_gdf = merged_gdf[merged_gdf.geometry.notna()].copy()
 
     return result_gdf
+
+
+#### HEX GRID TILING FUNCTIONS ####
+def create_hexagonal_grid(bounds, hex_size, overlap=0.0):
+    """
+    Create a hexagonal grid covering the given bounds using Red Blob Games standard geometry.
+    
+    For pointy-top hexagons:
+    - Horizontal spacing = sqrt(3) * size
+    - Vertical spacing = 3/2 * size
+    
+    Parameters:
+    -----------
+    bounds : tuple
+        (minx, miny, maxx, maxy) bounding box to cover
+    hex_size : float
+        Radius of hexagon (distance from center to vertex)
+    overlap : float, default 0.0
+        Overlap parameter:
+        - 0.0: No overlap (disjoint hexagons)
+        - 0.5: 50% overlap 
+        - 1.0: Complete overlap (same position)
+        - Negative values create gaps
+    
+    Returns:
+    --------
+    geopandas.GeoDataFrame
+        Grid of hexagonal polygons
+    """
+    from shapely import Polygon, Point, box
+
+    minx, miny, maxx, maxy = bounds
+    
+    # Red Blob Games standard spacing for pointy-top hexagons
+    horizontal_spacing = hex_size * np.sqrt(3)  # sqrt(3) * size
+    vertical_spacing = hex_size * 1.5           # 3/2 * size
+    
+    # Apply overlap: spacing = base_spacing * (1 - overlap)
+    # overlap=0.0 -> spacing = base_spacing (no overlap)
+    # overlap=0.5 -> spacing = 0.5 * base_spacing (50% overlap)
+    # overlap=1.0 -> spacing = 0 (complete overlap)
+    actual_horizontal_spacing = horizontal_spacing * (1 - overlap)
+    actual_vertical_spacing = vertical_spacing * (1 - overlap)
+    
+    # Calculate grid dimensions
+    width = maxx - minx
+    height = maxy - miny
+    
+    # Number of hexagons needed (with some buffer)
+    cols = int(np.ceil(width / actual_horizontal_spacing)) + 2
+    rows = int(np.ceil(height / actual_vertical_spacing)) + 2
+    
+    hexagons = []
+    
+    for row in range(rows):
+        for col in range(cols):
+            # Calculate center position
+            # Even rows: no horizontal offset
+            # Odd rows: offset by half the horizontal spacing
+            if row % 2 == 0:
+                x = minx + col * actual_horizontal_spacing
+            else:
+                x = minx + (col + 0.5) * actual_horizontal_spacing
+            
+            y = miny + row * actual_vertical_spacing
+            
+            # Create hexagon geometry (pointy-top orientation)
+            angles = np.linspace(0, 2 * np.pi, 7)  # 7 points to close the polygon
+            # For pointy-top: first vertex at 30° (π/6 radians)
+            angles = angles + np.pi/6
+            
+            hex_x = x + hex_size * np.cos(angles)
+            hex_y = y + hex_size * np.sin(angles)
+            
+            hex_coords = list(zip(hex_x, hex_y))
+            hexagon = Polygon(hex_coords)
+            
+            hexagons.append({
+                'geometry': hexagon,
+                'row': row,
+                'col': col,
+                'center_x': x,
+                'center_y': y
+            })
+    
+    # Create GeoDataFrame
+    gdf = gpd.GeoDataFrame(hexagons)
+    
+    # Filter to only hexagons that intersect with bounds
+    bounds_poly = box(minx, miny, maxx, maxy)
+    gdf = gdf[gdf.geometry.intersects(bounds_poly)].copy()
+    gdf.reset_index(drop=True, inplace=True)
+    
+    return gdf

@@ -770,6 +770,8 @@ def _read_adata(
 
     if anndata_store is None: 
         anndata_store = Path(os.getenv("ANNDATA_STORE_PATH"))
+    if isinstance(anndata_store, str):
+        anndata_store = Path(anndata_store)
     path = anndata_store / dataset_name
     try: 
         adata = ad.read_h5ad(path.with_suffix(".h5ad"))

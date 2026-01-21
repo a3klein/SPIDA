@@ -303,18 +303,18 @@ def plot_dataset(
     donors = adata.obs['donor'].unique()
     replicates = adata.obs['replicate'].unique()
 
-    # this part is just for now: 
-    experiment_palette = {}
-    experiment_palette['CAB'] = '#F5867F'
-    experiment_palette['CAH'] = '#AB4642'
-    experiment_palette['CAT'] = '#430300'
-    experiment_palette['PU'] = '#F98F34'
-    experiment_palette['GP'] = '#6BBC46'
-    experiment_palette['GPe'] = '#007600'
-    experiment_palette['MGM1'] = '#FF2600'
-    experiment_palette['NAC'] = '#0C4E9B'
-    experiment_palette['STH'] = '#6B98C4'
-    experiment_palette['SUBTH'] = '#6B98C4'
+    # # this part is just for now: 
+    # experiment_palette = {}
+    # experiment_palette['CAB'] = '#F5867F'
+    # experiment_palette['CAH'] = '#AB4642'
+    # experiment_palette['CAT'] = '#430300'
+    # experiment_palette['PU'] = '#F98F34'
+    # experiment_palette['GP'] = '#6BBC46'
+    # experiment_palette['GPe'] = '#007600'
+    # experiment_palette['MGM1'] = '#FF2600'
+    # experiment_palette['NAC'] = '#0C4E9B'
+    # experiment_palette['STH'] = '#6B98C4'
+    # experiment_palette['SUBTH'] = '#6B98C4'
 
     donor_palette = {
         'UWA7648': '#D87C79',
@@ -327,18 +327,18 @@ def plot_dataset(
         "ucsd" : '#039BE5',
         "salk" : '#FFD54F'
     }
-    if "experiment_palette" not in adata.uns:
-        adata.uns["experiment_palette"] = experiment_palette
+    # if "experiment_palette" not in adata.uns:
+    #     adata.uns["experiment_palette"] = experiment_palette
     if "donor_palette" not in adata.uns:
         adata.uns["donor_palette"] = donor_palette
     if "replicate_palette" not in adata.uns:
         adata.uns["replicate_palette"] = replicate_palette
 
-    if "brain_region_colors" not in adata.uns:
-        cols = []
-        for exp_order in adata.obs['brain_region'].cat.categories: 
-            cols.append(experiment_palette[exp_order])
-        adata.uns['brain_region_colors'] = cols
+    # if "brain_region_colors" not in adata.uns:
+    #     cols = []
+    #     for exp_order in adata.obs['brain_region'].cat.categories: 
+    #         cols.append(experiment_palette[exp_order])
+    #     adata.uns['brain_region_colors'] = cols
     if "donor_colors" not in adata.uns:
         cols = []
         for exp_order in adata.obs['donor'].cat.categories: 

@@ -1,15 +1,15 @@
 #!/bin/bash
-# FILENAME: cellpose.sh
+# FILENAME: cellpose_cell.sh
 
 #SBATCH -A mcb130189-gpu
-#SBATCH -J cellpose_{EXP_N}_{REG_N}
+#SBATCH -J cellpose_cell_{EXP_N}_{REG_N}
 #SBATCH -p gpu
 #SBATCH --time=2:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=64
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/CORTEX/logs/{EXP_N}/cellpose_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/CORTEX/logs/{EXP_N}/cellpose_{EXP_N}_{REG_N}.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/cellpose_cell_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/cellpose_cell_{EXP_N}_{REG_N}.out
 #SBATCH --export=ALL
 
 # module purge
@@ -19,9 +19,18 @@ module list
 
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/anvil/projects/x-mcb130189/aklein/programs/gsl/lib
 export PATH="/home/x-aklein2/.pixi/bin:$PATH"
-cd /anvil/projects/x-mcb130189/aklein/SPIDA
+cd /anvil/projects/x-mcb130189/aklein/BICAN/HIPP/hipp
 
 echo "Running Cellpose SAM on Region {REG_N} of Experiment {EXP_N}"
+
+# Loading in deconvoluted images
+pixi run -e preprocessing \
+    python -m spida.S.cli {CONFIG} \
+    load-decon-images \
+    {EXPERIMENT} \
+    {REGION} \
+    {ROOT_PATH} \
+    --plot
 
 # Running Cellpose
 pixi run -e cellpose \
@@ -31,7 +40,7 @@ pixi run -e cellpose \
     {EXPERIMENT} \
     {REGION} \
     --input_dir {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
-    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose \
+    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
     --scale=4 \
     --image_ext=.decon.tif \
     --nuc_stain_name=DAPI \
@@ -47,18 +56,9 @@ pixi run -e preprocessing \
     load-segmentation-region  \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose \
+    {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
     --type vpt \
-    --prefix_name cellpose_SAM \
-    --plot
-
-# Loading in deconvoluted images
-pixi run -e preprocessing \
-    python -m spida.S.cli {CONFIG} \
-    load-decon-images \
-    {EXPERIMENT} \
-    {REGION} \
-    {ROOT_PATH} \
+    --prefix_name cellpose_cell \
     --plot
 
 # FILTERING 
@@ -67,7 +67,7 @@ pixi run -e preprocessing \
     filter_cells_region \
     {EXPERIMENT} \
     {REGION} \
-    cellpose_SAM \
+    cellpose_cell \
     --plot \
     --cutoffs_path {CUTOFFS_PATH}
 
@@ -77,6 +77,6 @@ pixi run -e preprocessing \
     setup_adata_region \
     {EXPERIMENT} \
     {REGION} \
-    cellpose_SAM \
+    cellpose_cell \
     --suffix _filt \
     --plot

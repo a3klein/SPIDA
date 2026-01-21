@@ -7,7 +7,7 @@ import argparse
 import click
 from pathlib import Path
 
-import numpy as np
+# import numpy as np
 
 def parse_dict(arg: str) -> dict:
     """Parse dictionary input in the form of key1=val1,key2=val2"""
@@ -51,15 +51,15 @@ def parse_bool(arg: str) -> bool:
     return arg.lower() in ["true", "1", "t", "y", "yes"]
 
 
-def parse_rotation(arg: str) -> float:
-    """Parse rotation input"""
-    if arg is None:
-        return None
-    elif arg.endswith(".npy"):
-        matrix = np.load(Path(arg))
-        radians = math.atan2(matrix[1, 0], matrix[0, 0])
-        return math.degrees(radians)
-    return float(arg)
+# def parse_rotation(arg: str) -> float:
+#     """Parse rotation input"""
+#     if arg is None:
+#         return None
+#     elif arg.endswith(".npy"):
+#         matrix = np.load(Path(arg))
+#         radians = math.atan2(matrix[1, 0], matrix[0, 0])
+#         return math.degrees(radians)
+#     return float(arg)
 
 
 # Parssing kwargs in the argparse call as an action

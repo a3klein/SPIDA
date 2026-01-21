@@ -7,6 +7,8 @@ import pandas as pd
 
 from ALLCools.clustering import tsne, significant_pc_test  # type: ignore
 
+from ..utilities._ad_utils import normalize_adata
+
 
 # A function that moves the manifold coordinate
 def dump_embedding(adata, from_name, to_name=None, n_dim=2):
@@ -58,7 +60,7 @@ def run_setup(
     # Normalize gene count by volume
     adata.layers['volume_norm'] = scp.csr_matrix(adata.X / adata.obs['volume'].values[:, np.newaxis])
     adata.X = adata.layers['volume_norm'].copy()
-    sc.pp.log1p(adata) # log1p for variance stabilization
+    normalize_adata(adata, layer='volume_norm', log1p=True)
     _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35)
     
     # sc.pp.normalize_total(adata)
@@ -259,33 +261,34 @@ def combined_setup(
     else: 
         adata.X = adata.layers['counts'].copy()
 
-    sc.pp.normalize_total(adata)
-    sc.pp.log1p(adata)
-    adata.layers["normalized"] = adata.X.copy()
+    # TODO: Fix this stuff (right now this is just totally wrong so commenting out)
+    # sc.pp.normalize_total(adata)
+    # sc.pp.log1p(adata)
+    # adata.layers["normalized"] = adata.X.copy()
 
-    if scale: 
-        sc.pp.scale(adata)
-        adata.layers["scaled"] = adata.X.copy()
+    # if scale: 
+    #     sc.pp.scale(adata)
+    #     adata.layers["scaled"] = adata.X.copy()
 
-    sc.pp.pca(adata, n_comps=50, chunked=True)
-    sc.pp.neighbors(adata)
-    sc.tl.umap(adata, random_state=0, min_dist=0.25, spread=1)
-    sc.tl.leiden(adata, resolution=0.8, random_state=13, flavor="igraph", n_iterations=2)
+    # sc.pp.pca(adata, n_comps=50, chunked=True)
+    # sc.pp.neighbors(adata)
+    # sc.tl.umap(adata, random_state=0, min_dist=0.25, spread=1)
+    # sc.tl.leiden(adata, resolution=0.8, random_state=13, flavor="igraph", n_iterations=2)
 
-    # manifold projections:
-    dump_embedding(adata, "umap", "base_umap")
-    adata.obsm["X_base_umap"] = adata.obsm["X_umap"].copy()
+    # # manifold projections:
+    # dump_embedding(adata, "umap", "base_umap")
+    # adata.obsm["X_base_umap"] = adata.obsm["X_umap"].copy()
 
-    tsne(
-        adata,
-        obsm="X_pca",
-        metric="euclidean",
-        exaggeration=-1,
-        perplexity=50,
-        n_jobs=-1,
-    )
-    dump_embedding(adata, "tsne", "base_tsne")
-    adata.obsm["X_base_tsne"] = adata.obsm["X_tsne"].copy()
+    # tsne(
+    #     adata,
+    #     obsm="X_pca",
+    #     metric="euclidean",
+    #     exaggeration=-1,
+    #     perplexity=50,
+    #     n_jobs=-1,
+    # )
+    # dump_embedding(adata, "tsne", "base_tsne")
+    # adata.obsm["X_base_tsne"] = adata.obsm["X_tsne"].copy()
 
     return adata
 
