@@ -5,7 +5,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
 from matplotlib import cm, colors
+from matplotlib.colors import LinearSegmentedColormap
+
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -188,6 +191,132 @@ godsnot_102 = [
 ]
 
 default_102 = godsnot_102
+
+# Option 1: Dark Blue to Bright Yellow (Recommended for spatial data)
+def create_spatial_colormap_viridis_style():
+    """
+    Creates a colormap similar to viridis but optimized for spatial transcriptomics.
+    Background (0 expression) is dark blue/purple, increasing to bright yellow.
+    """
+    colors = [
+        '#0d0887',  # Dark purple (0 expression)
+        '#2d1c8a',  # Deep purple  
+        '#46327e',  # Purple-blue
+        '#5d4970',  # Mid purple
+        '#756261',  # Purple-brown
+        '#8e7d54',  # Brown-yellow
+        '#a89947',  # Yellow-green
+        '#c4b73b',  # Yellow
+        '#e0d63b',  # Bright yellow
+        '#fde724'   # Bright yellow (high expression)
+    ]
+    
+    n_bins = 256
+    cmap = LinearSegmentedColormap.from_list('spatial_viridis', colors, N=n_bins)
+    return cmap
+
+# Option 2: Dark Blue to Orange-Red (Good contrast, biologically intuitive)
+def create_spatial_colormap_plasma_style():
+    """
+    Creates a plasma-style colormap for spatial transcriptomics.
+    Background is dark blue, increasing through purple to orange-red.
+    """
+    colors = [
+        '#0d0887',  # Dark blue (0 expression)
+        '#350498',  # Deep purple
+        '#5302a3',  # Purple
+        '#7000a8',  # Magenta-purple
+        '#8b0aa5',  # Magenta
+        '#a31e9a',  # Pink-magenta
+        '#b93289',  # Pink
+        '#cc4678',  # Light pink
+        '#db5c68',  # Salmon
+        '#e97158',  # Orange-red
+        '#f48849',  # Orange
+        '#fba238',  # Yellow-orange
+        '#febd2a',  # Yellow
+        '#f0f921'   # Bright yellow (high expression)
+    ]
+    
+    n_bins = 256
+    cmap = LinearSegmentedColormap.from_list('spatial_plasma', colors, N=n_bins)
+    return cmap
+
+# Option 3: Black to Cyan-White (Classic fluorescence look)
+def create_spatial_colormap_fluorescence():
+    """
+    Creates a fluorescence microscopy-style colormap.
+    Background is black, increasing through blue to cyan to white.
+    """
+    colors = [
+        '#000000',  # Black (0 expression)
+        '#001122',  # Very dark blue
+        '#002244',  # Dark blue
+        '#003366',  # Deep blue
+        '#004488',  # Blue
+        '#0055aa',  # Bright blue
+        '#0066cc',  # Cyan-blue
+        '#0088ee',  # Light blue
+        '#00aaff',  # Cyan
+        '#44ccff',  # Light cyan
+        '#88ddff',  # Very light cyan
+        '#cceeff',  # Almost white cyan
+        '#ffffff'   # White (high expression)
+    ]
+    
+    n_bins = 256
+    cmap = LinearSegmentedColormap.from_list('spatial_fluor', colors, N=n_bins)
+    return cmap
+
+# Option 4: Dark Gray to Hot Colors (Good for presentations)
+def create_spatial_colormap_hot():
+    """
+    Creates a hot colormap with dark gray background.
+    Background is dark gray, increasing through red to yellow to white.
+    """
+    colors = [
+        '#2a2a2a',  # Dark gray (0 expression)
+        '#440000',  # Very dark red
+        '#660000',  # Dark red
+        '#880000',  # Red
+        '#aa0000',  # Bright red
+        '#cc2200',  # Red-orange
+        '#ee4400',  # Orange
+        '#ff6600',  # Bright orange
+        '#ff8800',  # Yellow-orange
+        '#ffaa00',  # Yellow
+        '#ffcc00',  # Bright yellow
+        '#ffee44',  # Light yellow
+        '#ffffff'   # White (high expression)
+    ]
+    
+    n_bins = 256
+    cmap = LinearSegmentedColormap.from_list('spatial_hot', colors, N=n_bins)
+    return cmap
+
+# Function to register colormaps with matplotlib
+def register_colormaps():
+    """
+    Register all custom colormaps with matplotlib so they can be used by name.
+    """
+    spatial_cmaps = {
+        'spatial_viridis': create_spatial_colormap_viridis_style(),
+        'spatial_plasma': create_spatial_colormap_plasma_style(), 
+        'spatial_fluor': create_spatial_colormap_fluorescence(),
+        'spatial_hot': create_spatial_colormap_hot(),
+        'default_10' : default_10,
+        'default_20' : default_20,
+        'default_28' : default_28,
+        'default_102' : default_102,
+    }
+    
+    for name, cmap in spatial_cmaps.items():
+        mpl.colormaps.register(name=name, cmap=cmap)
+    
+    # print("Registered custom colormaps:")
+    # for name in spatial_cmaps.keys():
+    #     print(f"  - {name}")
+    # return spatial_cmaps
 
 
 ### COLOR SCHEME FROM COPILOT

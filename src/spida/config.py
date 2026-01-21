@@ -233,6 +233,9 @@ def load_config(
         raise ValueError("Unsupported configuration file format. Use '.env' or '.json'.")
     return config
 
+def load_config_into_env(config): 
+    for key, value in config.items():
+        os.environ[key] = value
 
 @click.command(cls=RichCommand, help="Display the current configuration settings.")
 @click.argument(
@@ -264,6 +267,7 @@ class ConfigDefaultGroup(RichGroup):
         defaults = {}
         if config_path:
             cfg = load_config(config_path)
+            load_config_into_env(cfg)
             # build mapping of option-name -> default value
             for key, value in cfg.items():
                 defaults[RENAME_CONFIG_KEYS.get(key, key.lower())] = value

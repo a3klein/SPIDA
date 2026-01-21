@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import anndata as ad
+import scanpy as sc
+import scipy.sparse as sp
 
 def _downsample_ref_clusters(
     adata : ad.AnnData, 
@@ -35,3 +37,24 @@ def _remove_small_clusters(
     vc = adata.obs[col].value_counts()
     keep_cells = vc[vc >= min_cells].index
     return adata[adata.obs[col].isin(keep_cells)].copy()
+
+
+# Apply normalization to the .X in either AnnData Object
+def normalize_adata(
+    adata: ad.AnnData,
+    layer: str = None,
+    target_sum: float = None,
+    log1p: bool = True,
+): 
+    if layer is not None: 
+        adata.X = adata.layers[layer].copy() # X needs to be a csr_matrix 
+    if not isinstance(adata.X, sp.csr_matrix): 
+        adata.X = sp.csr_matrix(adata.X)
+    n_counts = np.ravel(adata.X.sum(axis=1))
+    target = np.median(n_counts) if target_sum is None else target_sum
+    adata.X.data = adata.X.data/np.repeat(n_counts, adata.X.getnnz(axis=1)) * target
+    if log1p: 
+        sc.pp.log1p(adata)
+
+#TODO: @a3klein move _calc_embeddings and multi_round_clustering to _ad_utils. Perhaps look to ALLCools consensus clustering for ideas on how to improve clustering 
+# Those functions are backend, I should expose them as importable functions from spida.P in general.

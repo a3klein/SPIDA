@@ -11,10 +11,13 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 import scanpy as sc
+import scipy.sparse as sp
 from ALLCools.clustering import significant_pc_test  # type: ignore
 from ALLCools.integration import confusion_matrix_clustering # type: ignore
 from ALLCools.integration.seurat_class import SeuratIntegration  # type: ignore
 from sklearn.decomposition import TruncatedSVD
+
+from ..utilities._ad_utils import normalize_adata
 import time
 
 load_dotenv()
@@ -37,17 +40,6 @@ def _downsample_reference(
     if max_cluster_size > 0:
         ref_adata = _downsample_ref_clusters(ref_adata, cluster_col, max_cells=max_cluster_size)
     return ref_adata
-
-# Apply normalization to the .X in either AnnData Object
-def normalize_adata(
-    adata: ad.AnnData,
-    target_sum: float = 1e4,
-    log1p: bool = True,
-): 
-    n_counts = np.ravel(adata.X.sum(axis=1))
-    adata.X.data = adata.X.data/np.repeat(n_counts, adata.X.getnnz(axis=1)) * np.median(n_counts)
-    sc.pp.log1p(adata)
-
 
 #TODO: cef calls from ALLCools here instead?
 def _allcools_cef(
@@ -288,6 +280,7 @@ def _transfer_labels(
     integrator,
     rna_cell_type="supercluster_term",
     label_transfer_k=100,
+    save_transfer: str | Path | None = None,
 ):
     """
     Transfer labels from the reference to the query AnnData object using the Seurat integration results.
@@ -308,6 +301,10 @@ def _transfer_labels(
         key_dist="X_pca",
         k_weight=label_transfer_k,
     )
+    # IF WANTING TO SAVE THE TRANSFER RESULTS 
+    if save_transfer is not None:
+        logger.info(f"Saving label transfer results to {save_transfer}")
+        label_transfer[rna_cell_type].to_csv(save_transfer, sep="\t")
     labels = label_transfer[rna_cell_type].columns.tolist()
     adata.obs[f"allcools_{rna_cell_type}"] = adata.obs.index.to_series().map(
         label_transfer[rna_cell_type]
@@ -485,6 +482,7 @@ def run_allcools_seurat(
     max_cells_per_cluster:int = 3000,
     min_cells_per_cluster:int = 0,
     label_transfer_k:int = 100,
+    save_label_transfer_path: str | Path | None = None,
     save_query: bool = True,
     save_integrator:bool = True, 
     save_adata_comb: bool = True,
@@ -503,6 +501,8 @@ def run_allcools_seurat(
     integration_round: int = 1,
     normalize_ref: bool = False,
     normalize_qry: bool = False,
+    ref_raw_key: str = "counts",
+    qry_raw_key: str = "counts",
     deg_type: str = "deg", # "cef" or "deg" - whether to use cluster enriched features (cef) or differentially expressed genes (deg) for integration
     cef_column : str = None,  # if using cef, the column in ref_adata.var to use for cefs
     **kwargs,
@@ -542,16 +542,14 @@ def run_allcools_seurat(
     ref_adata = ref_adata[:, shared_genes].copy()
     qry_adata_ds = qry_adata[:, shared_genes].copy()
 
-    # TODO: call DEGs between clusters / cell types in ref and qry
     if top_deg_genes > 0:
-        # add a flag for this choice? 
         if deg_type == "cef":
             logger.info("Using Cluster Enriched Features (CEF) for integration")
             cef_col = cef_column if cef_column is not None else rna_cell_type_column
             deg_genes = _allcools_cef(
                 ref_adata,
                 qry_adata_ds,
-                ref_col_level=rna_cell_type_column,
+                ref_col_level=cef_col,
                 top_n=top_deg_genes,
                 alpha=0.05,
             )
@@ -571,10 +569,10 @@ def run_allcools_seurat(
     # Normalize the data if needed
     if normalize_ref:
         logger.info("Normalizing reference data")
-        normalize_adata(ref_adata)
+        normalize_adata(ref_adata, layer=ref_raw_key)
     if normalize_qry:
         logger.info("Normalizing query data")
-        normalize_adata(qry_adata_ds)
+        normalize_adata(qry_adata_ds, layer=qry_raw_key)
 
     # Run PCA on the reference and query data
     ref_adata, qry_adata_ds = _allcools_pca(
@@ -589,7 +587,8 @@ def run_allcools_seurat(
         adata_comb,
         integrator,
         rna_cell_type=rna_cell_type_column,
-        label_transfer_k=label_transfer_k
+        label_transfer_k=label_transfer_k,
+        save_transfer=save_label_transfer_path
     )
 
     # Run joint embeddings if needed

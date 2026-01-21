@@ -754,7 +754,7 @@ def plot_dataset(
     """
     Plot the dataset results for a specific region in an experiment.
     """
-    from spida.P.main import plot_dataset as func
+    from spida.P.main import plot_dataset_setup as func
     func(
         dataset_name=dataset_name,
         anndata_store=anndata_store,

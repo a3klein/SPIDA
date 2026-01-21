@@ -78,4 +78,5 @@ pixi run -e preprocessing \
     {EXPERIMENT} \
     {REGION} \
     cellpose_SAM \
+    --suffix _filt \
     --plot
