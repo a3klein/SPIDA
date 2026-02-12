@@ -9,15 +9,19 @@
 .pixi
 *.egg-info
 
+# pyhton files
+**/__pycache__
+.pytest_cache
 
 # Added by cargo
-
 /target
 
 # R files
 .RData
-.RHistory
+.Rhistory
 
 # backup pyprojects file
 pyproject.toml
 pyproject_bp.toml
+
+
