@@ -13,7 +13,7 @@ from spida.utilities.sd_utils import (
     _get_adata,
     _assign_new_table,
 )
-from spida._constants import TABLE_KEY, IMAGE_KEY, SHAPES_KEY  # type: ignore
+from spida._constants import TABLE_KEY, IMAGE_KEY, SHAPES_KEY, POINTS_KEY  # type: ignore
 
 load_dotenv()
 logger = logging.getLogger(__package__)
@@ -782,4 +782,172 @@ def _read_adata(
     logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
     return adata
 
+def call_region_tz(
+    exp_name : str,
+    reg_name : str,
+    prefix_name : str = "default",
+    geoms_name : str = "wm_region",
+    use_genes : str | list[str] = "BCAS1",
+    save_geoms_path : str | None = None,
+    dsc_comp_min_size : int = 5,
+    hex_size : int = 50,
+    hex_overlap : int = 0,
+    gmm_ncomp : int | str = "auto",
+    gmm_cov_type : str = "full",
+    gene_agreement_thr : float = 0.75,
+    top_n_comp : int = 1,
+    gen_plots : bool = False,
+    image_path: Path = None,
+    image_store: Path = None,
+    zarr_store: str | Path | None = None
+): 
+    """
+    Call the call_regions function from the SPIDA.P module for a specific region in an experiment.
 
+    Specify which genes to define the target regions using use_genes. 
+    """
+    from spida.P.call_regions import call_regions 
+    
+    # Get the zarr path
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    zarr_path = Path(f"{zarr_store}/{exp_name}/{reg_name}")
+
+    # Get the KEYS
+    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+
+    # Get the image path
+    if image_path is None:
+        if image_store is None:
+            image_store = os.getenv("IMAGE_STORE_PATH")
+        image_path = Path(
+            f"{image_store}/{exp_name}/{prefix_name}/{reg_name}"
+        )
+        image_path.mkdir(parents=True, exist_ok=True)
+
+    call_regions(
+        zarr_path = zarr_path,
+        geoms_name = geoms_name,
+        points_key = KEYS[POINTS_KEY],
+        transfer_genes = use_genes,
+        save_geoms_path = save_geoms_path,
+        dsc_comp_min_size = dsc_comp_min_size,
+        hex_size = hex_size,
+        hex_overlap = hex_overlap,
+        gmm_ncomp = gmm_ncomp,
+        gmm_cov_type = gmm_cov_type,
+        gene_agreement_thr = gene_agreement_thr,
+        top_n_comp = top_n_comp,
+        gen_plots = gen_plots,
+        plot_save_path = image_path,
+        image_key = KEYS[IMAGE_KEY],
+    )
+
+def transcript_qc_region(
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str = "default",
+    hex_size: float = 30,
+    hex_overlap: float = 0,
+    gene_col: str = "gene",
+    x_col: str = "x",
+    y_col: str = "y",
+    min_transcripts: int | None = None,
+    min_density: float | None = None,
+    plot: bool = False,
+    image_path: Path | None = None,
+    image_store: Path | None = None,
+    zarr_store: str | Path | None = None,
+):
+    import spatialdata as sd
+    from spida.P.transcript_qc import run_transcript_qc
+    from spida.pl import plot_hex_qc
+
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    zarr_path = Path(f"{zarr_store}/{exp_name}/{reg_name}")
+
+    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    sdata = sd.read_zarr(zarr_path)
+
+    adata_qc, grid, _ = run_transcript_qc(
+        sdata,
+        points_key=KEYS[POINTS_KEY],
+        hex_size=hex_size,
+        hex_overlap=hex_overlap,
+        gene_col=gene_col,
+        x_col=x_col,
+        y_col=y_col,
+        min_transcripts=min_transcripts,
+        min_density=min_density,
+    )
+
+    if plot:
+        if image_path is None:
+            if image_store is None:
+                image_store = os.getenv("IMAGE_STORE_PATH")
+            image_path = Path(f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/transcript_qc.pdf")
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+        fig = plot_hex_qc(grid)
+        fig.savefig(image_path, bbox_inches="tight")
+
+def cluster_hexes_region(
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str = "default",
+    hex_size: float = 30,
+    hex_overlap: float = 0,
+    gene_col: str = "gene",
+    x_col: str = "x",
+    y_col: str = "y",
+    min_transcripts: int | None = None,
+    min_density: float | None = None,
+    leiden_resolution: float = 1.0,
+    min_cells: int = 10,
+    min_genes: int = 100,
+    n_top_genes: int = 200,
+    pca_comps: int = 50,
+    plot: bool = False,
+    image_path: Path | None = None,
+    image_store: Path | None = None,
+    zarr_store: str | Path | None = None,
+):
+    import spatialdata as sd
+    import geopandas as gpd
+    from spida.P.transcript_qc import run_cluster_hexes, _obs_to_grid_geodf
+    from spida.pl import plot_hex_clusters
+
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    zarr_path = Path(f"{zarr_store}/{exp_name}/{reg_name}")
+
+    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    sdata = sd.read_zarr(zarr_path)
+
+    adata_clustered, _ = run_cluster_hexes(
+        sdata,
+        points_key=KEYS[POINTS_KEY],
+        hex_size=hex_size,
+        hex_overlap=hex_overlap,
+        gene_col=gene_col,
+        x_col=x_col,
+        y_col=y_col,
+        min_transcripts=min_transcripts,
+        min_density=min_density,
+        leiden_resolution=leiden_resolution,
+        min_cells=min_cells,
+        min_genes=min_genes,
+        n_top_genes=n_top_genes,
+        pca_comps=pca_comps,
+    )
+
+    if plot:
+        if image_path is None:
+            if image_store is None:
+                image_store = os.getenv("IMAGE_STORE_PATH")
+            image_path = Path(f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/cluster_hexes.pdf")
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+        grid = _obs_to_grid_geodf(adata_clustered.obs.copy())
+        fig1, fig2 = plot_hex_clusters(grid, adata_clustered)
+        fig1.savefig(image_path, bbox_inches="tight")
+        fig2.savefig(image_path.with_name("cluster_hexes_spatial.pdf"), bbox_inches="tight")

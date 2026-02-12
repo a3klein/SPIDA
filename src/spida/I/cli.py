@@ -9,9 +9,10 @@ import logging
 from rich.logging import RichHandler
 # import fire  # type: ignore
 import click
-from rich_click import RichCommand, RichGroup # type: ignore
-from spida.utilities.script_utils import parse_click_kwargs, JSONParam
+from rich_click import RichCommand  # type: ignore
+from spida.utilities.script_utils import parse_click_kwargs, JSONParam, parse_list
 from spida.settings import configure_logging_for_runtime
+from spida.config import ConfigDefaultGroup
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -25,8 +26,17 @@ def setup_logging(**kwargs):
         handlers=[RichHandler(rich_tracebacks=True, show_time=False, markup=True)],
     )
 
-@click.group(cls=RichGroup)
-def cli():
+@click.group(cls=ConfigDefaultGroup)
+@click.option(
+    "config",
+    "--config",
+    default=".env",
+    type=click.Path(exists=True),
+    help="Path to the configuration file (default: .env)",
+)
+@click.pass_context
+def cli(ctx, config):
+    ctx.ensure_object(dict)
     pass
 
 @cli.command(name="backup-adata", cls=RichCommand)
@@ -465,18 +475,23 @@ def allcools_integration_experiment(
     )
 )
 @click.argument('ref_path', type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False))
-@click.argument('heirarchy_list', type=click.STRING, nargs=-1)
-@click.argument('BRAIN_REGION', type=click.STRING)
-@click.argument('CODEBOOK', type=click.STRING)
+@click.argument('identifier', type=click.STRING)
+@click.option('--hierarchy_list', type=parse_list, help='Comma-separated list of hierarchy levels (e.g., "level1,level2,level3")')
 @click.option(
-    '--codebook_path',
+    '--gene_names_path',
     type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False),
     default=None,
-    help='Path to the codebook file. Defaults to None.'
+    help='Path to gene_names.txt file. Defaults to None.'
+)
+@click.option(
+    '--gene_name_mapping_path',
+    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False),
+    default=None,
+    help='Path to gene_name_mapping.json file. Defaults to None.'
 )
 @click.option(
     '--mmc_store_path',
-    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
     default=None,
     help='Path to the store of MapMyCells markers. Defaults to None.'
 )
@@ -486,51 +501,80 @@ def allcools_integration_experiment(
     default='log2CPM',
     help='Normalization method for the reference AnnData.X. Defaults to "log2CPM".'
 )
+@click.option(
+    '--n_cpu',
+    type=int,
+    default=8,
+    help='Number of CPUs to use. Defaults to 8.'
+)
+@click.option(
+    '--n_valid',
+    type=int,
+    default=10,
+    help='Number of valid markers. Defaults to 10.'
+)
+@click.option(
+    '--n_per_utility',
+    type=int,
+    default=10,
+    help='Number of markers per utility. Defaults to 10.'
+)
 @click.pass_context
 def mmc_setup(
     ctx,
     ref_path: str,
-    heirarchy_list: list,
-    BRAIN_REGION: str,
-    CODEBOOK: str,
-    codebook_path: str = None,
+    identifier: str,
+    hierarchy_list: list = ["Class", "Subclass", "Group"],
+    gene_names_path: str = None,
+    gene_name_mapping_path: str = None,
     mmc_store_path: str = None,
     ref_norm: str = "log2CPM",
+    n_cpu: int = 8,
+    n_valid: int = 10,
+    n_per_utility: int = 10,
     **kwargs,
 ):
     """
-    Setup function for MapMyCells integration.
+    Setup function for MapMyCells integration using refactored architecture.
 
-    Parameters:
-    ref_path (str): Path to the reference data.
-    heirarchy_list (list): List of hierarchy levels for the annotation.
-    BRAIN_REGION (str): Brain region for the annotation.
-    CODEBOOK (str): Codebook for the annotation.
-    codebook_path (str, optional): Path to the codebook file. Defaults to None.
-    mmc_store_path (str, optional): Path to the store of MapMyCells markers. Defaults to None.
-    ref_norm (str, optional): Normalization method for the reference AnnData.X. Defaults to "log2CPM".
-    **kwargs: Additional keyword arguments.
+    Arguments:
+    ref_path: Path to the reference single-cell RNA-seq AnnData file
+    identifier: Unique identifier for this reference (e.g., 'mouse_motor_cortex')
+
+    Options:
+    --hierarchy_list: Comma-separated list of hierarchy levels (e.g., "level1,level2,level3")
+    --gene_names_path: Path to gene_names.txt file (auto-detected if not provided)
+    --gene_name_mapping_path: Path to gene_name_mapping.json file (auto-detected if not provided)
+    --mmc_store_path: Path to MapMyCells store (uses MMC_DIR env var if not provided)
+    --ref_norm: Normalization method (default: log2CPM)
+    --n_cpu: Number of CPUs (default: 8)
+    --n_valid: Number of valid markers (default: 10)
+    --n_per_utility: Number of markers per utility (default: 10)
     """
     extra_args = ctx.args
     if extra_args:
-        click.echo(f"Received extra arguments: {extra_args}")
-    kwargs = parse_click_kwargs(extra_args)
-    for key, value in kwargs.items():
-        click.echo(f"Parsed {key} = {value};  {type(value)}")
-
+        logger.warning(f"Received extra arguments: {extra_args}")
+    logger.info(f"Hierarchy list: {hierarchy_list}, type: {type(hierarchy_list)}")
+    
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        from spida.I.mmc import mmc_setup as func
-    func(
-        ref_path,
-        BRAIN_REGION,
-        CODEBOOK,
-        codebook_path,
-        heirarchy_list,
-        mmc_store_path,
-        ref_norm,
-        **kwargs,
+        from spida.I.mmc_cli import mmc_setup_cli
+    
+    result = mmc_setup_cli(
+        ref_path=ref_path,
+        identifier=identifier,
+        hierarchy_list=hierarchy_list,
+        gene_names_path=gene_names_path,
+        gene_name_mapping_path=gene_name_mapping_path,
+        mmc_store_path=mmc_store_path,
+        ref_norm=ref_norm,
+        n_cpu=n_cpu,
+        n_valid=n_valid,
+        n_per_utility=n_per_utility,
     )
+    
+    logger.info(f"Setup complete. Results: {result}")
+    click.echo(f"Setup complete. Results: {result}")
 
 
 @cli.command(
@@ -544,74 +588,139 @@ def mmc_setup(
 @click.argument('exp_name', type=click.STRING)
 @click.argument('reg_name', type=click.STRING)
 @click.argument('prefix_name', type=click.STRING)
-@click.argument('BRAIN_REGION', type=click.STRING)
-@click.argument('CODEBOOK', type=click.STRING)
+@click.argument('identifier', type=click.STRING)
+@click.option('--suffix', type=click.STRING, default='_filt', help='Suffix for the keys in the spatialdata object. Defaults to "_filt".')
 @click.option(
     '--mmc_store_path',
-    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
     default=None,
     help='Path to the store of MapMyCells markers. Defaults to None.'
 )
 @click.option(
-    '--anndata_store_path',
-    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    '--anndata_store',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
     default=None,
     help='Path to the store of AnnData objects. Defaults to None.'
 )
 @click.option(
-    '--annotations_store_path',
-    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    '--annotation_store',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
     default=None,
     help='Path to the store of annotation specific files. Defaults to None.'
 )
+@click.option(
+    '--zarr_store',
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
+    default=None,
+    help='Path to the zarr store of spatialdata objects. Defaults to None.'
+)
+@click.option(
+    '--n_cpu',
+    type=int,
+    default=1,
+    help='Number of CPUs to use. Defaults to 1.'
+)
+@click.option(
+    '--bootstrap_factor',
+    type=float,
+    default=0.8,
+    help='Bootstrap factor for annotation. Defaults to 0.8.'
+)
+@click.option(
+    '--bootstrap_iterations',
+    type=int,
+    default=100,
+    help='Number of bootstrap iterations. Defaults to 100.'
+)
+@click.option(
+    '--rng_seed',
+    type=int,
+    default=13,
+    help='Random number generator seed. Defaults to 13.'
+)
+@click.option("--filter_annotations", type=bool, is_flag=True, default=True, help='Whether to filter annotations based on the number of markers. Defaults to True.')
+@click.option("--plot", type=bool, is_flag=True, default=False, help='Whether to plot the annotation results. Defaults to False.')
+@click.option("--palette_path", type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False), default=None, help='Path to a custom palette file for plotting. Defaults to None.')
+@click.option("--image_store", type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True), default=None, help='Path to the image store for saving plots. Defaults to None..')
 @click.pass_context
 def mmc_annotation_region(
     ctx, 
     exp_name: str,
     reg_name: str,
     prefix_name: str,
-    BRAIN_REGION: str,
-    CODEBOOK: str,
+    identifier: str,
+    suffix: str = "_filt",
     mmc_store_path: str = None,
-    anndata_store_path: str = None,
-    annotations_store_path: str = None,
+    anndata_store: str = None,
+    annotation_store: str = None,
+    zarr_store: str = None,
+    n_cpu: int = 1,
+    bootstrap_factor: float = 0.8,
+    bootstrap_iterations: int = 100,
+    rng_seed: int = 13,
+    filter_annotations: bool = True,
+    plot: bool = False,
+    palette_path: str = None,
+    image_store: str = None,
     **kwargs,
 ):
     """
-    Run MapMyCells annotation on a given experiment and region.
+    Run MapMyCells annotation on a given experiment and region using refactored architecture.
 
-    Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    BRAIN_REGION (str): Brain region for the annotation.
-    CODEBOOK (str): Codebook for the annotation.
-    mmc_store_path (str, optional): Path to the store of MapMyCells markers. Defaults to None.
-    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
-    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults to None.
-    **kwargs: Additional keyword arguments.
+    Arguments:
+    exp_name: Name of the experiment
+    reg_name: Name of the region
+    prefix_name: Prefix for keys in the spatialdata object
+    identifier: Reference identifier (e.g., 'mouse_motor_cortex')
+
+    Options:
+    --mmc_store_path: Path to MapMyCells store (uses MMC_DIR env var if not provided)
+    --anndata_store_path: Path to AnnData store (uses ANNDATA_STORE_PATH env var if not provided)
+    --annotations_store_path: Path to annotations store (uses ANNOTATIONS_STORE_PATH env var if not provided)
+    --n_cpu: Number of CPUs (default: 1)
+    --bootstrap_factor: Bootstrap factor (default: 0.8)
+    --bootstrap_iterations: Bootstrap iterations (default: 100)
+    --rng_seed: Random seed (default: 13)
+    --filter_annotations: Whether to filter annotations based on the number of markers (default: True)
+    --plot: Whether to plot the annotation results (default: False)
+    --palette_path: Path to a custom palette file for plotting (default: None)
+    --image_store: Path to the image store for saving plots (default: None)
     """
     extra_args = ctx.args
-    if extra_args:
-        click.echo(f"Received extra arguments: {extra_args}")
+    # if extra_args:
+    #     logger.warning(f"Received extra arguments: {extra_args}")
     kwargs = parse_click_kwargs(extra_args)
     for key, value in kwargs.items():
-        click.echo(f"Parsed {key} = {value};  {type(value)}")
-
+        logger.info(f"Parsed {key} = {value};  {type(value)}")
+    
+    
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        from spida.I.mmc import mmc_annotation_region as func
-    func(
-        exp_name,
-        reg_name,
-        prefix_name,
-        BRAIN_REGION,
-        CODEBOOK,
-        mmc_store_path,
-        anndata_store_path,
-        annotations_store_path,
+        from spida.I.mmc_cli import mmc_annotation_region_cli
+    
+    result = mmc_annotation_region_cli(
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix_name=prefix_name,
+        suffix=suffix,
+        identifier=identifier,
+        mmc_store_path=mmc_store_path,
+        anndata_store_path=anndata_store,
+        annotations_store_path=annotation_store,
+        zarr_store_path=zarr_store,
+        n_cpu=n_cpu,
+        bootstrap_factor=bootstrap_factor,
+        bootstrap_iterations=bootstrap_iterations,
+        rng_seed=rng_seed,
+        filter_annot=filter_annotations,
+        plot=plot,
+        palette_path=palette_path,
+        image_store_path=image_store,
         **kwargs,
     )
+    
+    logger.info(f"Annotation complete for {exp_name}/{reg_name}")
+    click.echo(f"Annotation complete for {exp_name}/{reg_name}")
 
 @cli.command(
     name="mmc-annotation-experiment", 
@@ -623,71 +732,125 @@ def mmc_annotation_region(
 )
 @click.argument('exp_name', type=click.STRING)
 @click.argument('prefix_name', type=click.STRING)
-@click.argument('BRAIN_REGION', type=click.STRING)
-@click.argument('CODEBOOK', type=click.STRING)
+@click.argument('identifier', type=click.STRING)
+@click.option(
+    '--suffix',
+    type=click.STRING,
+    default='_filt',
+    help='Suffix for keys in spatialdata. Defaults to "_filt".'
+)
 @click.option(
     '--mmc_store_path',
-    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
     default=None,
     help='Path to the store of MapMyCells markers. Defaults to None.'
 )
 @click.option(
     '--anndata_store_path',
-    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
     default=None,
     help='Path to the store of AnnData objects. Defaults to None.'
 )
 @click.option(
     '--annotations_store_path',
-    type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=True),
+    type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True),
     default=None,
     help='Path to the store of annotation specific files. Defaults to None.'
 )
+@click.option(
+    '--n_cpu',
+    type=int,
+    default=1,
+    help='Number of CPUs to use. Defaults to 1.'
+)
+@click.option(
+    '--bootstrap_factor',
+    type=float,
+    default=0.8,
+    help='Bootstrap factor for annotation. Defaults to 0.8.'
+)
+@click.option(
+    '--bootstrap_iterations',
+    type=int,
+    default=100,
+    help='Number of bootstrap iterations. Defaults to 100.'
+)
+@click.option(
+    '--rng_seed',
+    type=int,
+    default=13,
+    help='Random number generator seed. Defaults to 13.'
+)
+@click.option("--filter_annotations", type=bool, is_flag=True, default=True, help='Whether to filter annotations based on the number of markers. Defaults to True.')
+@click.option("--plot", type=bool, is_flag=True, default=False, help='Whether to plot the annotation results. Defaults to False.')
+@click.option("--palette_path", type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False), default=None, help='Path to a custom palette file for plotting. Defaults to None.')
+@click.option("--image_store", type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True), default=None, help='Path to the image store for saving plots. Defaults to None..')
 @click.pass_context
 def mmc_annotation_experiment(
     ctx,
     exp_name: str,
     prefix_name: str,
-    BRAIN_REGION: str,
-    CODEBOOK: str,
+    identifier: str,
+    suffix: str = "_filt",
     mmc_store_path: str = None,
     anndata_store_path: str = None,
     annotations_store_path: str = None,
+    n_cpu: int = 1,
+    bootstrap_factor: float = 0.8,
+    bootstrap_iterations: int = 100,
+    rng_seed: int = 13,
+    filter_annotations: bool = True,
+    plot: bool = False,
+    palette_path: str = None,
+    image_store: str = None,
     **kwargs,
 ):
     """
-    Run MapMyCells annotation for an entire experiment.
+    Run MapMyCells annotation for an entire experiment using refactored architecture.
 
-    Parameters:
-    exp_name (str): Name of the experiment.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    BRAIN_REGION (str): Brain region for the annotation.
-    CODEBOOK (str): Codebook for the annotation.
-    mmc_store_path (str, optional): Path to the store of MapMyCells markers. Defaults to None.
-    anndata_store_path (str, optional): Path to the store of AnnData objects. Defaults to None.
-    annotations_store_path (str, optional): Path to the store of annotation specific files. Defaults to None.
-    **kwargs: Additional keyword arguments.
+    Arguments:
+    exp_name: Name of the experiment
+    prefix_name: Prefix for keys in the spatialdata object
+    identifier: Reference identifier (e.g., 'mouse_motor_cortex')
+
+    Options:
+    --suffix: Suffix for keys in spatialdata (default: "_filt")
+    --mmc_store_path: Path to MapMyCells store (uses MMC_DIR env var if not provided)
+    --anndata_store_path: Path to AnnData store (uses ANNDATA_STORE_PATH env var if not provided)
+    --annotations_store_path: Path to annotations store (uses ANNOTATIONS_STORE_PATH env var if not provided)
+    --n_cpu: Number of CPUs (default: 1)
+    --bootstrap_factor: Bootstrap factor (default: 0.8)
+    --bootstrap_iterations: Bootstrap iterations (default: 100)
+    --rng_seed: Random seed (default: 13)
     """
     extra_args = ctx.args
     if extra_args:
-        click.echo(f"Received extra arguments: {extra_args}")
-    kwargs = parse_click_kwargs(extra_args)
-    for key, value in kwargs.items():
-        click.echo(f"Parsed {key} = {value};  {type(value)}")
-
+        logger.warning(f"Received extra arguments: {extra_args}")
+    
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        from spida.I.mmc import mmc_annotation_experiment as func
-    func(
-        exp_name,
-        prefix_name,
-        BRAIN_REGION,
-        CODEBOOK,
-        mmc_store_path,
-        anndata_store_path,
-        annotations_store_path,
-        **kwargs,
+        from spida.I.mmc_cli import mmc_annotation_experiment_cli
+    
+    result = mmc_annotation_experiment_cli(
+        exp_name=exp_name,
+        prefix_name=prefix_name,
+        suffix=suffix,
+        identifier=identifier,
+        mmc_store_path=mmc_store_path,
+        anndata_store_path=anndata_store_path,
+        annotations_store_path=annotations_store_path,
+        n_cpu=n_cpu,
+        bootstrap_factor=bootstrap_factor,
+        bootstrap_iterations=bootstrap_iterations,
+        rng_seed=rng_seed,
+        filter_annot=filter_annotations,
+        plot=plot,
+        palette_path=palette_path,
+        image_store_path=image_store,
     )
+    
+    logger.info(f"Annotation complete for experiment {exp_name}")
+    click.echo(f"Annotation complete for experiment {exp_name}")
 
 #### MOSCOT INTEGRATION ####
 @cli.command(

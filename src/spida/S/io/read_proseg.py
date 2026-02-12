@@ -48,6 +48,24 @@ def _get_points(
     Get the points from proseg output for the spatialdata object.
     """
     transcripts_df = dd.read_csv(transcripts_path, compression="gzip")
+    parse_points(transcripts_df, transformations)
+    # transcripts = PointsModel.parse(
+    #     transcripts_df,
+    #     coordinates={
+    #         "x": PROSEG_PRESET["tz_col"]["x_col"],
+    #         "y": PROSEG_PRESET["tz_col"]["y_col"],
+    #     },
+    #     transformations=transformations,
+    #     feature_key=PROSEG_PRESET["tz_col"]["gene_col"],
+    # )
+    # return transcripts
+
+def parse_points(transcripts_df: dd.DataFrame, transformations: dict[str, BaseTransformation]
+) -> dd.DataFrame:
+    """
+    Parse the points from proseg output for the spatialdata object.
+    """
+    transcripts_df[PROSEG_PRESET["tz_col"]["gene_col"]] = transcripts_df[PROSEG_PRESET["tz_col"]["gene_col"]].astype("string")
     transcripts = PointsModel.parse(
         transcripts_df,
         coordinates={
@@ -58,6 +76,7 @@ def _get_points(
         feature_key=PROSEG_PRESET["tz_col"]["gene_col"],
     )
     return transcripts
+
 
 
 def _get_table(
@@ -125,6 +144,7 @@ def _get_table_v3(
         shapes_key, index=adata.obs_names, dtype="category"
     )
     adata.obs["cell"] = adata.obs.index
+    del adata.uns['spatialdata_attrs'] # to make sure the attributes are set from scratch
 
     table = TableModel.parse(
         adata, region_key=REGION_KEY, region=shapes_key, instance_key="cell"

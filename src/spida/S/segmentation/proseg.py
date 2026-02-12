@@ -41,7 +41,7 @@ def get_proseg_version():
         logger.error(f"Error determining Proseg version: {e}")
         raise
 
-def _add_proseg_binary():
+def _add_proseg_binary(rust_bin_path : str | None = None):
     """
     Add the path to the proseg binary to the PATH environment variable.
     This is necessary to ensure that the proseg command can be found when running the script.
@@ -49,7 +49,13 @@ def _add_proseg_binary():
         bool: True if the proseg version is 3.x, False otherwise.
     """
     # Need to add the rust path to the PATH variable
-    os.environ["PATH"] += os.pathsep + os.getenv("RUST_BIN_PATH")
+    if rust_bin_path is not None:
+        rust_path = pathlib.Path(rust_bin_path)
+    else:
+        rust_path = pathlib.Path(os.getenv("RUST_BIN_PATH", ""))
+    if not rust_path.exists():
+        raise ValueError(f"RUST_BIN_PATH {rust_path} does not exist. Please set the correct path.")
+    os.environ["PATH"] += os.pathsep + str(rust_path)
 
     # Test that proseg can be run:
     ret = subprocess.run(["proseg", "--help"], capture_output=True, check=True)
@@ -149,7 +155,7 @@ def _execute_cli_proseg_v3(root_dir: str, output_dir: str, region: str, **proseg
 
 
 
-def run_proseg(root_dir: str, output_dir: str, region: str, **proseg_params):
+def run_proseg(root_dir: str, output_dir: str, region: str, rust_bin_path=None, **proseg_params):
     """
     Run the proseg command to process detected transcripts in a specified region.
 
@@ -166,7 +172,7 @@ def run_proseg(root_dir: str, output_dir: str, region: str, **proseg_params):
     pathlib.Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
 
     # Add proseg path to environment
-    v3_flag = _add_proseg_binary()
+    v3_flag = _add_proseg_binary(rust_bin_path=rust_bin_path)
 
     # Prepare the command to run proseg
     if v3_flag: 

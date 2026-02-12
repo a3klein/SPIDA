@@ -33,6 +33,7 @@ pixi-kernel = ">=0.6.4,<0.7"
 click = ">=8.2.2,<9"
 rich-click = ">=1.8.9,<2"
 papermill = ">=2.6.0,<3"
+pytest = ">=9.0.2,<10"
 
 [pypi-dependencies]
 ruff = "*"
@@ -160,6 +161,14 @@ r-nloptr = ">=2.2.1,<3"
 libsodium = ">=1.0.20,<2"
 openssl = ">=3.6.0,<4"
 
+
+[feature.mmc.dependencies] 
+anndata = "*"
+pyzmq = "<27.0.0"
+scipy = "<1.15.0"
+[feature.mmc.pypi-dependencies]
+cell-type-mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" }
+
 # Setting environment names for all the features 
 [environments]
 preprocessing-gpu = ['preprocessing', 'gpu']
@@ -168,6 +177,7 @@ deepcell = ["deepcell"]
 cellpose = ["cellpose"]
 #mapmycells = ["mapmycells"]
 dist = ["distribution"]
+mmc = ['mmc']
 
 
 # Preprocssing Tasks 

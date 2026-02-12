@@ -15,7 +15,7 @@ with warnings.catch_warnings():
         set_transformation,
     )
 
-from ...utilities.sd_utils import _gen_keys
+from spida.utilities.sd_utils import _gen_keys
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 
 logger = logging.getLogger(__package__)
@@ -405,7 +405,7 @@ def load_proseg_segmentation_v3(
     proseg_path (str): The path to the ProSeg segmentation output directory.
     zarr_name (str): The path to the zarr file to save the data.
     """
-    from spida.S.io.read_proseg import _get_table_v3
+    from spida.S.io.read_proseg import _get_table_v3, parse_points
     logger.info("Loading ProSeg segmentation v3")
 
     # KEYS
@@ -419,8 +419,9 @@ def load_proseg_segmentation_v3(
     transformations = {"global": affine}
 
     sdata_proseg = sd.read_zarr(f"{proseg_path}/{reg_name}/{zarr_name}")
+
     points = {}
-    points[KEYS[POINTS_KEY]] = sdata_proseg["transcripts"].copy()
+    points[KEYS[POINTS_KEY]] = parse_points(sdata_proseg["transcripts"].copy(), None)
     sd.transformations.set_transformation(points[KEYS[POINTS_KEY]], transformation=affine, to_coordinate_system="global")
 
     shapes = {}
@@ -532,6 +533,8 @@ def _read_decon_images(
     Returns:
     Image2DModel: The parsed image model.
     """
+    import os
+    import numpy as np
     from spatialdata.models import Image2DModel
     from dask import array as da
     from dask_image.imread import imread
@@ -539,13 +542,24 @@ def _read_decon_images(
     if isinstance(image_dir, str):
         image_dir = Path(image_dir)
     stainings = ["DAPI", "PolyT"]
-    im = da.stack(
-        [
-            imread(image_dir / f"mosaic_{stain}_z{z_layer}{suffix}").squeeze()
-            for stain in stainings
-        ],
-        axis=0,
-    )
+    z_stack_format = np.any([True for _fp in os.listdir(image_dir) if "z_stack" in _fp])
+    if z_stack_format:
+        im = da.stack(
+            [
+                imread(image_dir / f"mosaic_{stain}_z_stack_z{z_layer}{suffix}").squeeze()
+                for stain in stainings
+            ],
+            axis=0,
+        )
+    else:
+        im = da.stack(
+            [
+                imread(image_dir / f"mosaic_{stain}_z{z_layer}{suffix}").squeeze()
+                for stain in stainings
+            ],
+            axis=0,
+        )
+    
 
     return Image2DModel.parse(
         im, dims=("c", "y", "x"), c_coords=stainings, rgb=None, **image_models_kwargs

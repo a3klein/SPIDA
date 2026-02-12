@@ -34,6 +34,24 @@ from spida.S.filters import deconwolf
 load_dotenv()
 logger = logging.getLogger(__package__)
 
+from spida.pl.decon_plots import save_threshold_plots_pdf
+
+BIGTIFF_BYTE_THRESHOLD = (2**32) - 1
+
+
+def write_tiff(
+    output_path: str | Path,
+    image: np.ndarray,
+    *,
+    bigtiff_threshold: int = BIGTIFF_BYTE_THRESHOLD,
+):
+    """Write a TIFF, using BigTIFF when the payload exceeds 4GB."""
+    output_path = Path(output_path)
+    bigtiff = image.nbytes > bigtiff_threshold
+    tifffile.imwrite(output_path, image, bigtiff=bigtiff)
+
+
+
 
 def project_down_2D(input_file, output_file: str | Path = None):
     """
@@ -123,8 +141,9 @@ def decon_image(
 
     if image_store is None:
         image_store = Path(output_dir)
-    exp_name = Path(data_org_path).parents[2].name
-    image_save_dir = Path(image_store) / exp_name / "decon_plots"
+    exp_name = Path(data_org_path).parents[1].name
+    reg_name = Path(image_path).parents[0].name
+    image_save_dir = Path(image_store) / exp_name / "default" / reg_name
     image_save_dir.mkdir(parents=True, exist_ok=True)
 
     if isinstance(image_path, str):
@@ -206,52 +225,25 @@ def decon_image(
 
         # plotting threshold decision
         if plot_thr:
-            # image_path = os.getenv("IMAGE_STORE_PATH", "/ceph/cephatlas/aklein/bican/images")
-            # image_path = f"{image_path}/plot_thr/_"
             logger.info("Plotting thresholding histogram and tile grid visualizations")
-            fig, ax = plt.subplots(figsize=(10, 10), dpi=200)
-            sns.histplot(tile_maxes, bins=100, kde=True, ax=ax)
-            ax.axvline(thr, c="red", linestyle="--", label="Threshold")
-            fig.savefig(image_save_dir / f"plot_tile_maxes_{_channel}.png")
-
-            fig = visualize_tiling_grid(
-                tile_info, large_img.shape, color_prop="max_intensity"
+            save_threshold_plots_pdf(
+                image_save_dir=image_save_dir,
+                channel=_channel,
+                grid_tile_info=tile_info,
+                recon_tile_info=sub_tile_info,
+                tiles=tiles,
+                large_img=large_img,
+                tile_maxes=tile_maxes,
+                thr=thr,
+                is_3d=is_3d,
             )
-            fig.savefig(image_save_dir / f"plot_tile_grid_max_{_channel}.png")
-            fig = visualize_tiling_grid(
-                tile_info, large_img.shape, color_prop="thresholded"
-            )
-            fig.savefig(image_save_dir / f"plot_tile_grid__thr{_channel}.png")
-
-            # Reconstruct the image and plot the difference
-            reconstructed = reconstruct_image_from_tiles(
-                tiles, sub_tile_info, large_img.shape
-            )
-            diff = np.abs(
-                large_img.astype(np.float32) - reconstructed.astype(np.float32)
-            )
-
-            # downsample diff for plot
-            downscale = (1,) * (diff.ndim - 2) + (10, 10)
-            diff = ski.transform.downscale_local_mean(diff, downscale)
-
-            if is_3d:
-                num_d = 1 if diff.ndim == 2 else diff.shape[0]
-                fig, ax = plt.subplots(1, num_d, figsize=(5*num_d, 5))
-                for i in range(num_d):
-                    ax[i].imshow(diff[i], cmap="Grays_r")  # for 3D
-                    ax[i].set_title(f"Slice {i}")
-            else:
-                fig, ax = plt.subplots(figsize=(10, 10))
-                ax.imshow(diff, cmap="Grays_r")
-            fig.savefig(image_save_dir / f"plot_tile_diff_{_channel}.png")
-
-            del diff, reconstructed
         
         # save tiles 
         if is_3d:
+            logger.info("Saving 3D tiles")
             saved_files = save_tiles(tiles, sub_tile_info, output_dir) 
         else: 
+            logger.info("Saving 2D tiles")
             # applying 7 slice expansion
             def to_3D(x):
                 return np.asarray([x] * 7)
@@ -307,35 +299,44 @@ def decon_image(
 
         logger.info("Completed deconvolution and 2D projection for all tiles.")
 
-        if is_3d: 
-            # Reconstruct deconvolved image from saved 3D tiles
-            deconed_image = reconstruct_image_from_tile_files(
-                output_dir=output_dir,
-                tile_info=sub_tile_info,
-                original_shape=large_img.shape,
-                suffix=".decon",
-                match_pre=match_pre,
+        if is_3d:
+            depth = int(large_img.shape[0])
+            logger.info(
+                f"Reconstructing deconvolved 3D image one z-slice at a time (depth={depth})"
             )
-        else: 
-            # Reconstruct deconvolved image from saved 2D tiles
-            deconed_image = reconstruct_image_from_tile_files(
-                output_dir=output_dir,
-                tile_info=sub_tile_info,
-                original_shape=large_img.shape,
-                suffix=".decon.2d",
-                match_pre=match_pre,
-            )
-        logger.info(
-            f"Reconstructed deconvolved image with shape: {deconed_image.shape}"
-        )
+            written = []
+            for z in tqdm(range(depth), desc=f"Stitching z-slices ({_channel})"):
+                z_slice = reconstruct_image_from_tile_files(
+                    output_dir=output_dir,
+                    tile_info=sub_tile_info,
+                    original_shape=large_img.shape,
+                    suffix=".decon",
+                    match_pre=match_pre,
+                    z_index=z,
+                )
+                out_path = (
+                    channel_image_path.parent
+                    / f"{channel_image_path.stem}_z{z:01d}.decon.tif"
+                )
+                write_tiff(out_path, z_slice)
+                written.append(out_path)
+                del z_slice
 
-        with tifffile.TiffWriter(
-            channel_image_path.with_suffix(".decon.tif"), bigtiff=True
-        ) as tiff_writer:
-            tiff_writer.write(deconed_image)
-        # iio.imwrite(channel_image_path.with_suffix(".decon.tif"), deconed_image)
-        logger.info(
-            f"Saved deconvolved image to {channel_image_path.with_suffix('.decon.tif')}"
+            logger.info(f"Saved {len(written)} stitched z-slices under {channel_image_path.parent}")
+            return written
+
+        # 2D path (single reconstructed image)
+        deconed_image = reconstruct_image_from_tile_files(
+            output_dir=output_dir,
+            tile_info=sub_tile_info,
+            original_shape=large_img.shape,
+            suffix=".decon.2d",
+            match_pre=match_pre,
         )
+        logger.info(f"Reconstructed deconvolved image with shape: {deconed_image.shape}")
+
+        with tifffile.TiffWriter(channel_image_path.with_suffix(".decon.tif"), bigtiff=True) as tiff_writer:
+            tiff_writer.write(deconed_image)
+        logger.info(f"Saved deconvolved image to {channel_image_path.with_suffix('.decon.tif')}")
 
         return deconed_image
