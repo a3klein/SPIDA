@@ -7,6 +7,7 @@ import geopandas as gpd
 import shapely as shp
 import skimage as ski
 import imageio.v3 as iio
+import math
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
@@ -131,7 +132,7 @@ def tile_image_with_overlap(
 
         # Handle remaining edge tiles
         # Right edge
-        if width % step_w != 0:
+        if (width - tile_w) % step_w != 0:
             col = width - tile_w
             for row in range(0, height - tile_h + 1, step_h):
                 end_row = min(row + tile_h, height)
@@ -156,7 +157,7 @@ def tile_image_with_overlap(
                 tile_id += 1
 
         # Bottom edge
-        if height % step_h != 0:
+        if (height - tile_h) % step_h != 0:
             row = height - tile_h
             for col in range(0, width - tile_w + 1, step_w):
                 end_col = min(col + tile_w, width)
@@ -181,7 +182,7 @@ def tile_image_with_overlap(
                 tile_id += 1
 
         # Bottom-right corner
-        if height % step_h != 0 and width % step_w != 0:
+        if (height - tile_h) % step_h != 0 and (width - tile_w) % step_w != 0:
             row = height - tile_h
             col = width - tile_w
             tile = image[row:height, col:width]
@@ -244,7 +245,7 @@ def tile_image_with_overlap(
 
         # Handle edge tiles for 3D
         # Right edge tiles
-        if width % step_w != 0:
+        if (width - tile_w) % step_w != 0:
             col = width - tile_w
             for d in range(0, depth - tile_d + 1, step_d):
                 for row in range(0, height - tile_h + 1, step_h):
@@ -273,7 +274,7 @@ def tile_image_with_overlap(
                     tile_id += 1
 
         # Bottom edge tiles
-        if height % step_h != 0:
+        if (height - tile_h) % step_h != 0:
             row = height - tile_h
             for d in range(0, depth - tile_d + 1, step_d):
                 for col in range(0, width - tile_w + 1, step_w):
@@ -302,7 +303,7 @@ def tile_image_with_overlap(
                     tile_id += 1
 
         # Back edge tiles
-        if depth % step_d != 0:
+        if (depth - tile_d) % step_d != 0:
             d = depth - tile_d
             for row in range(0, height - tile_h + 1, step_h):
                 for col in range(0, width - tile_w + 1, step_w):
@@ -332,7 +333,7 @@ def tile_image_with_overlap(
 
         # Corner edge tiles
         # Bottom-right edge
-        if height % step_h != 0 and width % step_w != 0:
+        if (height - tile_h) % step_h != 0 and (width - tile_w) % step_w != 0:
             row = height - tile_h
             col = width - tile_w
             for d in range(0, depth - tile_d + 1, step_d):
@@ -360,7 +361,7 @@ def tile_image_with_overlap(
                 tile_id += 1
 
         # Back-right edge
-        if depth % step_d != 0 and width % step_w != 0:
+        if (depth - tile_d) % step_d != 0 and (width - tile_w) % step_w != 0:
             d = depth - tile_d
             col = width - tile_w
             for row in range(0, height - tile_h + 1, step_h):
@@ -388,7 +389,7 @@ def tile_image_with_overlap(
                 tile_id += 1
 
         # Back-bottom edge
-        if depth % step_d != 0 and height % step_h != 0:
+        if (depth - tile_d) % step_d != 0 and (height - tile_h) % step_h != 0:
             d = depth - tile_d
             row = height - tile_h
             for col in range(0, width - tile_w + 1, step_w):
@@ -416,7 +417,11 @@ def tile_image_with_overlap(
                 tile_id += 1
 
         # Back-bottom-right corner
-        if depth % step_d != 0 and height % step_h != 0 and width % step_w != 0:
+        if (
+            (depth - tile_d) % step_d != 0
+            and (height - tile_h) % step_h != 0
+            and (width - tile_w) % step_w != 0
+        ):
             d = depth - tile_d
             row = height - tile_h
             col = width - tile_w
@@ -460,7 +465,12 @@ def colormap_mapper(values, colormap="viridis"):
     - mapped_colors: array-like, colors corresponding to the input values
     """
     norm = Normalize(vmin=min(values), vmax=max(values))
-    cmap = cm.get_cmap(colormap)
+    try:
+        from matplotlib import colormaps
+
+        cmap = colormaps.get_cmap(colormap)
+    except Exception:
+        cmap = cm.get_cmap(colormap)
     return lambda x: cmap(norm(x))
 
 
@@ -678,9 +688,13 @@ def reconstruct_image_from_tile_files(
     format="tif",
     suffix=None,
     match_pre: bool = False,
+    z_index: int | None = None,
 ):
     """
     Reconstruct the original image from tiles stored in a directory.
+
+    For 3D images, you may pass z_index to reconstruct a single z-slice (2D)
+    without allocating the full 3D volume.
 
     Parameters:
     -----------
@@ -702,9 +716,27 @@ def reconstruct_image_from_tile_files(
     Returns:
     --------
     reconstructed : numpy.ndarray
-        Reconstructed image
+        Reconstructed image (2D, or 3D if original_shape is 3D and z_index is None)
     """
     output_dir = Path(output_dir)
+
+    if z_index is not None and len(original_shape) != 3:
+        raise ValueError("z_index is only valid when original_shape is 3D")
+
+    def _read_tiff_plane(path: Path, plane: int) -> np.ndarray:
+        """Read a single z-plane from a TIFF stack if possible.
+
+        Falls back to reading the whole file and slicing if needed.
+        """
+        try:
+            import tifffile  # type: ignore
+
+            return tifffile.imread(path, key=plane)
+        except Exception:
+            arr = iio.imread(path)
+            if arr.ndim == 3:
+                return arr[plane]
+            return arr
 
     # Initialize output array and weight map
     reconstructed = None
@@ -737,21 +769,46 @@ def reconstruct_image_from_tile_files(
             print(f"Warning: Tile file {filepath} not found, skipping...")
             continue
 
-        # Load tile
-        tile = iio.imread(filepath)
+        # Load tile (full tile if z_index is None, else only a single plane)
+        if z_index is None:
+            tile = iio.imread(filepath)
+        else:
+            pos = info["position"]
+            if len(pos) != 3:
+                raise ValueError("z_index reconstruction requires 3D tile_info")
+            d, _, _ = pos
+            actual_size = info["actual_size"]
+            if not (d <= z_index < d + actual_size[0]):
+                continue
+            z_in_tile = int(z_index - d)
+            tile = _read_tiff_plane(filepath, z_in_tile)
 
         # If adjusting the tile color histogram
         if match_pre:
-            input_tile = iio.imread(input_filepath)
-            input_tile = input_tile.mean(axis=0).astype("int16")
-            input_tile[input_tile < 0] = 0  # Ensure no negative values
-            tile = ski.exposure.match_histograms(tile, input_tile, channel_axis=None)
-            del input_tile  # clear memory
+            if z_index is None:
+                input_tile = iio.imread(input_filepath)
+                if input_tile.ndim == 3:
+                    input_tile = input_tile.mean(axis=0)
+                input_tile = input_tile.astype("int16")
+                input_tile[input_tile < 0] = 0  # Ensure no negative values
+                tile = ski.exposure.match_histograms(tile, input_tile, channel_axis=None)
+                del input_tile  # clear memory
+            else:
+                input_tile = _read_tiff_plane(input_filepath, z_in_tile)
+                input_tile = input_tile.astype("int16")
+                input_tile[input_tile < 0] = 0
+                tile = ski.exposure.match_histograms(tile, input_tile, channel_axis=None)
+                del input_tile
 
         # Initialize arrays on first tile to get dtype
         if reconstructed is None:
-            reconstructed = np.zeros(original_shape, dtype=tile.dtype)
-            weight_map = np.zeros(original_shape, dtype=np.float32)
+            if z_index is None:
+                reconstructed = np.zeros(original_shape, dtype=tile.dtype)
+                weight_map = np.zeros(original_shape, dtype=np.float32)
+            else:
+                _, height, width = original_shape
+                reconstructed = np.zeros((height, width), dtype=tile.dtype)
+                weight_map = np.zeros((height, width), dtype=np.float32)
 
         # Place tile in reconstructed image
         pos = info["position"]
@@ -763,12 +820,16 @@ def reconstruct_image_from_tile_files(
             weight_map[r : r + actual_size[0], c : c + actual_size[1]] += 1
         else:  # 3D
             d, r, c = pos
-            reconstructed[
-                d : d + actual_size[0], r : r + actual_size[1], c : c + actual_size[2]
-            ] += tile
-            weight_map[
-                d : d + actual_size[0], r : r + actual_size[1], c : c + actual_size[2]
-            ] += 1
+            if z_index is None:
+                reconstructed[
+                    d : d + actual_size[0], r : r + actual_size[1], c : c + actual_size[2]
+                ] += tile
+                weight_map[
+                    d : d + actual_size[0], r : r + actual_size[1], c : c + actual_size[2]
+                ] += 1
+            else:
+                reconstructed[r : r + actual_size[1], c : c + actual_size[2]] += tile
+                weight_map[r : r + actual_size[1], c : c + actual_size[2]] += 1
 
     # Handle case where no tiles were found
     if reconstructed is None:
@@ -1310,3 +1371,18 @@ def create_hexagonal_grid(bounds, hex_size, overlap=0.0):
     gdf.reset_index(drop=True, inplace=True)
     
     return gdf
+
+
+def hex_area_from_size(hex_size: float) -> float:
+    """
+    Calculate area of a regular hexagon given the distance from center to a vertex.
+
+    Parameters:
+    - hex_size: float, distance from center to any vertex
+
+    Returns:
+    - area: float
+    """
+    if hex_size <= 0:
+        raise ValueError("hex_size must be > 0")
+    return (3.0 * math.sqrt(3.0) / 2.0) * (hex_size ** 2)

@@ -159,6 +159,25 @@ def _backup_element(exp_name: str, reg_name: str, element, element_name: str, za
     sdata[element_name] = element
     sdata.write_element(element_name)
 
+def _backup_element_sd(sdata, element, element_name: str):
+    """
+    Backup the current state of a spatialdata element before modifying it.
+    This function deletes the existing element from disk and writes the new element to the spatialdata object.
+    Parameters:
+    sdata (sd.SpatialData): The spatialdata object to modify.
+    element: The new element to write to the spatialdata object.
+    element_name (str): The name of the element in the spatialdata object.
+    """
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        import spatialdata as sd
+
+    print(f"attempting to remove {element_name} from disk")
+    sdata.delete_element_from_disk(element_name)  # Remove the old table from disk
+    sdata[element_name] = element
+    sdata.write_element(element_name)
+
 
 def _write_adata(exp_name, reg_name, prefix_name, output_path: Path, zarr_store=None):
     """

@@ -762,6 +762,195 @@ def plot_dataset(
         show=show,
     )
 
+@cli.command(
+    name="call-region-tz",
+    cls=RichCommand,
+    aliases=["call_region_tz"],
+    help="Call the transcript-based spatial regions for a specific region in an experiment",
+)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.argument("prefix_name", type=str, default="default")
+@click.argument("geoms_name", type=str, default="wm_region")
+@click.option("--use_genes", type=parse_list, default="BCAS1", help="List of genes to use for calling regions (default: ['BCAS1'])")
+@click.option("--save_geoms_path", type=click.Path(), default=None, help="Path to save the geometries (default: None)")
+@click.option("--dsc_comp_min_size", type=int, default=5, help="Minimum size of the DSC components (default: 5)")
+@click.option("--hex_size", type=int, default=50, help="Size of the hexagons (default: 50)")
+@click.option("--hex_overlap", type=int, default=0, help="Overlap between hexagons (default: 0)")
+@click.option("--gmm_ncomp", type=str, default="auto", help="Number of GMM components, 'auto calculates the best number of components based on the BIC (default: 'auto')")
+@click.option("--gmm_cov_type", type=str, default="full", help="Covariance type for GMM (default: 'full')")
+@click.option("--gene_agreement_thr", type=float, default=0.25, help="Threshold for gene agreement (default: 0.25)")
+@click.option("--top_n_comp", type=int, default=1, help="Top N components to consider (default: 1)")
+@click.option("--plot", is_flag=True, help="Whether to generate plots (default: False)")
+@click.option("--image_path", type=click.Path(), default=None, help="Path to save the plots (default: None)")
+@click.option("--image_store", type=click.Path(), default=None, help="Path to the image store (default: None)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.pass_context
+def call_region_tz(
+    ctx,
+    exp_name : str,
+    reg_name : str,
+    prefix_name : str = "default",
+    geoms_name : str = "wm_region",
+    use_genes : str | list[str] = "BCAS1",
+    save_geoms_path : str | None = None,
+    dsc_comp_min_size : int = 5,
+    hex_size : int = 50,
+    hex_overlap : int = 0,
+    gmm_ncomp : int | str = "auto",
+    gmm_cov_type : str = "full",
+    gene_agreement_thr : float = 0.25,
+    top_n_comp : int = 1,
+    plot : bool = False,
+    image_path: Path = None,
+    image_store: Path = None,
+    zarr_store: str | Path | None = None
+): 
+    """
+    Call the transcript-based spatial regions for a specific region in an experiment.
+    """
+    from spida.P.main import call_region_tz as func
+    func(
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix_name=prefix_name,
+        geoms_name=geoms_name,
+        use_genes=use_genes,
+        save_geoms_path=save_geoms_path,
+        dsc_comp_min_size=dsc_comp_min_size,
+        hex_size=hex_size,
+        hex_overlap=hex_overlap,
+        gmm_ncomp=gmm_ncomp,
+        gmm_cov_type=gmm_cov_type,
+        gene_agreement_thr=gene_agreement_thr,
+        top_n_comp=top_n_comp,
+        gen_plots=plot,
+        image_path=image_path,
+        image_store=image_store,
+        zarr_store=zarr_store,
+    )
+
+@cli.command(
+    name="transcript-qc",
+    cls=RichCommand,
+    aliases=["transcript_qc"],
+    help="Run transcript hex QC for a region.",
+)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.option("--prefix_name", type=str, default="default")
+@click.option("--hex_size", type=float, default=30, help="Hex size (distance center->vertex)")
+@click.option("--hex_overlap", type=float, default=0, help="Hex overlap")
+@click.option("--gene_col", type=str, default="gene", help="Gene column name")
+@click.option("--x_col", type=str, default="x", help="X coordinate column")
+@click.option("--y_col", type=str, default="y", help="Y coordinate column")
+@click.option("--min_transcripts", type=int, default=None, help="Minimum transcripts per hex")
+@click.option("--min_density", type=float, default=None, help="Minimum density (per µm²)")
+@click.option("--plot", is_flag=True, help="Whether to plot the results")
+@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.pass_context
+def transcript_qc(
+    ctx,
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str = "default",
+    hex_size: float = 30,
+    hex_overlap: float = 0,
+    gene_col: str = "gene",
+    x_col: str = "x",
+    y_col: str = "y",
+    min_transcripts: int = None,
+    min_density: float = None,
+    plot: bool = False,
+    image_store: Path = None,
+    zarr_store: Path = None,
+):
+    from spida.P.main import transcript_qc_region as func
+    func(
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix_name=prefix_name,
+        hex_size=hex_size,
+        hex_overlap=hex_overlap,
+        gene_col=gene_col,
+        x_col=x_col,
+        y_col=y_col,
+        min_transcripts=min_transcripts,
+        min_density=min_density,
+        plot=plot,
+        image_store=image_store,
+        zarr_store=zarr_store,
+    )
+
+@cli.command(
+    name="cluster-hexes",
+    cls=RichCommand,
+    aliases=["cluster_hexes"],
+    help="Run hex clustering for a region.",
+)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.option("--prefix_name", type=str, default="default")
+@click.option("--hex_size", type=float, default=30, help="Hex size (distance center->vertex)")
+@click.option("--hex_overlap", type=float, default=0, help="Hex overlap")
+@click.option("--gene_col", type=str, default="gene", help="Gene column name")
+@click.option("--x_col", type=str, default="x", help="X coordinate column")
+@click.option("--y_col", type=str, default="y", help="Y coordinate column")
+@click.option("--min_transcripts", type=int, default=None, help="Minimum transcripts per hex")
+@click.option("--min_density", type=float, default=None, help="Minimum density (per µm²)")
+@click.option("--leiden_resolution", type=float, default=1.0, help="Leiden resolution")
+@click.option("--min_cells", type=int, default=10, help="Min cells per gene")
+@click.option("--min_genes", type=int, default=100, help="Min genes per hex")
+@click.option("--n_top_genes", type=int, default=200, help="Number of HVGs")
+@click.option("--pca_comps", type=int, default=50, help="PCA components")
+@click.option("--plot", is_flag=True, help="Whether to plot the results")
+@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.pass_context
+def cluster_hexes(
+    ctx,
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str = "default",
+    hex_size: float = 30,
+    hex_overlap: float = 0,
+    gene_col: str = "gene",
+    x_col: str = "x",
+    y_col: str = "y",
+    min_transcripts: int = None,
+    min_density: float = None,
+    leiden_resolution: float = 1.0,
+    min_cells: int = 10,
+    min_genes: int = 100,
+    n_top_genes: int = 200,
+    pca_comps: int = 50,
+    plot: bool = False,
+    image_store: Path = None,
+    zarr_store: Path = None,
+):
+    from spida.P.main import cluster_hexes_region as func
+    func(
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix_name=prefix_name,
+        hex_size=hex_size,
+        hex_overlap=hex_overlap,
+        gene_col=gene_col,
+        x_col=x_col,
+        y_col=y_col,
+        min_transcripts=min_transcripts,
+        min_density=min_density,
+        leiden_resolution=leiden_resolution,
+        min_cells=min_cells,
+        min_genes=min_genes,
+        n_top_genes=n_top_genes,
+        pca_comps=pca_comps,
+        plot=plot,
+        image_store=image_store,
+        zarr_store=zarr_store,
+    )
+
 cli.add_command(test_command)
 cli.add_command(filter_cells_region)
 cli.add_command(filter_cells_all)
@@ -779,6 +968,9 @@ cli.add_command(plot_filtering_region)
 cli.add_command(plot_setup_region)
 cli.add_command(plot_resolvi_region)
 cli.add_command(plot_dataset)
+cli.add_command(call_region_tz)
+cli.add_command(transcript_qc)
+cli.add_command(cluster_hexes)
 
 def main(): 
     """Main entry point for the CLI."""

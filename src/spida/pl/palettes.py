@@ -442,3 +442,19 @@ def add_color_scheme(
             adata.uns[palette_key] = palette
             # print(f"Added custom colormap as '{palette_key}' to adata.uns")
         return palette
+
+    
+def add_colors(adata, cat_col, palette):
+    colors = []
+    for _cat in adata.obs[cat_col].cat.categories: 
+        try:
+            if isinstance(palette, dict):
+                color = palette[_cat]
+            else:
+                color = palette.loc[_cat, 'Hex']
+        except KeyError:
+            print(_cat)
+            color = '#808080'
+        colors.append(color)
+
+    adata.uns[f'{cat_col}_colors'] = colors

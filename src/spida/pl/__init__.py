@@ -22,4 +22,6 @@ from .I_plots import (
 from ._scatteplot import plot_categorical, plot_continuous, categorical_scatter, continuous_scatter
 from ._spatial import plot_spatial_continuous, plot_spatial_categorical
 from .qc_plots import plot_violin_QC
+from .palettes import add_colors
 # from .palettes import register_spatial_cmaps
+from .transcript_plots import plot_hex_qc, plot_hex_clusters

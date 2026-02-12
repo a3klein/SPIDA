@@ -16,9 +16,72 @@ RENAME_CONFIG_KEYS = {
     "SEGMENTATION_OUT_PATH": "segmentation_store",
     "ANNDATA_STORE_PATH": "anndata_store",
     "ANNOTATION_STORE_PATH": "annotation_store",
+    "ANNOTATIONS_STORE_PATH": "annotation_store",
     "IMAGE_STORE_PATH": "image_store",
     "CUTOFFS_PATH": "cutoffs_path",
 }
+
+DEFAULT_CONFIG = {
+    "RUST_BIN_PATH": "/path/to/rust/bin",
+    "VPT_BIN_PATH": "/path/to/vpt/bin",
+    "DECONWOLF_CONFIG": "/path/to/deconwolf/config/file",
+    "ZARR_STORAGE_PATH": "/path/to/zarr/storage",
+    "PROCESSED_ROOT_PATH": "/path/to/processed/root",
+    "SEGMENTATION_OUT_PATH": "/path/to/segmentation/output",
+    "ANNDATA_STORE_PATH": "/path/to/anndata/store",
+    "ANNOTATION_STORE_PATH": "/path/to/annotation/store",
+    "IMAGE_STORE_PATH": "/path/to/image/store",
+    "CUTOFFS_PATH": "/path/to/cutoffs.json",
+}
+
+
+def _normalize_config_keys(config: dict) -> dict:
+    """Normalize known alias keys into canonical names."""
+    if "ANNOTATIONS_STORE_PATH" in config and "ANNOTATION_STORE_PATH" not in config:
+        config["ANNOTATION_STORE_PATH"] = config["ANNOTATIONS_STORE_PATH"]
+    return config
+
+
+def _config_from_env(defaults: dict) -> dict:
+    """Overlay defaults with environment variables if present."""
+    resolved = defaults.copy()
+    for key in defaults:
+        env_val = os.getenv(key)
+        if env_val is not None:
+            resolved[key] = env_val
+    # allow alternative env var spelling for annotations store
+    env_alt = os.getenv("ANNOTATIONS_STORE_PATH")
+    if env_alt is not None:
+        resolved["ANNOTATION_STORE_PATH"] = env_alt
+    return resolved
+
+
+def resolve_config(
+    config_path: str | Path | None = None,
+    defaults: dict | None = None,
+) -> dict:
+    """
+    Resolve configuration with precedence:
+    CLI options > config file > environment variables > defaults.
+
+    The CLI layer is handled by Click automatically via default_map; this
+    function resolves defaults, env, and config file values only.
+    """
+    base_defaults = defaults or DEFAULT_CONFIG
+    resolved = _config_from_env(base_defaults)
+
+    if config_path:
+        cfg = load_config(config_path)
+        cfg = _normalize_config_keys(cfg)
+        resolved.update(cfg)
+
+    return resolved
+
+
+def _default_for(key: str) -> str:
+    """Return a default value using env > DEFAULT_CONFIG."""
+    resolved = resolve_config(defaults=DEFAULT_CONFIG)
+    return resolved.get(key, DEFAULT_CONFIG.get(key, ""))
 
 
 @click.group(cls=RichGroup, help="Configuration management commands for SPIDA.")
@@ -46,7 +109,7 @@ except Exception as e:
 @click.option(
     "rust_bin_path",
     "--rust_bin_path",
-    default=lambda: os.getenv("RUST_BIN_PATH", "/path/to/rust/bin"),
+    default=lambda: _default_for("RUST_BIN_PATH"),
     show_default="RUST_BIN_PATH in .env",
     prompt=True,
     type=click.Path(),
@@ -55,7 +118,7 @@ except Exception as e:
 @click.option(
     "vpt_bin_path",
     "--vpt_bin_path",
-    default=lambda: os.getenv("VPT_BIN_PATH", "/path/to/vpt/bin"),
+    default=lambda: _default_for("VPT_BIN_PATH"),
     show_default="VPT_BIN_PATH in .env",
     prompt=True,
     type=click.Path(), 
@@ -64,7 +127,7 @@ except Exception as e:
 @click.option(
     "deconwolf_config_file",
     "--deconwolf_config_file",
-    default=lambda: os.getenv("DECONWOLF_CONFIG", "/path/to/deconwolf/config"),
+    default=lambda: _default_for("DECONWOLF_CONFIG"),
     show_default="DECONWOLF_CONFIG in .env",
     prompt=True,
     type=click.Path(),
@@ -73,7 +136,7 @@ except Exception as e:
 @click.option(
     "zarr_storage_path",
     "--zarr_storage_path",
-    default=lambda: os.getenv("ZARR_STORAGE_PATH", "/path/to/zarr/storage"),
+    default=lambda: _default_for("ZARR_STORAGE_PATH"),
     show_default="ZARR_STORAGE_PATH in .env",
     prompt=True,
     type=click.Path(),
@@ -82,7 +145,7 @@ except Exception as e:
 @click.option(
     "root_path",
     "--root_path",
-    default=lambda: os.getenv("PROCESSED_ROOT_PATH", "/path/to/processed/root"),
+    default=lambda: _default_for("PROCESSED_ROOT_PATH"),
     show_default="PROCESSED_ROOT_PATH in .env",
     prompt=True, 
     type=click.Path(),
@@ -91,7 +154,7 @@ except Exception as e:
 @click.option(
     "segmentation_output_dir",
     "--segmentation_output_dir",
-    default=lambda: os.getenv("SEGMENTATION_OUT_PATH", "/path/to/segmentation/output"),
+    default=lambda: _default_for("SEGMENTATION_OUT_PATH"),
     show_default="SEGMENTATION_OUT_PATH in .env",
     prompt=True,
     type=click.Path(),
@@ -100,7 +163,7 @@ except Exception as e:
 @click.option(
     "anndata_store_dir",
     "--anndata_store_dir",
-    default=lambda: os.getenv("ANNDATA_STORE_PATH", "/path/to/anndata/store"),
+    default=lambda: _default_for("ANNDATA_STORE_PATH"),
     show_default="ANNDATA_STORE_PATH in .env",
     prompt=True,
     type=click.Path(),
@@ -109,7 +172,7 @@ except Exception as e:
 @click.option(
     "annotation_store_dir",
     "--annotation_store_dir",
-    default=lambda: os.getenv("ANNOTATION_STORE_PATH", "/path/to/annotation/store"),
+    default=lambda: _default_for("ANNOTATION_STORE_PATH"),
     show_default="ANNOTATION_STORE_PATH in .env",
     prompt=True,
     type=click.Path(),
@@ -118,7 +181,7 @@ except Exception as e:
 @click.option(
     "image_store_path",
     "--image_store_path",
-    default=lambda: os.getenv("IMAGE_STORE_PATH", "/path/to/image/store"),
+    default=lambda: _default_for("IMAGE_STORE_PATH"),
     show_default="IMAGE_STORE_PATH in .env",
     prompt=True,
     type=click.Path(),
@@ -127,7 +190,7 @@ except Exception as e:
 @click.option(
     "cutoffs_path",
     "--cutoffs_path",
-    default=lambda: os.getenv("CUTOFFS_PATH", "/path/to/cutoffs.json"),
+    default=lambda: _default_for("CUTOFFS_PATH"),
     show_default="CUTOFFS_PATH in .env",
     prompt=True,
     type=click.Path(),
@@ -169,18 +232,25 @@ def setup_config(
     This is for setting up different projects without having to modify the .env file manually.
     """
 
-    config = {
-        "RUST_BIN_PATH": rust_bin_path or os.getenv("RUST_BIN_PATH", "/path/to/rust/bin"),
-        "VPT_BIN_PATH": vpt_bin_path or os.getenv("VPT_BIN_PATH", "/path/to/vpt/bin"),
-        "DECONWOLF_CONFIG": deconwolf_config_file or os.getenv("DECONWOLF_CONFIG", "/path/to/deconwolf/config/file"),
-        "ZARR_STORAGE_PATH": zarr_storage_path or os.getenv("ZARR_STORAGE_PATH", "/path/to/zarr/storage"),
-        "PROCESSED_ROOT_PATH": root_path or os.getenv("PROCESSED_ROOT_PATH", "/path/to/processed/root"),
-        "SEGMENTATION_OUT_PATH": segmentation_output_dir or os.getenv("SEGMENTATION_OUT_PATH", "/path/to/segmentation/output"),
-        "ANNDATA_STORE_PATH": anndata_store_dir or os.getenv("ANNDATA_STORE_PATH", "/path/to/anndata/store"),
-        "ANNOTATION_STORE_PATH": annotation_store_dir or os.getenv("ANNOTATION_STORE_PATH", "/path/to/annotation/store"),
-        "IMAGE_STORE_PATH": image_store_path or os.getenv("IMAGE_STORE_PATH", "/path/to/image/store"),
-        "CUTOFFS_PATH": cutoffs_path or os.getenv("CUTOFFS_PATH", "/path/to/cutoffs.json"),
-    }
+    config = resolve_config(
+        defaults=DEFAULT_CONFIG,
+        config_path=None,
+    )
+    # CLI provided values should override resolved defaults
+    config.update(
+        {
+            "RUST_BIN_PATH": rust_bin_path or config["RUST_BIN_PATH"],
+            "VPT_BIN_PATH": vpt_bin_path or config["VPT_BIN_PATH"],
+            "DECONWOLF_CONFIG": deconwolf_config_file or config["DECONWOLF_CONFIG"],
+            "ZARR_STORAGE_PATH": zarr_storage_path or config["ZARR_STORAGE_PATH"],
+            "PROCESSED_ROOT_PATH": root_path or config["PROCESSED_ROOT_PATH"],
+            "SEGMENTATION_OUT_PATH": segmentation_output_dir or config["SEGMENTATION_OUT_PATH"],
+            "ANNDATA_STORE_PATH": anndata_store_dir or config["ANNDATA_STORE_PATH"],
+            "ANNOTATION_STORE_PATH": annotation_store_dir or config["ANNOTATION_STORE_PATH"],
+            "IMAGE_STORE_PATH": image_store_path or config["IMAGE_STORE_PATH"],
+            "CUTOFFS_PATH": cutoffs_path or config["CUTOFFS_PATH"],
+        }
+    )
 
     config_path = Path(config_store_path)
     if config_path.exists() and not overwrite:
@@ -264,13 +334,10 @@ class ConfigDefaultGroup(RichGroup):
             if a in ('--config', '-c') and i + 1 < len(args):
                 config_path = args[i + 1]; break
 
+        resolved = resolve_config(config_path=config_path, defaults=DEFAULT_CONFIG)
         defaults = {}
-        if config_path:
-            cfg = load_config(config_path)
-            load_config_into_env(cfg)
-            # build mapping of option-name -> default value
-            for key, value in cfg.items():
-                defaults[RENAME_CONFIG_KEYS.get(key, key.lower())] = value
+        for key, value in resolved.items():
+            defaults[RENAME_CONFIG_KEYS.get(key, key.lower())] = value
 
         # build a per-subcommand default_map so defaults apply to every command
         mapping = {name: defaults.copy() for name in self.commands}

@@ -17,6 +17,8 @@ def run_segmentation(
     output_dir: str | Path | None = None,
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
+    vpt_bin_path: str | Path | None = None,
+    rust_bin_path: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -55,7 +57,7 @@ def run_segmentation(
     if type == "proseg":
         from .proseg import run_proseg
 
-        run_proseg(input_dir, output_dir, reg_name, **kwargs["kwargs"])
+        run_proseg(input_dir, output_dir, reg_name,rust_bin_path=rust_bin_path, **kwargs["kwargs"])
     elif type == "vpt":
         from .vpt import run_vpt
 
@@ -63,21 +65,21 @@ def run_segmentation(
             "config_path",
             "/ceph/cephatlas/aklein/vpt/config_files/cellpose_nuclei_Z3.json",
         )
-        run_vpt(input_dir, output_dir, reg_name, config_path=config_path)
+        run_vpt(input_dir, output_dir, reg_name, config_path=config_path, vpt_bin_path=vpt_bin_path, **kwargs["kwargs"])
     elif type == "cellpose":
         from .cellposeSAM import run_cellposeSAM
         from .vpt import seg_to_vpt
 
         # TODO: change other segmentation methods to take in the direct image dir
-        run_cellposeSAM(input_dir, output_dir, reg_name, **kwargs["kwargs"])
+        is_3d = run_cellposeSAM(input_dir, output_dir, reg_name, **kwargs["kwargs"])
         input_dir_vpt = Path(input_dir).parents[1]
-        seg_to_vpt(input_dir_vpt, output_dir, reg_name)
+        seg_to_vpt(input_dir_vpt, output_dir, reg_name, vpt_bin_path=vpt_bin_path, is_3d=is_3d, **kwargs["kwargs"])
     elif type == "mesmer":
         from .mesmer import run_mesmer
         from .vpt import seg_to_vpt
 
         run_mesmer(input_dir, output_dir, reg_name, **kwargs["kwargs"])
-        seg_to_vpt(input_dir, output_dir, reg_name)
+        seg_to_vpt(input_dir, output_dir, reg_name, vpt_bin_path=vpt_bin_path, **kwargs["kwargs"])
 
     else:
         raise ValueError(f"Unknown segmentation type: {type}")
@@ -91,6 +93,8 @@ def segment_experiment(
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
     zarr_store: str | Path | None = None,
+    vpt_bin_path: str | Path | None = None,
+    rust_bin_path: str | Path | None = None,
     **kwargs
 ):
     """
@@ -117,6 +121,8 @@ def segment_experiment(
             output_dir=output_dir,
             root_path=root_path,
             segmentation_store=segmentation_store,
+            vpt_bin_path=vpt_bin_path,
+            rust_bin_path=rust_bin_path,
             **kwargs,
         )
 
@@ -126,6 +132,7 @@ def vpt_on_segmentation(
     reg_name: str,
     input_dir: Path = None,
     output_dir: Path = None,
+    vpt_bin_path: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -138,7 +145,7 @@ def vpt_on_segmentation(
     **kwargs: Additional keyword arguments to pass to the conversion function.
     """
 
-    from vpt import seg_to_vpt
+    from .vpt import seg_to_vpt
 
     if input_dir is None:
         processed_root_path = os.getenv("PROCESSED_ROOT_PATH")
@@ -147,9 +154,69 @@ def vpt_on_segmentation(
         seg_out_path = os.getenv("SEGMENTATION_OUT_PATH")
         output_dir = f"{seg_out_path}/{exp_name}/vpt"
 
-    seg_to_vpt(input_dir, output_dir, reg_name, **kwargs)
+    seg_to_vpt(input_dir, output_dir, reg_name, vpt_bin_path=vpt_bin_path, **kwargs)
 
 
+#TODO: work on this
+def align_geometries(
+    exp_name,
+    reg_name,
+    prefix1 : str = "cellpose_nuc",
+    prefix2 : str = "cellpose_cell",
+    output_dir : str | None = None,
+    geometry_mode : str = "larger", 
+    cell_id : str = "EntityID",
+    coordinate_system : str = "global",
+    min_intersection_area : float = 0.0,
+    out_dir_name : str = "align",
+    zarr_store : str | None = None,
+    segmentation_store: str | None = None,
+    root_path : str | None = None,
+    vpt_bin_path : str | None = None
+): 
+    from .vpt import seg_to_vpt
+    from .align import align_segmentations
+
+    if zarr_store is None: 
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    if root_path is None: 
+        root_path = os.getenv("PROCESSED_ROOT_PATH")
+    input_dir = f"{root_path}/{exp_name}/out"
+    if segmentation_store is None:
+        seg_out_path = os.getenv("SEGMENTATION_OUT_PATH")
+        segmentation_store = Path(f"{seg_out_path}/{exp_name}/{out_dir_name}")
+    elif exp_name not in str(segmentation_store):
+        segmentation_store = Path(f"{segmentation_store}/{exp_name}/{out_dir_name}")
+    # if isinstance(segmentation_store, str):
+    #     segmentation_store = Path(segmentation_store)
+
+    zarr_path = Path(zarr_store) / exp_name / reg_name
+
+
+    ret_dict = align_segmentations(
+        zarr_path=zarr_path,
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix1=prefix1,
+        prefix2=prefix2,
+        output_dir = output_dir,
+        segmentation_store = segmentation_store,
+        geometry_mode = geometry_mode,
+        cell_id = cell_id,
+        min_intersection_area = min_intersection_area,
+        coordinate_system = coordinate_system,
+    )
+
+    logger.info(f"Converting aligned geometries to VPT format for region {reg_name} in experiment {exp_name}.")
+    logger.info(f"Input directory: {input_dir}")
+    logger.info(f"Segmentation store: {segmentation_store}")
+    logger.info(f"Input boundaries file: {Path(ret_dict['output_path']).name}")
+
+    input_boundaries = Path(ret_dict['output_path']).name
+    seg_to_vpt(input_dir, segmentation_store, reg_name, vpt_bin_path, input_boundaries=input_boundaries)
+
+
+# @depreceated in the current version of proseg (v > 3.0)
 def align_proseg(
     exp_name: str,
     reg_name: str,
@@ -173,6 +240,7 @@ def align_proseg(
     cell_by_gene_fname: str = "merged_cell_by_gene.csv",
     detected_transcripts_fname: str = "merged_transcript_metadata.csv",
     cell_polygons_fname: str = "merged_cell_polygons.geojson",
+    vpt_bin_path: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -235,7 +303,9 @@ def align_proseg(
         output_signals="merged_sum_signals.csv",
         output_entity_by_gene="cell_by_gene.csv",
         output_transcripts="detected_transcripts.csv",
+        vpt_bin_path=vpt_bin_path,
     )
+
 
     # generate_metadata(
     #     root_dir=input_dir,

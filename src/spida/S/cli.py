@@ -337,7 +337,8 @@ def test_vpt(ctx):
 @click.option("output_dir", "--output_dir", default=None, type=click.Path(), help="Directory to save the output data (default: None, uses environment variable)")
 @click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
 @click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Path to store the segmentation results (default: None, uses environment variable)")
-# @click.option("kwargs", "--kwargs", default="{}", type=str, help="Additional keyword arguments as a JSON string (default: {})")
+@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary (default: None, uses environment variable)")
+@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Path to the Rust binary (default: None, uses environment variable)")
 @click.pass_context
 def run_segmentation(
     ctx,
@@ -348,6 +349,8 @@ def run_segmentation(
     output_dir: str | Path | None = None,
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
+    vpt_bin_path: str | Path | None = None,
+    rust_bin_path: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -377,6 +380,7 @@ def run_segmentation(
         output_dir=output_dir,
         root_path=root_path,
         segmentation_store=segmentation_store,
+        vpt_bin_path=vpt_bin_path,
         kwargs=kwargs,
     )
 
@@ -393,7 +397,10 @@ def run_segmentation(
 @click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
 @click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Path to store the segmentation results (default: None, uses environment variable)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage (default: None, uses environment variable)")
+@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary (default: None, uses environment variable)")
+@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Path to the Rust binary (default: None, uses environment variable)")
 @click.option("kwargs", "--kwargs", default="{}", type=str, help="Additional keyword arguments as a JSON string (default: {})")
+@click.pass_context
 def segment_experiment(
     ctx,
     type: str,
@@ -403,6 +410,8 @@ def segment_experiment(
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
     zarr_store: str | Path | None = None,
+    vpt_bin_path: str | Path | None = None,
+    rust_bin_path: str | Path | None = None,
     **kwargs
 ):
     """
@@ -417,6 +426,8 @@ def segment_experiment(
         root_path=root_path,
         segmentation_store=segmentation_store,
         zarr_store=zarr_store,
+        vpt_bin_path=vpt_bin_path,
+        rust_bin_path=rust_bin_path,
         **kwargs,
     )
 
@@ -449,6 +460,7 @@ def segment_experiment(
 @click.option("cell_by_gene_fname", "--cell_by_gene_fname", default="merged_cell_by_gene.csv", type=str, help="Filename for the cell by gene data (default: merged_cell_by_gene.csv)")
 @click.option("detected_transcripts_fname", "--detected_transcripts_fname", default="merged_transcript_metadata.csv", type=str, help="Filename for the detected transcripts data (default: merged_transcript_metadata.csv)")
 @click.option("cell_polygons_fname", "--cell_polygons_fname", default="merged_cell_polygons.geojson", type=str, help="Filename for the cell polygons data (default: merged_cell_polygons.geojson)")
+@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary (default: None, uses environment variable)")
 @click.option("kwargs", "--kwargs", default="{}", type=str, help="Additional keyword arguments as a JSON string (default: {})")
 @click.pass_context
 def align_proseg(
@@ -475,6 +487,7 @@ def align_proseg(
     cell_by_gene_fname: str = "merged_cell_by_gene.csv",
     detected_transcripts_fname: str = "merged_transcript_metadata.csv",
     cell_polygons_fname: str = "merged_cell_polygons.geojson",
+    vpt_bin_path: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -504,6 +517,7 @@ def align_proseg(
         cell_by_gene_fname=cell_by_gene_fname,
         detected_transcripts_fname=detected_transcripts_fname,
         cell_polygons_fname=cell_polygons_fname,
+        vpt_bin_path=vpt_bin_path,
         **kwargs,
     )
 
@@ -536,6 +550,67 @@ def filt_to_ids(
         tz_path=tz_path,
         cbg_path=cbg_path,
     )
+
+
+@cli.command(
+    name="align-segmentation",
+    aliases=["align_segmentation", "align-segmentation"],
+    cls=RichCommand,
+    help="['align_segmentation', 'align-segmentation'] - Align segmentation results between different methods.",
+)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.option("prefix1", "--prefix1", default="cellpose_nuc", type=str, help="Prefix for the first segmentation method (default: cellpose_nuc)")
+@click.option("prefix2", "--prefix2", default="cellpose_cell", type=str, help="Prefix for the second segmentation method (default: cellpose_cell)")
+@click.option("output_dir", "--output_dir", default=None, type=click.Path(), help="Directory to save the aligned segmentation results (default: None, uses environment variable)")
+@click.option("geometry_mode", "--geometry_mode", default="larger", type=str, help="Geometry mode for alignment (default: larger)")
+@click.option("cell_id", "--cell_id", default="EntityID", type=str, help="Column name for the cell IDs (default: EntityID for vpt)")
+@click.option("min_intersection_area", "--min_intersection_area", default=0.0, type=float, help="Minimum intersection area for alignment (default: 0.0)")
+@click.option("coordinate_system", "--coordinate_system", default="global", type=str, help="Coordinate system for alignment (default: global)")
+@click.option("out_dir_name", "--out_dir_name", default="align", type=str, help="The name of the output directory to store the segmentation under (default: align)")
+@click.option("zarr_store", "--zarr_store", default=None, type=str, help="Path to the zarr store (default: None)")
+@click.option("segmentation_store", "--segmentation_store", default=None, type=str, help="Path to the segmentation store (default: None)")
+@click.option("root_path", "--root_path", default=None, type=str, help="Root path for the data (default: None)")
+@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=str, help="Path to the VPT binary (default: None)")
+@click.pass_context
+def align_geometries(
+    ctx,
+    exp_name,
+    reg_name,
+    prefix1 : str = "cellpose_nuc",
+    prefix2 : str = "cellpose_cell",
+    output_dir : str | None = None,
+    geometry_mode : str = "larger", 
+    cell_id : str = "EntityID",
+    min_intersection_area : float = 0.0,
+    coordinate_system : str = "global",
+    out_dir_name : str = "align",
+    zarr_store : str | None = None,
+    segmentation_store: str | None = None,
+    root_path : str | None = None,
+    vpt_bin_path : str | None = None
+): 
+    """
+    Align segmentation results between different methods.
+    """
+    from .segmentation.main import align_geometries as func
+    func(
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix1=prefix1,
+        prefix2=prefix2,
+        output_dir=output_dir,
+        geometry_mode=geometry_mode,
+        cell_id=cell_id,
+        min_intersection_area=min_intersection_area,
+        coordinate_system=coordinate_system,
+        out_dir_name=out_dir_name,
+        zarr_store=zarr_store,
+        segmentation_store=segmentation_store,
+        root_path=root_path,
+        vpt_bin_path=vpt_bin_path,
+    )
+
 
 @cli.command(
     name="decon-image",
@@ -620,6 +695,7 @@ cli.add_command(run_segmentation)
 cli.add_command(segment_experiment)
 cli.add_command(align_proseg)
 cli.add_command(filt_to_ids)
+cli.add_command(align_geometries)
 cli.add_command(decon_image)
 
 if __name__ == "__main__":
