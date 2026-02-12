@@ -1,4 +1,7 @@
 
+# log files
+**/lightning_logs/
+
 # Personal 
 .env
 
@@ -10,3 +13,11 @@
 # Added by cargo
 
 /target
+
+# R files
+.RData
+.RHistory
+
+# backup pyprojects file
+pyproject.toml
+pyproject_bp.toml
