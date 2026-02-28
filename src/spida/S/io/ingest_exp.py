@@ -17,18 +17,18 @@ with warnings.catch_warnings():
 
 from spida.utilities.sd_utils import _gen_keys
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
+from .filt_to_qc import apply_qc_filter_to_segmentation
 
 logger = logging.getLogger(__package__)
 
 
 ### TODO:
-#  Implement new logic when it comes to removing disconnected polygon geometries
+#  Implement new logic when it comes to removing disconnected polygon geometries (OLD)
 # Ideas:
 # - Only keep the biggest polygon (now)
 # - Only remove polygons with shapes smaller than a certain cutoff (artifacts) + create new cell artifacts from remaining disconnected geometries
 # - Same as above but bridge together somehow between the two disconnected geometries
 # - Same as above, but remove cells that have more than two disconnected geometries post filtering of small artifacts
-
 
 def read_merscope(
     path,
@@ -149,6 +149,13 @@ def load_vpt_segmentation(
     cell_by_gene_fname: str = "cell_by_gene.csv",
     detected_transcripts_fname: str = "detected_transcripts.csv",
     cellpose_micron_space_fname: str = "cellpose_micron_space.parquet",
+    qc_regions=None,
+    qc_table_key: str | None = None,
+    qc_shapes_key: str | None = None,
+    qc_filter_col: str = "filtered",
+    qc_pass_value: bool | int | str = False,
+    table_cell_id_col: str | None = None,
+    points_cell_id_col: str | None = None,
     **kwargs,
 ):
     """
@@ -236,6 +243,22 @@ def load_vpt_segmentation(
         sdata, KEYS[SHAPES_KEY], subset_field=["EntityID"]
     )
 
+    if (qc_regions is not None) or (qc_table_key is not None) or (qc_shapes_key is not None):
+        logger.info("Applying transcript QC filter to loaded VPT segmentation elements.")
+        sdata = apply_qc_filter_to_segmentation(
+            sdata,
+            table_key=KEYS[TABLE_KEY],
+            shapes_key=KEYS[SHAPES_KEY],
+            points_key=KEYS[POINTS_KEY],
+            qc_regions=qc_regions,
+            qc_table_key=qc_table_key,
+            qc_shapes_key=qc_shapes_key,
+            qc_filter_col=qc_filter_col,
+            qc_pass_value=qc_pass_value,
+            table_cell_id_col=table_cell_id_col,
+            points_cell_id_col=points_cell_id_col,
+        )
+
     # Doing the transformations:
     # Setting the pixel space coordinate system
     set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
@@ -286,6 +309,13 @@ def load_proseg_segmentation_v2(
     cell_by_gene_fname: str = "expected-counts.csv.gz",
     detected_transcripts_fname: str = "transcript-metadata.csv.gz",
     cell_polygons_fname: str = "cell-polygons.geojson.gz",
+    qc_regions=None,
+    qc_table_key: str | None = None,
+    qc_shapes_key: str | None = None,
+    qc_filter_col: str = "filtered",
+    qc_pass_value: bool | int | str = False,
+    table_cell_id_col: str | None = None,
+    points_cell_id_col: str | None = None,
     **kwargs,
 ):
     """
@@ -347,6 +377,22 @@ def load_proseg_segmentation_v2(
         sdata, KEYS[SHAPES_KEY], subset_field=["cell"]
     )
 
+    if (qc_regions is not None) or (qc_table_key is not None) or (qc_shapes_key is not None):
+        logger.info("Applying transcript QC filter to loaded ProSeg (v2) segmentation elements.")
+        sdata = apply_qc_filter_to_segmentation(
+            sdata,
+            table_key=KEYS[TABLE_KEY],
+            shapes_key=KEYS[SHAPES_KEY],
+            points_key=KEYS[POINTS_KEY],
+            qc_regions=qc_regions,
+            qc_table_key=qc_table_key,
+            qc_shapes_key=qc_shapes_key,
+            qc_filter_col=qc_filter_col,
+            qc_pass_value=qc_pass_value,
+            table_cell_id_col=table_cell_id_col,
+            points_cell_id_col=points_cell_id_col,
+        )
+
     # Doing the transformations:
     # Setting the pixel space coordinate system
     set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
@@ -392,6 +438,13 @@ def load_proseg_segmentation_v3(
     proseg_path: str,
     prefix_name: str = "proseg",
     zarr_name: str = "proseg_outputs.zarr",
+    qc_regions=None,
+    qc_table_key: str | None = None,
+    qc_shapes_key: str | None = None,
+    qc_filter_col: str = "filtered",
+    qc_pass_value: bool | int | str = False,
+    table_cell_id_col: str | None = None,
+    points_cell_id_col: str | None = None,
     **kwargs,
 ):
     """
@@ -445,6 +498,22 @@ def load_proseg_segmentation_v3(
     sdata = _cast_multipolygons_to_polygons(
         sdata, KEYS[SHAPES_KEY], subset_field=["cell"]
     )
+
+    if (qc_regions is not None) or (qc_table_key is not None) or (qc_shapes_key is not None):
+        logger.info("Applying transcript QC filter to loaded ProSeg (v3) segmentation elements.")
+        sdata = apply_qc_filter_to_segmentation(
+            sdata,
+            table_key=KEYS[TABLE_KEY],
+            shapes_key=KEYS[SHAPES_KEY],
+            points_key=KEYS[POINTS_KEY],
+            qc_regions=qc_regions,
+            qc_table_key=qc_table_key,
+            qc_shapes_key=qc_shapes_key,
+            qc_filter_col=qc_filter_col,
+            qc_pass_value=qc_pass_value,
+            table_cell_id_col=table_cell_id_col,
+            points_cell_id_col=points_cell_id_col,
+        )
 
     # Doing the transformations:
     # Setting the pixel space coordinate system

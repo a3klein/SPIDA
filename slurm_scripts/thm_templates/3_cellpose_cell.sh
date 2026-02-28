@@ -4,14 +4,14 @@
 #SBATCH -A mcb130189-gpu
 #SBATCH -J cellpose_cell_{EXP_N}_{REG_N}
 #SBATCH -p gpu
-#SBATCH --time=2:00:00
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=128gb
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
+#SBATCH --mem=256gb
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
 
 module purge
 module load modtree/gpu

@@ -32,6 +32,35 @@ class _FakeSData:
         self.written.append(key)
 
 
+class _FakeSDataPersist(_FakeSData):
+    def __init__(self, points):
+        super().__init__(points)
+        self._elements = {}
+        self._on_disk = set()
+        self.deleted = []
+
+    def __setitem__(self, key, value):
+        self._elements[key] = value
+
+    def __getitem__(self, key):
+        if key == "points":
+            return self._points
+        if key in self._elements:
+            return self._elements[key]
+        raise KeyError(key)
+
+    def elements_paths_on_disk(self):
+        return list(self._on_disk)
+
+    def delete_element_from_disk(self, key):
+        self.deleted.append(key)
+        self._on_disk.discard(f"shapes/{key}")
+
+    def write_element(self, key):
+        super().write_element(key)
+        self._on_disk.add(f"shapes/{key}")
+
+
 @pytest.fixture
 def points_df():
     # points strictly inside [0, 0, 10, 10]
@@ -183,6 +212,40 @@ def test_run_transcript_qc(monkeypatch):
     assert "filtered" in grid.columns
     assert bool(grid.loc["h1", "filtered"]) is False
     assert bool(grid.loc["h2", "filtered"]) is True
+
+
+def test_run_transcript_qc_persists_qc_shapes(monkeypatch):
+    sdata = _FakeSDataPersist(points=pd.DataFrame({"x": [1], "y": [1], "gene": ["A"]}))
+    sdata._on_disk.add("shapes/transcript_qc_shapes")
+
+    obs = pd.DataFrame(
+        {
+            "geometry": [geom.Point(1, 1), geom.Point(2, 2)],
+            "tz_count": [100, 5],
+            "n_genes": [10, 2],
+            "density": [2.0, 0.1],
+        },
+        index=["h1", "h2"],
+    )
+    adata_hex = ad.AnnData(X=np.array([[1, 2], [0, 1]]), obs=obs, var=pd.DataFrame(index=["A", "B"]))
+    adata_hex.uns["hexgrid"] = {"hex_size": 30, "hex_overlap": 0, "hex_area_um2": hex_area_from_size(30)}
+
+    def _fake_get_or_create(*args, **kwargs):
+        return adata_hex, "adata_hex_s30_o0"
+
+    monkeypatch.setattr(tq, "get_or_create_hex_adata", _fake_get_or_create)
+
+    _, grid, _ = tq.run_transcript_qc(
+        sdata=sdata,
+        points_key="points",
+        min_transcripts=50,
+    )
+
+    assert "transcript_qc_shapes" in sdata.deleted
+    assert "transcript_qc_shapes" in sdata.written
+    assert "transcript_qc_shapes" in sdata._elements
+    assert "filtered" in sdata._elements["transcript_qc_shapes"].columns
+    assert "filtered" in grid.columns
 
 
 def test_run_cluster_hexes_saves_clustered_table(monkeypatch):

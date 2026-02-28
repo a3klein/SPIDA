@@ -27,9 +27,10 @@ def _get_polygons(
     geo_df = gpd.read_parquet(boundaries_path)
     if geo_df.geometry.name != GEOMETRY_COL:
         geo_df = geo_df.rename_geometry(GEOMETRY_COL)
-    geo_df = geo_df[
-        geo_df[DEFAULT_PRESET["geom_depth_col"]] == 0
-    ]  # Avoid duplicate boundaries on all z-levels
+    # TODO: This works only for 2D, commenting out for now, but need to think about propagating 3D flag here. 
+    # geo_df = geo_df[
+    #     geo_df[DEFAULT_PRESET["geom_depth_col"]] == 0
+    # ]  # Avoid duplicate boundaries on all z-levels
     geo_df.geometry = geo_df.geometry.make_valid()  # Ensure geometries are valid
     # geo_df = geo_df[geo_df.geometry.is_valid]  # Remove invalid geometries
     geo_df.geometry = geo_df.geometry.map(lambda x: cast_to_mp(x))

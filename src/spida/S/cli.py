@@ -158,6 +158,8 @@ def ingest_all(
 @click.option("type", "--type", default="vpt", type=str, help="Type of the segmentation data (default: vpt)")
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
+@click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
+@click.option("qc_shapes_key", "--qc_shapes_key", default="transcript_qc_shapes", type=str,help="Shapes key containing transcript QC pass/fail regions. (default: transcript_qc_shapes)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
 @click.pass_context 
@@ -169,6 +171,8 @@ def load_segmentation_region(
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
+    use_transcript_qc: bool = False,
+    qc_shapes_key: str = "transcript_qc_shapes",
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
     **load_kwargs,
@@ -179,8 +183,14 @@ def load_segmentation_region(
     # kwargs
     extra_args = ctx.args
     load_kwargs = parse_click_kwargs(extra_args)
-    for key, value in load_kwargs.items():
-        logger.info(f"Parsed {key} = {value};  {type(value)}")
+    if use_transcript_qc:
+        load_kwargs.setdefault("qc_shapes_key", qc_shapes_key)
+        logger.info(
+            "Transcript QC filtering enabled for load-segmentation-region with qc_shapes_key=%s",
+            load_kwargs["qc_shapes_key"],
+        )
+    # for key, value in load_kwargs.items():
+    #     logger.info(f"Parsed {key} = {value};  {type(value)}")
 
     from .io.main import load_segmentation_region as func
     func(
@@ -201,6 +211,8 @@ def load_segmentation_region(
 @click.option("type", "--type", default="vpt", type=str, help="Type of the segmentation data (default: vpt)")
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
+@click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
+@click.option("qc_shapes_key", "--qc_shapes_key", default="transcript_qc_shapes", type=str,help="Shapes key containing transcript QC pass/fail regions. (default: transcript_qc_shapes)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
 @click.pass_context 
@@ -211,6 +223,8 @@ def load_segmentation_all(
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
+    use_transcript_qc: bool = False,
+    qc_shapes_key: str = "transcript_qc_shapes",
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
     **load_kwargs,
@@ -221,8 +235,14 @@ def load_segmentation_all(
     # kwargs
     extra_args = ctx.args
     load_kwargs = parse_click_kwargs(extra_args)
-    for key, value in load_kwargs.items():
-        logger.info(f"Parsed {key} = {value};  {type(value)}")
+    if use_transcript_qc:
+        load_kwargs.setdefault("qc_shapes_key", qc_shapes_key)
+        logger.info(
+            "Transcript QC filtering enabled for load-segmentation-all with qc_shapes_key=%s",
+            load_kwargs["qc_shapes_key"],
+        )
+    # for key, value in load_kwargs.items():
+    #     logger.info(f"Parsed {key} = {value};  {type(value)}")
 
     from .io.main import load_segmentation_all as func
     func(
@@ -628,6 +648,8 @@ def align_geometries(
 @click.option("filter", "--filter", default="deconwolf", type=str, help="Filter to use for deconvolution (default: deconwolf)")
 @click.option("gpu", "--gpu", is_flag=True, default=True, help="Whether to use GPU for deconvolution (default: True)")
 @click.option("z_step", "--z_step", default=1.5, type=float, help="Z-step size for 3D images (default: 1.5)")
+@click.option("z_stack_expand", "--z_stack_expand", is_flag=True, default=True, help="Whether to expand z-stack in 3D case (default: True)")
+@click.option("z_stack_expand_slices", "--z_stack_expand_slices", default=3, type=int, help="Number of slices to expand z-stack (default: 3)")
 @click.option("continue_stalled", "--continue_stalled", is_flag=True, default=False, help="Whether to continue stalled processes (default: False)")
 @click.option("thr_tiles", "--thr_tiles/--no_thr_tiles", is_flag=True, default=True, help="Whether to threshold tiles after deconvolution (default: True)")
 @click.option("plot_thr", "--plot_thr/--no_plot_thr", is_flag=True, default=False, help="Whether to plot the thresholding intermediary (default: False)")
@@ -646,6 +668,8 @@ def decon_image(
     filter: str = "deconwolf",
     gpu: bool = True,
     z_step: float = 1.5,
+    z_stack_expand: bool = True,
+    z_stack_expand_slices: int = 3,
     continue_stalled: bool = False,
     thr_tiles: bool = True,
     plot_thr: bool = False,
@@ -677,6 +701,8 @@ def decon_image(
         filter=filter,
         gpu=gpu,
         z_step=z_step,
+        z_stack_expand=z_stack_expand,
+        z_stack_expand_slices=z_stack_expand_slices,
         continue_stalled=continue_stalled,
         thr_tiles=thr_tiles,
         plot_thr=plot_thr,

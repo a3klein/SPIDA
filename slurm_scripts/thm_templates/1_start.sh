@@ -7,8 +7,8 @@
 #SBATCH -p wholenode
 #SBATCH -t 00:40:00
 #SBATCH --nodes=1
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 
 # Load the necessary modules
 module purge
@@ -76,3 +76,5 @@ pixi run --frozen -e preprocessing \
     --leiden_resolution 0.6 \
     --min_transcripts 100 \
     --plot
+
+# pixi run python slurm_scripts/script.py   202601301037_BICAN-4x1-THM1-E-01_VMSC31810     --lab salk     --data_path /anvil/scratch/x-aklein2/BICAN/202601301037_BICAN-4x1-THM1-E-01_VMSC31810/out/     --output_dir ../BICAN/THM/image_processing/     --template_dir slurm_scripts/thm_templates/     --config_path /anvil/projects/x-mcb130189/aklein/BICAN/THM/config/config.json
