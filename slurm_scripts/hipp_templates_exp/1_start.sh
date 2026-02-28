@@ -55,3 +55,24 @@ pixi run --frozen -e preprocessing \
     default \
     wm_regions \
     --plot
+
+echo -e "\n Running Transcript QC \n"
+pixi run --frozen -e preprocessing \
+    spida-P {CONFIG} \
+    transcript-qc \
+    {EXPERIMENT} \
+    {REGION} \
+    --hex_size 30 \
+    --min_transcripts 100 \
+    --plot
+    
+echo -e "\n Clustering Hexagons \n"
+pixi run --frozen -e preprocessing \
+    spida-P {CONFIG} \
+    cluster-hexes \
+    {EXPERIMENT} \
+    {REGION} \
+    --hex_size 30 \
+    --leiden_resolution 0.6 \
+    --min_transcripts 100 \
+    --plot

@@ -143,7 +143,9 @@ def _load_model(model_name: str = "cpsam", **kwargs):
         "/anvil/projects/x-mcb130189/aklein/programs/.cellpose/models",
     )
     model = models.CellposeModel(
-        pretrained_model=f"{model_path}/{model_name}", gpu=True
+        pretrained_model=f"{model_path}/{model_name}",
+        gpu=True,
+        use_bfloat16=False
     )
     return model
 
@@ -152,7 +154,7 @@ def _cellpose_wrapper(
     img,
     batch_size=8,
     flow_threshold=0.0,
-    cellprob_threshold=-4,
+    cellprob_threshold=-2,
     tile_norm_blocksize=0,
     diameter=None,
     min_size=100,
@@ -373,6 +375,7 @@ def run_cellposeSAM(
     apply_clahe: bool = False,
     do_3D: bool | None = None,
     micron_per_z : float = 1.5,
+    min_z : int = 3,  # minimum number of z layers a cell must appear in to be kept (only for 3D stacks)
     **kwargs,
 ):
     """
@@ -391,6 +394,7 @@ def run_cellposeSAM(
         do_3D (bool | None): Whether to perform 3D segmentation in cellpose (default None, will use 2D segmentation + stitching).
         project_3d_to_2d (bool): Whether to project 3D image to 2D using max intensity projection before segmentation (default False).
         micron_per_z (float): Microns per z layer for 3D data (default 1.5).
+        min_z (int): Minimum number of z layers a cell must appear in to be kept (only for 3D stacks; default 3).
     **kwargs: Additional keyword arguments to pass to the Cellpose model.
     Returns:
         bool: True if 3D segmentation was performed, False if 2D segmentation was performed.
@@ -471,7 +475,7 @@ def run_cellposeSAM(
             **kwargs,
         )
     logger.info("SEGMENTATION COMPLETED")
-    ski.io.imsave(f"{output_dir}/{region}/masks.tif", masks.astype(np.uint16))
+    # ski.io.imsave(f"{output_dir}/{region}/masks.tif", masks.astype(np.uint16))
 
     logger.info(f"Cellpose segmentation completed for region {region}.")
     logger.info(
@@ -504,9 +508,17 @@ def run_cellposeSAM(
 
     # Filter out small cells by size < min_size:
     if is_3d: # TODO: 3D case use volume?  
-        logger.info(f"Filtering out cells with volume < {min_size}")
+        logger.info(f"Filtering out cell in stack with area < {min_size}")
         n_pre = len(gdf)
         gdf = gdf[gdf.geometry.area > min_size]
+        n_post = len(gdf)
+        logger.info(f"Filtered out {n_pre - n_post} cells; remaining cells: {n_post}")
+
+        logger.info(f"Filtering out cells that appear in fewer than {min_z} z layers")
+        eid_vc = gdf.groupby("EntityID")['z'].count()
+        keep_eids = eid_vc[eid_vc >= min_z].index
+        n_pre = len(gdf)
+        gdf = gdf[gdf["EntityID"].isin(keep_eids)].copy()
         n_post = len(gdf)
         logger.info(f"Filtered out {n_pre - n_post} cells; remaining cells: {n_post}")
     else: 

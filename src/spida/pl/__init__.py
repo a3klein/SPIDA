@@ -25,3 +25,13 @@ from .qc_plots import plot_violin_QC
 from .palettes import add_colors
 # from .palettes import register_spatial_cmaps
 from .transcript_plots import plot_hex_qc, plot_hex_clusters
+
+
+from matplotlib.backends.backend_pdf import PdfPages
+def save_cluster_panels_pdf(output_pdf, figs):
+    """
+    Save multiple figure-panels as one multi-page PDF.
+    """
+    with PdfPages(output_pdf) as pdf:
+        for fig in figs:
+            pdf.savefig(fig, bbox_inches="tight")

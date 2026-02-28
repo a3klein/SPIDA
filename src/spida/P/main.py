@@ -847,12 +847,13 @@ def transcript_qc_region(
     exp_name: str,
     reg_name: str,
     prefix_name: str = "default",
+    qc_shapes_key: str = "transcript_qc_shapes",
     hex_size: float = 30,
     hex_overlap: float = 0,
     gene_col: str = "gene",
     x_col: str = "x",
     y_col: str = "y",
-    min_transcripts: int | None = None,
+    min_transcripts: int | None = 100,
     min_density: float | None = None,
     plot: bool = False,
     image_path: Path | None = None,
@@ -873,6 +874,7 @@ def transcript_qc_region(
     adata_qc, grid, _ = run_transcript_qc(
         sdata,
         points_key=KEYS[POINTS_KEY],
+        qc_shapes_key=qc_shapes_key,
         hex_size=hex_size,
         hex_overlap=hex_overlap,
         gene_col=gene_col,
@@ -883,6 +885,7 @@ def transcript_qc_region(
     )
 
     if plot:
+        logger.info("PLOTTING TRANSCRIPT QC")
         if image_path is None:
             if image_store is None:
                 image_store = os.getenv("IMAGE_STORE_PATH")
@@ -900,7 +903,7 @@ def cluster_hexes_region(
     gene_col: str = "gene",
     x_col: str = "x",
     y_col: str = "y",
-    min_transcripts: int | None = None,
+    min_transcripts: int | None = 100,
     min_density: float | None = None,
     leiden_resolution: float = 1.0,
     min_cells: int = 10,
@@ -915,7 +918,7 @@ def cluster_hexes_region(
     import spatialdata as sd
     import geopandas as gpd
     from spida.P.transcript_qc import run_cluster_hexes, _obs_to_grid_geodf
-    from spida.pl import plot_hex_clusters
+    from spida.pl import plot_hex_clusters, save_cluster_panels_pdf
 
     if zarr_store is None:
         zarr_store = os.getenv("ZARR_STORAGE_PATH")
@@ -942,12 +945,12 @@ def cluster_hexes_region(
     )
 
     if plot:
+        logger.info("PLOTTING CLUSTER HEXES")
         if image_path is None:
             if image_store is None:
                 image_store = os.getenv("IMAGE_STORE_PATH")
             image_path = Path(f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/cluster_hexes.pdf")
             image_path.parent.mkdir(parents=True, exist_ok=True)
         grid = _obs_to_grid_geodf(adata_clustered.obs.copy())
-        fig1, fig2 = plot_hex_clusters(grid, adata_clustered)
-        fig1.savefig(image_path, bbox_inches="tight")
-        fig2.savefig(image_path.with_name("cluster_hexes_spatial.pdf"), bbox_inches="tight")
+        figs = plot_hex_clusters(grid, adata_clustered)
+        save_cluster_panels_pdf(image_path, figs)

@@ -264,6 +264,7 @@ def seg_to_vpt(
     Parameters:
     seg_out_dir (str): The directory containing the segmentation output files (gdf parquet file).
     region (str): The name of the region to process.
+    is_3d (bool): Whether the data is 3D or not. Default is False (2D).
     vpt_filepaths (dict): Additional file paths required for VPT processing, such as:
         - input_boundaries: Path to the input boundaries file (e.g., polygons.parquet).
         - output_boundaries: Path to save the converted boundaries file (e.g., cellpose_micron_space.parquet).
@@ -287,14 +288,25 @@ def seg_to_vpt(
     output_boundaries=vpt_filepaths.get(
         "output_boundaries", "cellpose_micron_space.parquet"
     )
-    _convert_geometry(
-        root_dir=root_dir,
-        output_dir=seg_out_dir,
-        region=region,
-        input_boundaries=input_boundaries,
-        output_boundaries=output_boundaries,
-        is_3d=is_3d
-    )
+    if not is_3d: 
+        _convert_geometry(
+            root_dir=root_dir,
+            output_dir=seg_out_dir,
+            region=region,
+            input_boundaries=input_boundaries,
+            output_boundaries=output_boundaries,
+        )
+
+    else: 
+        from .vpt_utils import _3d_convert_geometry
+        _3d_convert_geometry(
+            root_dir=root_dir,
+            output_dir=seg_out_dir,
+            region=region,
+            input_boundaries=input_boundaries,
+            output_boundaries=output_boundaries,
+        )
+        
 
     logger.info(f"Geometry conversion completed for region {region}.")
     logger.info(

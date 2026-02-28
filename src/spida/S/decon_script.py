@@ -51,8 +51,6 @@ def write_tiff(
     tifffile.imwrite(output_path, image, bigtiff=bigtiff)
 
 
-
-
 def project_down_2D(input_file, output_file: str | Path = None):
     """
     Project a 3D image to 2D by taking the maximum projection along the z-axis.
@@ -73,12 +71,35 @@ def project_down_2D(input_file, output_file: str | Path = None):
     # Save the 2D projected tile
     iio.imwrite(output_file, decon_img_2d)
 
+def project_to_3D(input_file, output_file: str | Path = None):
+    """
+    Project a 3D padded image (so with repetitive edge slices) to 3D by taking the middle {z_stack_size} slices along the z-axis.
+    """
+    if output_file is None:
+        output_file = input_file.with_suffix(".3d.tif")
+    decon_img = iio.imread(input_file)
+
+    if decon_img.ndim == 3: 
+        # Get the middle z_stack_size slices
+        start = (decon_img.shape[0] - z_stack_size) // 2
+        end = start + z_stack_size
+        decon_img_3d = decon_img[start:end]
+    else: 
+        decon_img_3d = decon_img.squeeze()
+
+    # Save the 3D projected tile
+    iio.imwrite(output_file, decon_img_3d)
+
+
 def continue_stalled_run(_file, **filter_args):
     """
     Continue processing stalled runs by checking for existing files.
     """
     decon_file = _file.with_suffix(".decon.tif")
-    projected_file = _file.with_suffix(".decon.2d.tif")
+    if is_3d and _zstackexpand:
+        projected_file = _file.with_suffix(".decon.3d.tif")
+    else:
+        projected_file = _file.with_suffix(".decon.2d.tif")
 
     if projected_file.exists():
         logger.info(f"{projected_file} previously processed, continuing")
@@ -96,6 +117,11 @@ def continue_stalled_run(_file, **filter_args):
     if not is_3d: 
         project_down_2D(decon_file, projected_file)
         logger.info(f"Saved 2D projected tile to {projected_file}")
+
+    if is_3d and _zstackexpand: 
+        project_to_3D(decon_file, projected_file)
+        logger.info(f"Saved 3D projected tile to {projected_file}")
+
     return projected_file
 
 
@@ -104,14 +130,20 @@ def fresh_run(_file, **filter_args):
     Perform a fresh run of deconvolution and projection for a given file.
     """
     decon_file = _file.with_suffix(".decon.tif")
-    projected_file = _file.with_suffix(".decon.2d.tif")
-
+    
     decon_file = deconwolf(_file, decon_path=decon_file, **filter_args)
 
     if not is_3d:
         # Project to 2D and save immediately to avoid memory overhead
+        projected_file = _file.with_suffix(".decon.2d.tif")
         project_down_2D(decon_file, projected_file)
         logger.info(f"Saved 2D projected tile to {projected_file}")
+
+    if is_3d and _zstackexpand: 
+        projected_file = _file.with_suffix(".decon.3d.tif")
+        project_to_3D(decon_file, projected_file)
+        logger.info(f"Saved 3D projected tile to {projected_file}")
+
     return projected_file
 
 
@@ -126,17 +158,20 @@ def decon_image(
     filter: str = "deconwolf",
     gpu: bool = True,
     z_step: float = 1.5,
+    z_stack_expand: bool = True,
+    z_stack_expand_slices: int = 3,
     continue_stalled: bool = False,
     thr_tiles: bool = True,
     plot_thr: bool = False,
     match_pre: bool = False,
     image_store: str | Path | None = None,
+    clear_tiles : bool = True, 
     **kwargs,
 ):
     """
     Deconvolve a large image by tiling it into smaller sections.
     """
-
+    
     logger.info(f"Starting deconvolution of image: {image_path}")
 
     if image_store is None:
@@ -169,6 +204,10 @@ def decon_image(
         is_3d = len(channel_image_path) > 1
 
         if is_3d:
+            global z_stack_size
+            global _zstackexpand
+            z_stack_size = len(channel_image_path)
+            _zstackexpand = z_stack_expand
             channel_image_path = sorted(channel_image_path)
             stack_3d = []
             for _fn in channel_image_path:
@@ -241,7 +280,20 @@ def decon_image(
         # save tiles 
         if is_3d:
             logger.info("Saving 3D tiles")
-            saved_files = save_tiles(tiles, sub_tile_info, output_dir) 
+            # Adding padding on the edges of the z-stack for deconwolf
+            def expand_z_stack(x):
+                exp_x = []
+                for z in range(len(x)): 
+                    if (z == 0) or (z == len(x) - 1): 
+                        for j in range(z_stack_expand_slices): 
+                            exp_x.append(x[0])
+                    else: 
+                        exp_x.append(x[z])
+                return np.asarray(exp_x)
+            if z_stack_expand:
+                saved_files = save_tiles(tiles, sub_tile_info, output_dir, func=expand_z_stack)
+            else: 
+                saved_files = save_tiles(tiles, sub_tile_info, output_dir)
         else: 
             logger.info("Saving 2D tiles")
             # applying 7 slice expansion
@@ -301,6 +353,7 @@ def decon_image(
 
         if is_3d:
             depth = int(large_img.shape[0])
+            suffix = ".decon.3d" if _zstackexpand else ".decon"
             logger.info(
                 f"Reconstructing deconvolved 3D image one z-slice at a time (depth={depth})"
             )
@@ -310,7 +363,7 @@ def decon_image(
                     output_dir=output_dir,
                     tile_info=sub_tile_info,
                     original_shape=large_img.shape,
-                    suffix=".decon",
+                    suffix=suffix,
                     match_pre=match_pre,
                     z_index=z,
                 )
@@ -323,6 +376,14 @@ def decon_image(
                 del z_slice
 
             logger.info(f"Saved {len(written)} stitched z-slices under {channel_image_path.parent}")
+            
+            # Optionally clear tile files after stitching to free up space
+            if clear_tiles: 
+                logger.info("Clearing tile files to free up space...")
+                for f in output_dir.glob(f"*{_channel}*"):
+                    f.unlink()
+                logger.info("Tile files cleared.")
+            
             return written
 
         # 2D path (single reconstructed image)
@@ -338,5 +399,12 @@ def decon_image(
         with tifffile.TiffWriter(channel_image_path.with_suffix(".decon.tif"), bigtiff=True) as tiff_writer:
             tiff_writer.write(deconed_image)
         logger.info(f"Saved deconvolved image to {channel_image_path.with_suffix('.decon.tif')}")
+
+        # Optionally clear tile files after stitching to free up space
+        if clear_tiles: 
+            logger.info("Clearing tile files to free up space...")
+            for f in output_dir.glob(f"*{_channel}*"):
+                f.unlink()
+            logger.info("Tile files cleared.")
 
         return deconed_image

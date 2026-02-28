@@ -33,6 +33,12 @@ def rename_reg_ucsd(x):
     reg_n = x.split("_")[1].split("Q0")[0]
     return reg_n
 
+#TODO: implement script inside spida
+def parse_list(arg: str) -> list:
+    """Parse list input separated by commas"""
+    if arg is None:
+        return None
+    return arg.split(",")
 
 
 @click.command("config-template")
@@ -67,6 +73,7 @@ def rename_reg_ucsd(x):
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
     help="Path to the config file for the project (if None, use environment variables)",)
+@click.option("--steps", type=parse_list, default="all", help="Which steps to configure (range: 1-5), (default: all)")
 def config_templates(
     experiment_name : str,
     region_name : str | None = None,
@@ -77,6 +84,7 @@ def config_templates(
     reg_n : str = None,
     exp_n : str = None,
     config_path : str | Path = None,
+    steps : str | list = "all",
 ):
     """ Configures the templates in the current directory for the provided EXPERIMENT_NAME and REGION_NAME, ran at the given LAB """
     click.echo("Configuring templates...")
@@ -87,6 +95,7 @@ def config_templates(
     click.echo(f"Output Directory: {output_dir}")
     click.echo(f"Template Directory: {template_dir}")
     click.echo(f"Config Path: {config_path if config_path is not None else 'Not provided, using environment variables'}")
+    click.echo(f"Steps: {steps}")
     
     if region_name is None and data_path is None: 
         print("If region_name is None, provide the path to the experiment directory to generate all regions")
@@ -157,6 +166,14 @@ def config_templates(
         #         cont = fin.read()
         #         cont = cont.format(OUTPUT_DIR=output_dir, EXP_N=exp_n, REG_N=reg_n)
         #     fout.write(cont)
+        if (len(steps) == 1) & (steps[0] == 'all'): 
+            step1, step2, step3, step4, step5 = "true", "true", "true", "true", "true"
+        else: 
+            step1 = "true" if "1" in steps else "false"
+            step2 = "true" if "2" in steps else "false"
+            step3 = "true" if "3" in steps else "false"
+            step4 = "true" if "4" in steps else "false"
+            step5 = "true" if "5" in steps else "false"
 
         # configure scripts:
         for proc_file in template_dir.glob("*.sh"):
@@ -176,6 +193,11 @@ def config_templates(
                         CUTOFFS_PATH=CUTOFFS_PATH,
                         CONFIG=CONFIG if config_path is not None else "",
                         OUTPUT_DIR=output_dir_2,
+                        STEP_1=step1,
+                        STEP_2=step2,
+                        STEP_3=step3,
+                        STEP_4=step4,
+                        STEP_5=step5,
                     )
                 fout.write(cont)
 

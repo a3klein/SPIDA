@@ -61,8 +61,8 @@ pixi run --frozen -e cellpose \
     --nuc_stain_name=DAPI \
     --cyto_stain_name=None \
     --flow_threshold=0 \
-    --cellprob_threshold=-4 \
-    --tile_norm_blocksize=0 \
+    --cellprob_threshold=-2 \
+    --tile_norm_blocksize=2960 \
 
 echo -e "\n\tLoading Segmentation - {REG_N} - {EXP_N}\n"
 # Loading in the segmentation into the zarr store
@@ -74,6 +74,7 @@ pixi run --frozen -e preprocessing \
     {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_nuc \
     --type vpt \
     --prefix_name cellpose_nuc \
+    --transcript-qc \
     --plot
 
 echo -e "\n\tFiltering Cells - {REG_N} - {EXP_N}\n"

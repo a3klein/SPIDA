@@ -6,7 +6,7 @@ with warnings.catch_warnings():
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 
-plt.rcParams["axes.facecolor"] = "black"
+# plt.rcParams["axes.facecolor"] = "black"
 
 
 def plot_images(

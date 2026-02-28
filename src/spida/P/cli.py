@@ -839,14 +839,15 @@ def call_region_tz(
 @click.argument("exp_name", type=str)
 @click.argument("reg_name", type=str)
 @click.option("--prefix_name", type=str, default="default")
-@click.option("--hex_size", type=float, default=30, help="Hex size (distance center->vertex)")
-@click.option("--hex_overlap", type=float, default=0, help="Hex overlap")
-@click.option("--gene_col", type=str, default="gene", help="Gene column name")
-@click.option("--x_col", type=str, default="x", help="X coordinate column")
-@click.option("--y_col", type=str, default="y", help="Y coordinate column")
-@click.option("--min_transcripts", type=int, default=None, help="Minimum transcripts per hex")
-@click.option("--min_density", type=float, default=None, help="Minimum density (per µm²)")
-@click.option("--plot", is_flag=True, help="Whether to plot the results")
+@click.option("--qc_shapes_key", type=str, default="transcript_qc_shapes", help="Key to store the QC shapes in the spatialdata object (default: 'transcript_qc_shapes')")
+@click.option("--hex_size", type=float, default=30, help="Hex size (distance center->vertex) (default: 30)")
+@click.option("--hex_overlap", type=float, default=0, help="Hex overlap (default: 0)")
+@click.option("--gene_col", type=str, default="gene", help="Gene column name (default: 'gene')")
+@click.option("--x_col", type=str, default="x", help="X coordinate column (default: 'x')")
+@click.option("--y_col", type=str, default="y", help="Y coordinate column (default: 'y')")
+@click.option("--min_transcripts", type=int, default=100, help="Minimum transcripts per hex (default: 100)")
+@click.option("--min_density", type=float, default=None, help="Minimum density (per µm²) (default: None)")
+@click.option("--plot", is_flag=True, help="Whether to plot the results (default: False)")
 @click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
 @click.pass_context
@@ -855,12 +856,13 @@ def transcript_qc(
     exp_name: str,
     reg_name: str,
     prefix_name: str = "default",
+    qc_shapes_key: str = "transcript_qc_shapes",
     hex_size: float = 30,
     hex_overlap: float = 0,
     gene_col: str = "gene",
     x_col: str = "x",
     y_col: str = "y",
-    min_transcripts: int = None,
+    min_transcripts: int = 100,
     min_density: float = None,
     plot: bool = False,
     image_store: Path = None,
@@ -871,6 +873,7 @@ def transcript_qc(
         exp_name=exp_name,
         reg_name=reg_name,
         prefix_name=prefix_name,
+        qc_shapes_key=qc_shapes_key,
         hex_size=hex_size,
         hex_overlap=hex_overlap,
         gene_col=gene_col,
@@ -897,7 +900,7 @@ def transcript_qc(
 @click.option("--gene_col", type=str, default="gene", help="Gene column name")
 @click.option("--x_col", type=str, default="x", help="X coordinate column")
 @click.option("--y_col", type=str, default="y", help="Y coordinate column")
-@click.option("--min_transcripts", type=int, default=None, help="Minimum transcripts per hex")
+@click.option("--min_transcripts", type=int, default=100, help="Minimum transcripts per hex")
 @click.option("--min_density", type=float, default=None, help="Minimum density (per µm²)")
 @click.option("--leiden_resolution", type=float, default=1.0, help="Leiden resolution")
 @click.option("--min_cells", type=int, default=10, help="Min cells per gene")
@@ -918,7 +921,7 @@ def cluster_hexes(
     gene_col: str = "gene",
     x_col: str = "x",
     y_col: str = "y",
-    min_transcripts: int = None,
+    min_transcripts: int = 100,
     min_density: float = None,
     leiden_resolution: float = 1.0,
     min_cells: int = 10,

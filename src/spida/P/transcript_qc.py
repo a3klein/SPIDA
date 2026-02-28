@@ -233,6 +233,7 @@ def cluster_hexes(
         orig_hexes, adata_hex.shape[0], orig_genes, adata_hex.shape[1]
     )
 
+    adata_hex.layers["counts"] = adata_hex.X.copy()
     sc.pp.normalize_total(adata_hex, target_sum=1e4)
     sc.pp.log1p(adata_hex)
     sc.pp.regress_out(adata_hex, ["tz_count"])
@@ -258,6 +259,8 @@ def run_transcript_qc(
     min_transcripts: int | None = None,
     min_density: float | None = None,
     table_key: str | None = None,
+    qc_shapes_key: str = "transcript_qc_shapes",
+    persist_qc_shapes: bool = True,
     force_recompute: bool = False,
 ):
     adata_hex, table_key = get_or_create_hex_adata(
@@ -276,6 +279,32 @@ def run_transcript_qc(
         min_transcripts=min_transcripts,
         min_density=min_density,
     )
+
+    if persist_qc_shapes and hasattr(sdata, "__setitem__"):
+        try:
+            # Override existing on-disk element when available.
+            if hasattr(sdata, "elements_paths_on_disk") and hasattr(
+                sdata, "delete_element_from_disk"
+            ):
+                shapes_path = f"shapes/{qc_shapes_key}"
+                if shapes_path in sdata.elements_paths_on_disk():
+                    sdata.delete_element_from_disk(qc_shapes_key)
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                from spatialdata.models import ShapesModel
+            grid_shapes = ShapesModel.parse(grid)
+            sdata[qc_shapes_key] = grid_shapes
+            if hasattr(sdata, "write_element"):
+                sdata.write_element(qc_shapes_key)
+        except Exception as e:
+            logger.warning(
+                "Failed to persist transcript QC shapes '%s': %s",
+                qc_shapes_key,
+                e,
+                exc_info=True,
+            )
+
     return adata_qc, grid, table_key
 
 def run_cluster_hexes(
