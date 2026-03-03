@@ -24,7 +24,7 @@ Available environments:
 
 ### 2. Configure Your Project
 
-Create a `.env` file in the repository root or a `.json` file to store project configurations. See [Quick Start Guide](./docs/QUICK_START.md) for details.
+Create a `.env` file in the repository root or a `.json` file to store project configurations. See [Configurations Guide](./configuration.md) for details.
 
 ### 3. Run Commands
 
@@ -39,12 +39,12 @@ pixi run -e preprocessing spida-{module} {command} {args}
 ## Documentation
 
 - **[Quick Start Guide](./docs/QUICK_START.md)**: Get running in 5 minutes
-- **[Configuration Guide](./docs/CONFIGURATION.md)**: Setting up a config file for your project
+- **[Configuration Guide](./configuration.md)**: Setting up a config file for your project
 - **[S Module (Spatial Processing)](./docs/S_USAGE.md)**: IO, deconvolution, segmentation, ...
 - **[P Module (Preprocessing)](./docs/P_USAGE.md)**: cell level QC + clustering, transcript level analysis
 - **[I Module (Integration)](./docs/I_USAGE.md)**: Annotation, imputation, and integration
 - **[D Module (Distribution)](./docs/D_USAGE.md)**: Distribution Analysis (coming soon...)
-- **[Deconvolution Setup](./docs/DECONVOLUTION.md)**: Configure deconwolf for your imaging setup
+- **[Deconvolution Setup](./deconvolution.md)**: Configure deconwolf for your imaging setup
 
 ## Module Overview
 
@@ -95,9 +95,9 @@ SPIDA/
 
 ## Advanced Topics
 
-- [Configuration Reference](./docs/CONFIG_REFERENCE.md): All available configuration options
-- [Deconvolution Setup](./docs/DECONVOLUTION.md): Configure deconwolf for your imaging setup
-- [Architecture Overview](./docs/ARCHITECTURE.md): Understand the system design
+- [Configuration Reference](./configuration.md): All available configuration options
+- [Deconvolution Setup](./deconvolution.md): Configure deconwolf for your imaging setup
+<!-- - [Architecture Overview](./docs/ARCHITECTURE.md): Understand the system design -->
 
 ## Support
 
