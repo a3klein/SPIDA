@@ -34,6 +34,18 @@ DEFAULT_CONFIG = {
     "CUTOFFS_PATH": "/path/to/cutoffs.json",
 }
 
+CONFIG_DESCRIPTIONS = {
+    "RUST_BIN_PATH": "Path to the Rust binary used by SPIDA.",
+    "VPT_BIN_PATH": "Path to the VPT binary used by SPIDA.",
+    "DECONWOLF_CONFIG": "Path to the Deconwolf configuration file.",
+    "ZARR_STORAGE_PATH": "Root directory for Zarr stores.",
+    "PROCESSED_ROOT_PATH": "Root directory for processed outputs.",
+    "SEGMENTATION_OUT_PATH": "Directory for segmentation outputs.",
+    "ANNDATA_STORE_PATH": "Directory for AnnData (.h5ad) storage.",
+    "ANNOTATION_STORE_PATH": "Directory for annotation artifacts/labels.",
+    "IMAGE_STORE_PATH": "Directory for image outputs/exports.",
+    "CUTOFFS_PATH": "Path to QC/cutoffs configuration file.",
+}
 
 def _normalize_config_keys(config: dict) -> dict:
     """Normalize known alias keys into canonical names."""
@@ -317,9 +329,11 @@ def display_config(
     config_path : str | Path = ".env",
 ):
     """Displays the current configuration settings from CONFIG_PATH."""
-    config = load_config(config_path)
+    config = _normalize_config_keys(load_config(config_path))
     for key, value in config.items():
-        click.echo(click.style(key, fg='magenta', bold=True) + f": {click.style(value, fg='green')}")
+        desc = CONFIG_DESCRIPTIONS.get(key, "")
+        suffix = f" — {desc}" if desc else ""
+        click.echo(click.style(key, fg='magenta', bold=True) + f": {click.style(value, fg='green')}{suffix}")
 
 
 # Custom Click Group to preload config settings for all subcommands in group

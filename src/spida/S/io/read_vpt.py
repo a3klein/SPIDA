@@ -28,6 +28,9 @@ def _get_polygons(
     if geo_df.geometry.name != GEOMETRY_COL:
         geo_df = geo_df.rename_geometry(GEOMETRY_COL)
     # TODO: This works only for 2D, commenting out for now, but need to think about propagating 3D flag here. 
+    # : What I want 
+    # - if 2D then keep only 0 depth (which should be trivial)
+    # - if 3D then keep the maximal z stack geometry by cell size (need a way to resolve overlaps, perhaps by looking at pixel assignment across z stacks).
     # geo_df = geo_df[
     #     geo_df[DEFAULT_PRESET["geom_depth_col"]] == 0
     # ]  # Avoid duplicate boundaries on all z-levels

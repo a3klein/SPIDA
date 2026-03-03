@@ -24,7 +24,7 @@ from spida.utilities.tiling import (
 
 from cellpose import models, core, io  # type: ignore
 
-io.logger_setup()
+# io.logger_setup() # TODO: Maybe put this in a temporary file since this creates race conditions between multiple runs. 
 load_dotenv()
 
 logger = logging.getLogger(__package__)
@@ -347,19 +347,21 @@ def masks_to_geodataframe(
     with mp.Pool(max_cpu) as pool:
         geo_list = list(tqdm(pool.map(parallel_func, tiles), total=len(tiles)))
 
-    logger.info("Finished Conversion")
-
     # Merge all tiles into global coordinates
     merged_polygons = merge_tile_polygons(tile_info, geo_list, geom_col="Geometry")
+
+    logger.info("Finished Conversion")
+
     return merged_polygons
 
-    # the final dissolve step is only in the 2D case
+    # Took the final dissolve step outside of the merge tiles because it is N-D dependent
     # final_polygons = merged_polygons.dissolve(by="ID").reset_index()
-    # # Optional: merge overlapping polygons across tile boundaries
+    
+    # Optional: merge overlapping polygons across tile boundaries
+    # --> Does not work with 3D stacks, however dissolve is already doing a good job of merging across tile boundaries, so may not be necessary.
     # final_polygons = merge_overlapping_polygons(merged_polygons)
 
     # return final_polygons
-
 
 def run_cellposeSAM(
     root_dir: str,
@@ -499,6 +501,9 @@ def run_cellposeSAM(
         gdf['ZLevel'] = gdf['z'] * micron_per_z  # Assuming 1.5 microns per z layer
         gdf['UID'] = gdf['tile_id'].astype(str) + '-' + gdf['ID'].astype(str)
         gdf['EntityID'] = pd.factorize(gdf['UID'])[0] + 1  # Unique integer ID for each cell, starting from 1
+        # dissolving to remove overlap artifacts
+        gdf['gz_id'] = gdf['ID'].astype(str) + "_" + gdf['z'].astype(str)
+        gdf = gdf.dissolve(by="gz_id").reset_index().drop(columns=['gz_id'])
     else: 
         gdf = gdf.dissolve(by="ID").reset_index()
 

@@ -185,7 +185,8 @@ def decon_image(
         image_path = Path(image_path)
 
     if "{input}" in data_org_path:
-        data_org_path = data_org_path.format(input=input)
+        inp = image_path.parents[2] / 'raw'
+        data_org_path = data_org_path.format(input=inp)
 
     if isinstance(output_dir, str):
         output_dir = Path(output_dir)

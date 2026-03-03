@@ -17,7 +17,7 @@ from ALLCools.integration import confusion_matrix_clustering # type: ignore
 from ALLCools.integration.seurat_class import SeuratIntegration  # type: ignore
 from sklearn.decomposition import TruncatedSVD
 
-from ..utilities._ad_utils import normalize_adata
+from ..utilities.ad_utils import normalize_adata
 import time
 
 load_dotenv()
@@ -34,7 +34,7 @@ def _downsample_reference(
     Remove clusters from the reference that have less than min_cluster_size cells.
     Downsample larger clusters that have more than max_cluster_size cells.
     """
-    from ..utilities._ad_utils import _downsample_ref_clusters, _remove_small_clusters
+    from ..utilities.ad_utils import _downsample_ref_clusters, _remove_small_clusters
     if min_cluster_size > 0: 
         ref_adata = _remove_small_clusters(ref_adata, cluster_col, min_cells=min_cluster_size)
     if max_cluster_size > 0:
@@ -76,7 +76,7 @@ def _get_joined_deg_list(
     """
     Running DEG analysis on both the reference and query datasets to get a joint list of genes to use for integration.
     """
-    from ..utilities._degs import call_degs_by_celltype, summarize_deg_results
+    from ..utilities.degs import call_degs_by_celltype, summarize_deg_results
 
 
     verbosity = False
@@ -338,7 +338,7 @@ def _joint_embeddings(
     """
     For calculating the joint embeddings from the integrated PCA space
     """
-    from ..P.setup_adata import _calc_embeddings
+    from ..utilities.ad_utils import _calc_embeddings
     return _calc_embeddings(adata, use_rep=use_rep, key_added=key_added, leiden_res=leiden_res, knn=knn, min_dist=min_dist, **kwargs)
 
 def _clust2clust_transfer(

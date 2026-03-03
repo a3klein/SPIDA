@@ -467,7 +467,7 @@ def resolvi_cluster_region(
     image_path (Path, optional): Path to save the plot. If None, uses a default path.
     """
     from spida.P.scvi_toolkit import resolvi_cluster
-    from spida.P.setup_adata import _calc_embeddings
+    from spida.utilities.ad_utils import _calc_embeddings
 
     logger.info(
         "RESOLVI CLUSTERING, EXPERIMENT %s, REGION %s, PREFIX %s"
@@ -690,7 +690,7 @@ def resolvi_dataset(
     This function runs resolvi on a dataset level object. Takes more time and memory than resolvi_region.
     """
     from spida.P.scvi_toolkit import resolvi_cluster
-    from spida.P.setup_adata import _calc_embeddings
+    from spida.utilities.ad_utils import _calc_embeddings
     import anndata as ad
 
     model_kwargs = model_kwargs['model_kwargs']
