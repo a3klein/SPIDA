@@ -3,6 +3,7 @@ import warnings
 import logging
 from pathlib import Path
 
+import pandas as pd
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     import spatialdata as sd
@@ -438,6 +439,7 @@ def load_proseg_segmentation_v3(
     proseg_path: str,
     prefix_name: str = "proseg",
     zarr_name: str = "proseg_outputs.zarr",
+    cell_meta_name : str = "cell_metadata_with_signals.csv",
     qc_regions=None,
     qc_table_key: str | None = None,
     qc_shapes_key: str | None = None,
@@ -471,6 +473,13 @@ def load_proseg_segmentation_v3(
     )
     transformations = {"global": affine}
 
+    cell_meta_path = f"{proseg_path}/{reg_name}/{cell_meta_name}"
+    if Path(cell_meta_path).exists():
+        cell_meta = pd.read_csv(cell_meta_path)
+        logger.info(f"Loaded cell metadata from {cell_meta_path} with shape {cell_meta.shape}")
+    else: 
+        logger.warning(f"Cell metadata file not found at {cell_meta_path}. Proceeding without loading cell metadata.")
+        cell_meta = None
     sdata_proseg = sd.read_zarr(f"{proseg_path}/{reg_name}/{zarr_name}")
 
     points = {}
@@ -485,6 +494,7 @@ def load_proseg_segmentation_v3(
     tables = {}
     tables[KEYS[TABLE_KEY]] = _get_table_v3(
         sdata_proseg["table"].copy(),
+        cell_meta,
         reg_name,
         exp_name,
         f"{exp_name}_{reg_name}",

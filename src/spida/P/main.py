@@ -227,8 +227,8 @@ def setup_adata_region(
             exp_name, reg_name, adata, KEYS[TABLE_KEY], suffix=suffix, zarr_store=zarr_store
         )  # double the storage but allows for iteration on filts.
     except Exception as e:
-        logger.warning("Failed to assign new table, using backup instead")
         logger.warning(f"Error: {e}", exc_info=True)
+        logger.warning("Failed to assign new table, using backup instead")
         _backup_adata(exp_name, reg_name, adata, f"{KEYS[TABLE_KEY]}{suffix}", zarr_store=zarr_store)
 
     logger.info("DONE SETUP")

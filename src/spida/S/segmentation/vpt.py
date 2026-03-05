@@ -54,7 +54,7 @@ def _cli_segmentation(
     """
 
     segmentation_command = f"""
-        vpt --verbose --processes 16 \n
+        vpt --verbose --processes 32 \n
             run-segmentation \n
             --segmentation-algorithm {CONFIG_FILE} \n
             --input-images {root_dir}/{region}/images/ \n
@@ -87,7 +87,7 @@ def _cli_partition_transcripts(
 
     ### VPT command to partition transcripts
     partition_transcripts_command = f"""
-        vpt --verbose --processes 16 \n
+        vpt --verbose --processes 32 \n
             partition-transcripts \n
             --input-boundaries {output_dir}/{region}/{input_boundaries} \n
             --input-transcripts {root_dir}/{region}/{input_transcripts} \n
@@ -121,7 +121,7 @@ def _cli_get_metadata(
     """
 
     metadata_command = f"""
-        vpt --verbose --processes 16 \n
+        vpt --verbose --processes 32 \n
             derive-entity-metadata \n
             --input-boundaries {output_dir}/{region}/{input_boundaries} \n
             --input-entity-by-gene {output_dir}/{region}/{input_entity_by_gene} \n
@@ -137,7 +137,7 @@ def _cli_get_metadata(
 
     ### VPT sum the signals
     sum_signals_command = f"""
-        vpt --verbose --processes 16 \n
+        vpt --verbose --processes 32 \n
             sum-signals \n
             --input-images {root_dir}/{region}/images/ \n
             --input-boundaries {output_dir}/{region}/{input_boundaries} \n
@@ -160,6 +160,38 @@ def _cli_get_metadata(
     pd.merge(metadata, signals, left_on="EntityID", right_on="EntityID").to_csv(
         f"{output_dir}/{region}/{output_metadata}", index=True
     )
+
+
+def _cli_sum_signals(
+    root_dir: str,
+    output_dir: str,
+    region: str,
+    input_boundaries: str = "cellpose_micron_space.parquet",
+    output_signals: str = "sum_signals.csv",
+): 
+    """
+    Run the VPT command to sum signals in a specified region.
+    """
+
+    sum_signals_command = f"""
+        vpt --verbose --processes 32 \n
+            sum-signals \n
+            --input-images {root_dir}/{region}/images/ \n
+            --input-boundaries {output_dir}/{region}/{input_boundaries} \n
+            --input-micron-to-mosaic {root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv \n
+            --output-csv {output_dir}/{region}/{output_signals} \n
+            --overwrite
+
+        """
+
+    logger.info(f"Running VPT sum signals command: {sum_signals_command}")
+
+    ret = subprocess.run(sum_signals_command.split(), capture_output=True, check=True)
+    if ret.returncode != 0:
+        raise ValueError("VPT failed to sum signals.")
+    signals = pd.read_csv(f"{output_dir}/{region}/{output_signals}", index_col=0)
+    
+    return signals
 
 
 def run_vpt(

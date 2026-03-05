@@ -6,6 +6,10 @@ import warnings
 import pathlib
 import subprocess
 import re
+import gzip
+
+import pandas as pd
+import geopandas as gpd
 
 load_dotenv()
 logger = logging.getLogger(__package__)
@@ -129,10 +133,12 @@ def _execute_cli_proseg_v3(root_dir: str, output_dir: str, region: str, **proseg
     # The proseg command to run
     proseg_run_cmd = f"""
         proseg --merscope \
-        {root_dir}/{region}/detected_transcripts.csv \
-        --output-path {output_dir}/{region} \
-        --output-spatialdata proseg_outputs.zarr \
-        --output-cell-polygons cell-polygons.geojson.gz \
+        {root_dir}/{region}/detected_transcripts.csv \n
+        --output-path {output_dir}/{region} \n
+        --output-spatialdata proseg_outputs.zarr \n
+        --output-cell-polygons cell-polygons.geojson.gz \n
+        --output-cell-polygon-layers cell-polygons-layers.geojson.gz \n
+        --output-cell-metadata cell-metadata.csv.gz \n
         """
     for _key, _val in proseg_params.items():
         if _key not in proseg_args:
@@ -184,6 +190,76 @@ def run_proseg(root_dir: str, output_dir: str, region: str, rust_bin_path=None, 
     print(ret.stdout.decode("utf-8"))
 
 
+def _proseg_3d_to_vpt_parquet(shapes_3d: gpd.GeoDataFrame, micron_per_z: float, output_path: str):
+    shapes_3d = shapes_3d.rename_geometry("Geometry")
+    shapes_3d['z'] = shapes_3d['layer']
+    shapes_3d['ID'] = shapes_3d['cell']
+    shapes_3d['ZIndex'] = shapes_3d['layer']
+    shapes_3d['Zlevel'] = shapes_3d['ZIndex'] * micron_per_z
+    shapes_3d['EntityID'] = pd.factorize(shapes_3d['ID'])[0] + 1
+    shapes_3d.to_parquet(output_path, index=False)
+
+def add_signals_meta_to_proseg(
+    root_dir: str | pathlib.Path,
+    proseg_dir: str | pathlib.Path,
+    reg_name: str,
+    shapes_filename: str = "cell-polygons-layers.geojson.gz",
+    cell_meta_filename: str = "cell-metadata.csv.gz",
+    micron_per_z: float = 1.5,
+    vpt_bin_path: str | pathlib.Path | None = None
+):
+    """
+    Add the sum signals metadata to the proseg cell metadata output.
+    This is necessary for downstream analysis and visualization in VPT.
+    """
+    # from spida.S.segmentation.vpt_utils import read_micron_to_mosaic_transform, transform_geoms, update_geometry
+    # import geopandas as gpd
+    # import pandas as pd
+    from spida.S.segmentation.vpt import _add_vpt_binary, _cli_sum_signals    
+    _add_vpt_binary(vpt_bin_path=vpt_bin_path)
+
+    if isinstance(proseg_dir, str):
+        proseg_dir = pathlib.Path(proseg_dir)
+
+    # Get paths and make sure they exist
+    shapes_3d_path = proseg_dir / reg_name / shapes_filename
+    cell_meta_path = proseg_dir / reg_name / cell_meta_filename
+    assert shapes_3d_path.exists(), f"Shapes file not found at {shapes_3d_path}"
+    assert cell_meta_path.exists(), f"Cell metadata file not found at {cell_meta_path}"
+    # Read in the shapes and cell metadata
+    with gzip.open(shapes_3d_path, "rb") as f:
+        shapes_3d = gpd.read_file(f)
+    logger.info(f"Read shapes from {shapes_3d_path} with shape {shapes_3d.shape}")
+    with gzip.open(cell_meta_path, "rt") as f:
+        cell_meta = pd.read_csv(f)
+    logger.info(f"Read cell metadata from {cell_meta_path} with shape {cell_meta.shape}")
+
+    # Convert proseg 3D shapes to vpt parquet format
+    _proseg_3d_to_vpt_parquet(
+        shapes_3d=shapes_3d,
+        micron_per_z=micron_per_z,
+        output_path= proseg_dir / reg_name / "proseg_polygons.parquet"
+    )
+    logger.info(f"Converted proseg 3D shapes to vpt parquet format at {proseg_dir / reg_name / 'proseg_polygons.parquet'}")
+    
+    # Sum signals 
+    signals = _cli_sum_signals(
+       root_dir = root_dir,
+       output_dir = proseg_dir,
+       region = reg_name,
+       input_boundaries = "proseg_polygons.parquet",
+       output_signals = "sum_signals.csv",
+    )
+
+    # Merge the signals with the cell metadata and save
+    signals.index.name = 'EntityID'
+    if (cell_meta.index.astype(int) == 0).any(): 
+        signals.index = signals.index.astype(int) - 1
+    cell_meta = cell_meta.merge(signals, left_on="cell", right_index=True).copy()
+    cell_meta.to_csv(proseg_dir / reg_name / "cell_metadata_with_signals.csv", index=False)
+    logger.info(f"Merged signals with cell metadata and saved to {proseg_dir / reg_name / 'cell_metadata_with_signals.csv'}")
+
+@DeprecationWarning
 def align_proseg_transcripts(
     exp_name: str,
     reg_name: str,
@@ -422,7 +498,7 @@ def align_proseg_transcripts(
     merge_polygons.to_file(save_dir / merged_cell_polygons_fname, driver="GeoJSON")
     merge_transcripts.to_csv(save_dir / merged_transcripts_fname)
 
-
+@DeprecationWarning
 def filt_to_ids(meta_path, geom_path, tz_path, cbg_path):
     """
     Filter metadata and geometry to only include cells with IDs in the provided list.

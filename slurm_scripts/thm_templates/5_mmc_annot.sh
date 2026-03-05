@@ -37,32 +37,6 @@ pixi --version
 
 pixi install --frozen -e mmc
 
-# PREFIX=cellpose_nuc
-# echo -e "\n\tRunning MapMyCells Annotations - Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
-# pixi run --frozen -e mmc \
-#     spida-mmc {CONFIG} \
-#     mmc-annotation-region \
-#     {EXPERIMENT} \
-#     {REGION} \
-#     ${{PREFIX}} \
-#     hippocampus-franjic-deep \
-#     --suffix _filt \
-#     --mmc_store_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/mmc \
-#     --n_cpu 8 \
-#     --bootstrap_factor 0.9 \
-#     --bootstrap_iterations 500 \
-#     --plot \
-#     --filter_annotations \
-#     --palette_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/reference/Franjic/color_palette.json \
-#     --l1_thr=0.75 \
-#     --l2_thr=0.75 \
-#     --l3_thr=0.75 \
-#     --l4_thr=0.5 \
-#     --l1_count_thr=20 \
-#     --l2_count_thr=20 \
-#     --l3_count_thr=20
-# sleep 2
-
 
 PREFIX=cellpose_cell
 echo -e "\n\tRunning MapMyCells Annotations - Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
@@ -90,58 +64,6 @@ pixi run --frozen -e mmc \
     --l3_count_thr=20
 sleep 2
 
-# PREFIX=cellpose_align
-# echo -e "\n\tRunning MapMyCells Annotations - Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
-# pixi run --frozen -e mmc \
-#     spida-mmc {CONFIG} \
-#     mmc-annotation-region \
-#     {EXPERIMENT} \
-#     {REGION} \
-#     ${{PREFIX}} \
-#     hippocampus-franjic-deep \
-#     --suffix _filt \
-#     --mmc_store_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/mmc \
-#     --n_cpu 8 \
-#     --bootstrap_factor 0.9 \
-#     --bootstrap_iterations 500 \
-#     --plot \
-#     --filter_annotations \
-#     --palette_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/reference/Franjic/color_palette.json \
-#     --l1_thr=0.75 \
-#     --l2_thr=0.75 \
-#     --l3_thr=0.75 \
-#     --l4_thr=0.5 \
-#     --l1_count_thr=20 \
-#     --l2_count_thr=20 \
-#     --l3_count_thr=20
-# sleep 2
-
-# PREFIX=proseg_nuc
-# echo -e "\n\tRunning MapMyCells Annotations - Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
-# pixi run --frozen -e mmc \
-#     spida-mmc {CONFIG} \
-#     mmc-annotation-region \
-#     {EXPERIMENT} \
-#     {REGION} \
-#     ${{PREFIX}} \
-#     hippocampus-franjic-deep \
-#     --suffix _filt \
-#     --mmc_store_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/mmc \
-#     --n_cpu 8 \
-#     --bootstrap_factor 0.9 \
-#     --bootstrap_iterations 500 \
-#     --plot \
-#     --filter_annotations \
-#     --palette_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/reference/Franjic/color_palette.json \
-#     --l1_thr=0.95 \
-#     --l2_thr=0.75 \
-#     --l3_thr=0.75 \
-#     --l4_thr=0.5 \
-#     --l1_count_thr=20 \
-#     --l2_count_thr=20 \
-#     --l3_count_thr=20
-# sleep 2
-
 PREFIX=proseg_cell
 echo -e "\n\tRunning MapMyCells Annotations - Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
 pixi run --frozen -e mmc \
@@ -166,29 +88,3 @@ pixi run --frozen -e mmc \
     --l1_count_thr=20 \
     --l2_count_thr=20 \
     --l3_count_thr=20
-
-# sleep 2
-# PREFIX=proseg_align
-# echo -e "\n\tRunning MapMyCells Annotations - Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
-# pixi run --frozen -e mmc \
-#     spida-mmc {CONFIG} \
-#     mmc-annotation-region \
-#     {EXPERIMENT} \
-#     {REGION} \
-#     ${{PREFIX}} \
-#     hippocampus-franjic-deep \
-#     --suffix _filt \
-#     --mmc_store_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/mmc \
-#     --n_cpu 8 \
-#     --bootstrap_factor 0.9 \
-#     --bootstrap_iterations 500 \
-#     --plot \
-#     --filter_annotations \
-#     --palette_path /home/x-aklein2/projects/aklein/BICAN/HIPP/data/reference/Franjic/color_palette.json \
-#     --l1_thr=0.75 \
-#     --l2_thr=0.75 \
-#     --l3_thr=0.75 \
-#     --l4_thr=0.5 \
-#     --l1_count_thr=20 \
-#     --l2_count_thr=20 \
-#     --l3_count_thr=20

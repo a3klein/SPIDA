@@ -58,17 +58,17 @@ else
     echo "Step 4: Skipping PROSEG Segmentation."
 fi
 
-if [[ $DO_5 == "true" ]]; then
-    echo "Step 5: Starting MMC Annotations post dependencies..."
-    if [[ -v jid5 ]]; then
-        jid10=$(sbatch --dependency=afterok:$jid5 5_mmc_annot.sh | awk '{{print $4}}')
-    else
-        jid10=$(sbatch 5_mmc_annot.sh | awk '{{print $4}}')
-    fi
-    echo "Submitted MMC Annotations script with job ID: $jid10"
-else
-    echo "Step 5: Skipping MMC Annotations."
-fi
+# if [[ $DO_5 == "true" ]]; then
+#     echo "Step 5: Starting MMC Annotations post dependencies..."
+#     if [[ -v jid5 ]]; then
+#         jid10=$(sbatch --dependency=afterok:$jid5 5_mmc_annot.sh | awk '{{print $4}}')
+#     else
+#         jid10=$(sbatch 5_mmc_annot.sh | awk '{{print $4}}')
+#     fi
+#     echo "Submitted MMC Annotations script with job ID: $jid10"
+# else
+#     echo "Step 5: Skipping MMC Annotations."
+# fi
 
 # jid4=$(sbatch --exclude=g004 --dependency=afterok:$jid1:$jid2:$jid3 3_cellpose_cell.sh | awk '{{print $4}}')
 # echo "Submitted Cellpose Cell segmentation script with job ID: $jid4"

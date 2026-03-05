@@ -52,7 +52,9 @@ def run_setup(
     adata.layers['volume_norm'] = scp.csr_matrix(adata.X / adata.obs['volume'].values[:, np.newaxis])
     adata.X = adata.layers['volume_norm'].copy()
     normalize_adata(adata, layer='volume_norm', log1p=True)
-    _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35)
+    _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35, consensus_cluster=True)
+
+    sc.tl.rank_gene_groups(adata, groupby="leiden", method="t-test_overestim_var")
     
     return adata
 

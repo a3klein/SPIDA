@@ -1,8 +1,12 @@
+import logging
 import numpy as np
 import pandas as pd
 import anndata as ad
 import scanpy as sc
+import harmonypy as hm
 import scipy.sparse as sp
+
+logger = logging.getLogger(__name__)
 
 
 def dump_embedding(
@@ -72,14 +76,13 @@ def normalize_adata(
     if log1p: 
         sc.pp.log1p(adata)
 
-#TODO: @a3klein Look to ALLCools consensus clustering for ideas on how to improve clustering 
-# Those functions are backend, I should expose them as importable functions from spida.P in general.
+#TODO: expose these functions through spida utilities
 def _calc_embeddings(
     adata : ad.AnnData, 
     layer : str | None = None,
     use_rep : str | None = None, 
     key_added : str = "X_",
-    leiden_res : int = 0.7,
+    leiden_res : int = 1,
     min_dist=0.25,
     knn:int=25,
     p_cutoff: float = 0.1,
@@ -88,6 +91,7 @@ def _calc_embeddings(
     batch_key: str | list[str] = "dataset_id",
     harmony_nclust: int = 20,
     max_iter_harmony: int = 20,
+    consensus_cluster: bool = True,
 ): 
     """ Calculate the UMAP and tSNE embeddings for the AnnData object and given layer"""
     if (use_rep is not None) and (layer is not None): 
@@ -123,14 +127,18 @@ def _calc_embeddings(
         for i, _key in enumerate(batch_key):
             adata.obs[_key] = adata.obs[_key].astype("category")
             basis = f"{key_added}pca" if use_rep is None else use_rep
-            sce.pp.harmony_integrate(adata,
-                                    key=_key,
-                                    basis=basis if i == 0 else f"{key_added}pca_harmony",
-                                    adjusted_basis=f"{key_added}pca_harmony",
-                                    nclust=harmony_nclust,
-                                    max_iter_harmony=max_iter_harmony) #X_pca_harmony
-        use_rep = f"{key_added}pca_harmony"
-    
+            pcs = adata.obsm[basis]
+            harmony_out = hm.run_harmony(pcs, adata.obs, _key, max_iter_harmony=max_iter_harmony, nclust=harmony_nclust)
+            adata.obsm[f'{key_added}_pca_harmony'] = harmony_out.Z_corr
+            # Using harmony directly since the scanpy implementation is outdated. 
+            # sce.pp.harmony_integrate(adata,
+            #                         key=_key,
+            #                         basis=basis if i == 0 else f"{key_added}pca_harmony",
+            #                         adjusted_basis=f"{key_added}pca_harmony",
+            #                         nclust=harmony_nclust,
+            #                         max_iter_harmony=max_iter_harmony) #X_pca_harmony
+        use_rep = f"{key_added}pca_harmony"    
+            
     sc.pp.neighbors(adata, use_rep=use_rep, n_neighbors=knn)
     
     # If running embedding (usually in R1 = True, R2... = False)
@@ -154,9 +162,22 @@ def _calc_embeddings(
         dump_embedding(adata, from_name=f"{key_added}tsne", to_name=f"{key_added}tsne")
     
     # Clustering using leiden
-    sc.tl.leiden(adata, flavor="igraph", n_iterations=2, key_added=f"{key_added}leiden",
+    if consensus_cluster: 
+        try: 
+            adata, _ = _consensus_cluster( # expose more parameters if needed.
+                adata,
+                clustering_name=f"{key_added}leiden",
+                leiden_resolution=leiden_res,
+                use_rep=use_rep,
+            )
+        except Exception as e:
+            logger.warning(f"Consensus clustering failed with error: {e}. Falling back to standard Leiden clustering.")
+            sc.tl.leiden(adata, flavor="igraph", n_iterations=2, key_added=f"{key_added}leiden",
                  resolution=leiden_res)
-    # TODO: @a3klein: Replace leiden clustering with ALLCools Consensus Clustering (or at least add that as an option) for more robust clustering results.
+    else: 
+        sc.tl.leiden(adata, flavor="igraph", n_iterations=2, key_added=f"{key_added}leiden",
+                    resolution=leiden_res)
+
 
     return adata
     
@@ -229,3 +250,56 @@ def multi_round_clustering(
         adata.obs[f"{key_added}round{i+1}_leiden"] = df_to_add[f"{key_added}round{i+1}_leiden"].astype("category")
     return adata
 
+
+### Essentially just a wrapper for the ALLCools consensus clustering
+def _consensus_cluster(
+    adata, 
+    use_rep="base_pca",
+    clustering_name = "base_leiden",
+    n_neighbors = None,
+    metric = "euclidean",
+    min_cluster_size = 20,
+    leiden_repeats = 200,
+    leiden_resolution = 1,
+    consensus_rate = 0.6,
+    train_frac = 0.5,
+    train_max_n = 500,
+    random_state = 0,
+    max_iter = 50,
+    n_jobs = 24,
+    target_accuracy = 0.9,
+): 
+    """
+    Perform consensus clustering on an AnnData object using the ALLCools implementation.
+    """
+    from ALLCools.clustering import ConsensusClustering # type: ignore
+
+    if n_neighbors is None:
+        n_neighbors = max(25, int(np.log2(adata.shape[0])*2))
+    print(f"Using n_neighbors={n_neighbors} for Leiden clustering")
+
+    # Initialize Object
+    cc = ConsensusClustering(
+        model=None,
+        n_neighbors=n_neighbors,
+        metric=metric,
+        min_cluster_size=min_cluster_size,
+        leiden_repeats=leiden_repeats,
+        leiden_resolution=leiden_resolution,
+        consensus_rate=consensus_rate,
+        random_state=random_state,
+        train_frac=train_frac,
+        train_max_n=train_max_n,
+        max_iter=max_iter,
+        n_jobs=n_jobs,
+        target_accuracy=target_accuracy
+    )
+
+    # Fit Model
+    cc.fit_predict(adata.obsm[use_rep])
+
+    # Transfer the labels:     
+    adata.obs[clustering_name] = cc.label #list of length n_cell
+    adata.obs[clustering_name + '_proba'] = cc.label_proba
+
+    return adata, cc
