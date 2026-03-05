@@ -13,10 +13,17 @@ Deconvolution reduces optical blur and improves segmentation quality. This requi
 
 ## Prerequisites
 
-### System Requirements
+### Install Deconwolf dependencies: 
+deconwolf requires [fftw3](https://www.fftw.org/index.html), [libtiff](https://libtiff.gitlab.io/libtiff/), [gsl](https://coral.ise.lehigh.edu/jild13/2016/07/11/hello/), and (libpng)[https://libpng.org/pub/png/libpng.html] to be installed on your system. 
 
-- Deconwolf installed (`dw` and `dw_bw` binary available)
-- GPU optional but recommended for speed, especially for large experiments
+On some slurm systems these packages may already exist as modules (you can check using `module spider list libtiff` for example). If they do not I recommend installing them from binaries, taking note of where those binaries leave and adding them to your LD_LIBRARY_PATH variable either in .bashrc, or setting them as temporary variables anytime you need to run a spida command that uses deconwolf. 
+
+
+### Install Deconwolf: 
+
+download the binary from the [deconwolf github page](https://github.com/elgw/deconwolf/releases). Then follow their [instructions](https://elgw.github.io/deconwolf/start.html#installation) to build deconwolf. Make sure that either OpenCL or OpenMP are available on the system you are installing deconwolf in to enable GPU acceleration. 
+
+After installation make sure both binaries (`dw` and `dw_bw`) are available
 
 ### Microscope Parameters You Need
 
@@ -87,7 +94,7 @@ Create a deconwolf configuration file:
 mkdir -p ~/config
 cat > ~/config/deconwolf.ini << 'EOF'
 [Paths]
-dw_path = /path/to/dw_bw
+dw_path = /path/to/dw
 dw_psf_path = /home/user/microscope_psfs/my_setup
 EOF
 ```
