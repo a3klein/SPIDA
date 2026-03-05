@@ -15,6 +15,7 @@ def run_segmentation(
     reg_name: str,
     input_dir: str | Path | None = None,
     output_dir: str | Path | None = None,
+    root_dir: str | Path | None = None,  
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
     vpt_bin_path: str | Path | None = None,
@@ -30,17 +31,22 @@ def run_segmentation(
     reg_name (str): Name of the region.
     input_dir (Path): Directory containing the input data.
     output_dir (Path): Directory to save the output data.
+    root_dir (Path): Root directory for the experiment data, used for reading necessary files for segmentation (sometimes same as input_dir).
     root_path (Path, optional): Root path for the data (default is None, uses environment variable).
     segmentation_store (Path, optional): Default Path to store the segmentation results (default is None, uses environment variable).
+    vpt_bin_path (Path, optional): Path to the VPT binary (default is None, uses environment variable).
+    rust_bin_path (Path, optional): Path to the Rust binary for Proseg (default is None, uses environment variable).
     **kwargs: Additional keyword arguments to pass to the segmentation function.
     """
 
+    if root_path is None: 
+        processed_root_path = os.getenv("PROCESSED_ROOT_PATH")
+    else:
+        processed_root_path = root_path
     if input_dir is None:
-        if root_path is None: 
-            processed_root_path = os.getenv("PROCESSED_ROOT_PATH")
-        else:
-            processed_root_path = root_path
         input_dir = f"{processed_root_path}/{exp_name}/out"
+    if root_dir is None: 
+        root_dir = f"{processed_root_path}/{exp_name}/out"
     if output_dir is None:
         if segmentation_store is None:
             seg_out_path = os.getenv("SEGMENTATION_OUT_PATH")
@@ -55,9 +61,10 @@ def run_segmentation(
     logger.info(f"Output directory: {output_dir}")
 
     if type == "proseg":
-        from .proseg import run_proseg
-
-        run_proseg(input_dir, output_dir, reg_name,rust_bin_path=rust_bin_path, **kwargs["kwargs"])
+        from .proseg import run_proseg, add_signals_meta_to_proseg
+        
+        run_proseg(input_dir, output_dir, reg_name, rust_bin_path=rust_bin_path, **kwargs["kwargs"])
+        add_signals_meta_to_proseg(root_dir, output_dir, reg_name, vpt_bin_path=vpt_bin_path, **kwargs["kwargs"])
     elif type == "vpt":
         from .vpt import run_vpt
 

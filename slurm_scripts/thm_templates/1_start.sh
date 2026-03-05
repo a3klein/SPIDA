@@ -7,6 +7,7 @@
 #SBATCH -p wholenode
 #SBATCH -t 00:40:00
 #SBATCH --nodes=1
+#SBATCH --mem=128gb
 #SBATCH -o /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 #SBATCH -e /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 

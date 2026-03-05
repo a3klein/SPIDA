@@ -120,6 +120,7 @@ def _get_table(
 
 def _get_table_v3(
     adata : ad.AnnData,
+    cell_meta : pd.DataFrame | None = None,
     reg_name : str = None, 
     exp_name : str = None, 
     dataset_id : str = None, 
@@ -128,6 +129,9 @@ def _get_table_v3(
     """
     Get the table for the third version of proseg.
     """
+    if cell_meta in not None: 
+        adata.obs = cell_meta.copy()
+
     blank = adata[:, adata.var.gene.str.startswith("Blank-")].copy()
     adata = adata[:, ~adata.var.gene.str.startswith("Blank-")].copy()
     adata.obs['transcript_count'] = adata.X.toarray().sum(axis=1).flatten()
