@@ -206,7 +206,8 @@ def add_signals_meta_to_proseg(
     shapes_filename: str = "cell-polygons-layers.geojson.gz",
     cell_meta_filename: str = "cell-metadata.csv.gz",
     micron_per_z: float = 1.5,
-    vpt_bin_path: str | pathlib.Path | None = None
+    vpt_bin_path: str | pathlib.Path | None = None,
+    **kwargs
 ):
     """
     Add the sum signals metadata to the proseg cell metadata output.
