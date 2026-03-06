@@ -129,7 +129,7 @@ def _get_table_v3(
     """
     Get the table for the third version of proseg.
     """
-    if cell_meta in not None: 
+    if cell_meta is not None: 
         adata.obs = cell_meta.copy()
 
     blank = adata[:, adata.var.gene.str.startswith("Blank-")].copy()
