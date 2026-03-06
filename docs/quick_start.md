@@ -48,12 +48,12 @@ This will guide you through instructions on what each parameter in the config fi
 
 See the [Configurations](./configuration.md) page for more information on this. 
 
-## Running test commands
+## Running test command
 
 The standard strucure for a SPIDA command is: 
 
 ```
-pixi run -e {environment} SPIDA-{module} {command} {EXPERIMENT_NAME} {REGION_NAME} {PREFIX}
+pixi run -e {environment} spida-{module} {command} {EXPERIMENT_NAME} {REGION_NAME} {PREFIX}
 ```
 
 - `environment` specifies which pixi environment is used for a given command
@@ -63,5 +63,15 @@ pixi run -e {environment} SPIDA-{module} {command} {EXPERIMENT_NAME} {REGION_NAM
 - `REGION_NAME` is the name of the region in the given experiment for which to run the command (i.e. region_{1/2/...} in this example)
 - `PREFIX` (Optional) is the name of the segmentation on which to run that command (this only becomes relevant in segmentation dependent commands)
 
+To get an idea of how the commands work you can run: 
+```
+pixi run -e preprocessing spida-S --help
+```
 
 ## Running initial QC runs
+To start initial runs you can run the following commands: 
+```
+pixi run -e preprocessing spida-S ingest-region {EXPERIMENT_NAME} {REGION_NAME} --plot
+pixi run -e preprocessing spida-P transcript-qc {EXPERIMENT_NAME} {REGION_NAME} --hex_size 30 --min_transcripts 100 --plot
+pixi run -e preprocessing spida-P cluster-hexes {EXPERIMENT_NAME} {REGION_NAME} --hex_size 30 --min_transcripts 100 --leiden_resolution 0.7 --plot
+```
