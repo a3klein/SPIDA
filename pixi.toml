@@ -196,6 +196,7 @@ spida-mmc = {cmd = "python -m spida.I"}
 lint-fast = "ruff --fix src/"
 config = {cmd = "python -m spida.config"}
 template = {cmd = "python -m slurm_scripts.script"}
+spida-site = {cmd = "python -m spida.site"}
 
 # [feature.gpu.tasks.install-triton]
 # cmd = "pip install triton==2.1.0 --foce-reinstall --no-cache-dir"

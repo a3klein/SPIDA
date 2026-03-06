@@ -1,3 +1,6 @@
+import sys
+sys.ps1 = ">>> "  # Set the primary prompt string to indicate interactive mode (until spatialdata_plot merges their fix to the main branch)
+
 from .cluster_plots import plot_scatter
 from .ingest import (
     plot_images,

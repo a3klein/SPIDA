@@ -19,6 +19,7 @@ RENAME_CONFIG_KEYS = {
     "ANNOTATIONS_STORE_PATH": "annotation_store",
     "IMAGE_STORE_PATH": "image_store",
     "CUTOFFS_PATH": "cutoffs_path",
+    "SPIDA_SITE_DIR": "site_dir",
 }
 
 DEFAULT_CONFIG = {
@@ -32,6 +33,7 @@ DEFAULT_CONFIG = {
     "ANNOTATION_STORE_PATH": "/path/to/annotation/store",
     "IMAGE_STORE_PATH": "/path/to/image/store",
     "CUTOFFS_PATH": "/path/to/cutoffs.json",
+    "SPIDA_SITE_DIR": "/path/to/spida/site",
 }
 
 CONFIG_DESCRIPTIONS = {
@@ -45,6 +47,7 @@ CONFIG_DESCRIPTIONS = {
     "ANNOTATION_STORE_PATH": "Directory for annotation artifacts/labels.",
     "IMAGE_STORE_PATH": "Directory for image outputs/exports.",
     "CUTOFFS_PATH": "Path to QC/cutoffs configuration file.",
+    "SPIDA_SITE_DIR": "Path to the SPIDA website directory.",
 }
 
 def _normalize_config_keys(config: dict) -> dict:
@@ -209,6 +212,15 @@ except Exception as e:
     help="Path to the cutoffs file (default: None, uses CUTOFFS_PATH in .env)"
 )
 @click.option(
+    "spida_site_dir",
+    "--spida_site_dir",
+    default=lambda: _default_for("SPIDA_SITE_DIR"),
+    show_default="SPIDA_SITE_DIR in .env",
+    prompt=True,
+    type=click.Path(),
+    help="Path to the SPIDA website directory (default: None, uses SPIDA_SITE_DIR in .env)"
+)
+@click.option(
     "overwrite",
     "--overwrite",
     is_flag=True,
@@ -236,6 +248,7 @@ def setup_config(
     annotation_store_dir: str | Path | None = None,
     image_store_path: str | Path | None = None,
     cutoffs_path: str | Path | None = None,
+    spida_site_dir: str | Path | None = None,
     overwrite: bool = False,
     ext_type: str = "env",
 ):
@@ -261,6 +274,7 @@ def setup_config(
             "ANNOTATION_STORE_PATH": annotation_store_dir or config["ANNOTATION_STORE_PATH"],
             "IMAGE_STORE_PATH": image_store_path or config["IMAGE_STORE_PATH"],
             "CUTOFFS_PATH": cutoffs_path or config["CUTOFFS_PATH"],
+            "SPIDA_SITE_DIR": spida_site_dir or config["SPIDA_SITE_DIR"],
         }
     )
 
