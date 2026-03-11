@@ -84,6 +84,7 @@ def _load_metadata(
 @click.argument("reg_name", type=str)
 @click.option("--lab", type=str, default=None, help="Name of the lab (optional)")
 @click.option("--brain-region", type=str, default="WB", help="Name of the brain region (default: WB)")
+@click.option("--plot-decon", is_flag=True, default=False, help="Whether to plot deconvolved images (default: False)")
 @click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
 @click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
 @click.pass_context
@@ -95,6 +96,7 @@ def generate_load_qc_figs(
     brain_region : str = "WB",
     zarr_store : str = None,
     site_dir : str | Path = None,
+    plot_decon : bool = False
 ): 
     """
     Generate QC figures for a given experiment and region, and save them to the appropriate directory for the SPIDA website.
@@ -131,7 +133,8 @@ def generate_load_qc_figs(
     adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)    
     
     plot_load_images(sdata, image_key, img_dir)
-    plot_decon_images(sdata, decon_image_key, img_dir)
+    if plot_decon:
+        plot_decon_images(sdata, decon_image_key, img_dir)
     plot_tz_qc(grid, img_dir, cmap=cmap)
     plot_tz_hex_qc(adata_hex, img_dir)
 
