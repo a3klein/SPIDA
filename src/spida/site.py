@@ -56,12 +56,14 @@ def _load_metadata(
 
     BR = brain_region if brain_region is not None else "WB"
     dir_name = f"{exp_name}_{reg_name}" if lab is None else f"{exp_name}_{reg_name}_{lab}"
-    out_dir = site_dir / "images" / BR / dir_name # for the images store dir
-    out_dir.mkdir(parents=True, exist_ok=True)
+    img_dir = site_dir / "images" / BR / dir_name # for the images store dir
+    img_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = site_dir / "data" / BR / dir_name # for the images store dir
+    data_dir.mkdir(parents=True, exist_ok=True)
     sdata_path = Path(zarr_store) / exp_name / reg_name
     sdata = sd.read_zarr(sdata_path)
 
-    logger.info(f"Output Directory for SPIDA site: {out_dir}")
+    logger.info(f"Output Directory for SPIDA site: {site_dir}.\n\t Image Dir: {img_dir}.\n\t Data Dir: {data_dir}")
 
     KEYS = _gen_keys('default', exp_name, reg_name)
     image_key = KEYS[IMAGE_KEY]
@@ -75,7 +77,7 @@ def _load_metadata(
         table_key = None
         points_key = None
 
-    return sdata, out_dir, (image_key, shapes_key, table_key, points_key)
+    return sdata, img_dir, data_dir, (image_key, shapes_key, table_key, points_key)
 
 @cli.command(cls=RichCommand, help="Generate QC figures for a given sample for the SPIDA website.")
 @click.argument("exp_name", type=str)
@@ -102,7 +104,7 @@ def generate_load_qc_figs(
 
     logger.info(f"Generating load QC figures for experiment {exp_name} region {reg_name}")
 
-    sdata, out_dir, keys = _load_metadata(
+    sdata, img_dir, data_dir, keys = _load_metadata(
         exp_name=exp_name,
         reg_name=reg_name,
         lab=lab,
@@ -128,10 +130,10 @@ def generate_load_qc_figs(
     adata_hex = sdata[tz_qc_table_key].copy()
     adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)    
     
-    plot_load_images(sdata, image_key, out_dir)
-    plot_decon_images(sdata, decon_image_key, out_dir)
-    plot_tz_qc(grid, out_dir, cmap=cmap)
-    plot_tz_hex_qc(adata_hex, out_dir)
+    plot_load_images(sdata, image_key, img_dir)
+    plot_decon_images(sdata, decon_image_key, img_dir)
+    plot_tz_qc(grid, img_dir, cmap=cmap)
+    plot_tz_hex_qc(adata_hex, img_dir)
 
 @cli.command(cls=RichCommand, help="Generate QC figures for a given segmentation for the SPIDA website.")
 @click.argument("exp_name", type=str)
@@ -157,7 +159,7 @@ def generate_seg_qc_figs(
     """
     from spida.pl.site_figs import plot_segload, plot_seg_qc, plot_cell_cluster, plot_seg_clust_dotplot
 
-    sdata, out_dir, keys = _load_metadata(
+    sdata, img_dir, data_dir, keys = _load_metadata(
         exp_name=exp_name,
         reg_name=reg_name,
         prefix_name=prefix_name,
@@ -175,26 +177,78 @@ def generate_seg_qc_figs(
     if shapes_key not in sdata:
         logger.warning(f"Shapes key {shapes_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
     else: 
-        plot_segload(sdata, image_key, shapes_key, prefix_name, out_dir)
+        plot_segload(sdata, image_key, shapes_key, prefix_name, img_dir)
     if table_key not in sdata:
         logger.warning(f"Table key {table_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
     else:
         adata_seg = sdata[table_key].copy()
-        plot_seg_qc(adata_seg, prefix_name, out_dir)
+        plot_seg_qc(adata_seg, prefix_name, img_dir)
     
     filt_table_key = table_key + "_filt"
     if filt_table_key not in sdata:
         logger.warning(f"Table key {filt_table_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
     else: 
         adata_seg = sdata[filt_table_key].copy()
-        plot_cell_cluster(adata_seg, prefix_name, out_dir)
+        plot_cell_cluster(adata_seg, prefix_name, img_dir)
         try: 
-            plot_seg_clust_dotplot(adata_seg, prefix_name, out_dir)
+            plot_seg_clust_dotplot(adata_seg, prefix_name, img_dir)
         except ValueError as e:
             logger.warning(f"Could not generate dotplot for {prefix_name} in experiment {exp_name} region {reg_name} due to error: {e}")
 
 
 
+def generate_soma_gene_proportions(points, _seg_key, out_dir): 
+    import numpy as np
+    if "cell_id" in points.columns:
+        points['in_cell'] = (points['cell_id'] > 0).map({True: "soma", False: "outside"}).astype('category')
+        use_col = "cell_id"
+    else: 
+        points['in_cell'] = (~points['assignment'].isna()).map({True: "soma", False: "outside"}).astype('category')
+        use_col = "x"
+    gass = points.groupby(["in_cell", "gene"], observed=False)[use_col].count().reset_index()
+    gass = gass.pivot(index='gene', columns='in_cell', values=use_col).fillna(0)
+    gass_norm = gass.apply(lambda x: x / x.sum(), axis=1).sort_values(by="soma")
+    gass_norm['total counts'] = gass.sum(axis=1)
+    gass_norm['log total counts'] = np.log10(gass_norm['total counts'] + 1)
+    gass_norm.to_csv(os.path.join(out_dir, f"{_seg_key}_soma_gene_proportions.csv"))
+    return gass_norm
+    
+
+@cli.command(cls=RichCommand, help="Generate soma gene proportion csv for a given segmentation for the SPIDA website.")
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.argument("prefix_name", type=str)
+@click.option("--lab", type=str, default=None, help="Name of the lab (optional)")
+@click.option("--brain-region", type=str, default="WB", help="Name of the brain region (default: WB)")
+@click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
+@click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
+@click.pass_context
+def load_soma_gene_proportions(
+    ctx,
+    exp_name : str, 
+    reg_name : str,
+    prefix_name : str,
+    lab : str = None,
+    brain_region : str = "WB",
+    zarr_store : str = None,
+    site_dir : str | Path = None,
+): 
+    sdata, out_dir, keys = _load_metadata(
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix_name=prefix_name,
+        lab=lab,
+        brain_region=brain_region,
+        zarr_store=zarr_store,
+        site_dir=site_dir
+    )
+    logger.info(f"Generating Seg QC figures for experiment {exp_name} region {reg_name}, segmentation {prefix_name}")
+    image_key = keys[0]
+    shapes_key = keys[1]
+    table_key = keys[2]
+    points_key = keys[3]
+
+    
 # TODO: Add a couple of functions for generating csvs (i.e. the soma vs neuropil .csv for each segmentation / )
 # if points_key not in sdata: 
 #     logger.warning(f"Points key {points_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping soma gene proportion calculation for {prefix_name}.")
@@ -204,7 +258,7 @@ def generate_seg_qc_figs(
 
 
 
-@cli.command(cls=RichCommand, help="Generate data.json manifest for the SPIDA website from the images directory.")
+@cli.command(cls=RichCommand, help="Generate data.json manifest for the SPIDA website from the images and data directories.")
 @click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
 @click.option("--experiment-alias-re", type=str, default=r"4x1-([^/]+)-(?:E|Q)", help="Regular expression to extract experiment alias from folder names (default: r'4x1-([^/]+)-(?:E|Q)')")
 @click.option("--region-alias-re", type=str, default=r"region_([^/_]+)", help="Regular expression to extract region alias from folder names (default: r'region_([^/_]+)')")
@@ -215,9 +269,12 @@ def generate_data_manifest(
     experiment_alias_re : str = r"4x1-([^/]+)-(?:E|Q)",
     region_alias_re : str = r"region_([^/_]+)",
 ): 
-    """Generate data.json manifest from images directory.
+    """Generate data.json manifest from images and data directories.
 
-    Assumes folder structure: images/{brain_region}/{experiment}_{region}
+    Assumes folder structure:
+        images/{brain_region}/{experiment}_{region}
+        data/{brain_region}/{experiment}_{region}
+
     Alias rules: (these may be subject to change as this expands)
     - experiment alias: text between "4x1-" and "-E" or "-Q"
     - region alias (donor): text after "region_"
@@ -227,6 +284,7 @@ def generate_data_manifest(
     if isinstance(site_dir, str):
         site_dir = Path(site_dir)
     IMAGES_DIR = site_dir / "images" # absolutes
+    DATA_DIR = site_dir / "data" # absolutes
     OUTPUT_FILE = site_dir / "data.json" # absolutes
 
     EXPERIMENT_ALIAS_RE = re.compile(experiment_alias_re)
@@ -240,8 +298,14 @@ def generate_data_manifest(
         match = REGION_ALIAS_RE.search(name)
         return match.group(1) if match else name
 
-    def collect_files(folder: Path) -> list[str]:
-        files = [p.name for p in folder.iterdir() if p.is_file() and not p.name.startswith(".")]
+    def collect_files(folder: Path, suffix: str | None = None) -> list[str]:
+        if not folder.exists():
+            return []
+        files = [
+            p.name
+            for p in folder.iterdir()
+            if p.is_file() and not p.name.startswith(".") and (suffix is None or p.suffix == suffix)
+        ]
         return sorted(files)
 
     if not IMAGES_DIR.exists():
@@ -257,13 +321,15 @@ def generate_data_manifest(
         }
 
         for experiment_dir in sorted(p for p in region_dir.iterdir() if p.is_dir()):
+            data_dir = DATA_DIR / region_dir.name / experiment_dir.name
             region_entry["experiments"].append(
                 {
                     "id": experiment_dir.name,
                     "label": experiment_dir.name,
                     "alias": experiment_alias(experiment_dir.name),
                     "region_alias": region_alias(experiment_dir.name),
-                    "files": collect_files(experiment_dir),
+                    "image_files": collect_files(experiment_dir),
+                    "data_files": collect_files(data_dir, suffix=".csv"),
                 }
             )
 
