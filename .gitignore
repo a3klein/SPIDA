@@ -21,7 +21,7 @@
 .Rhistory
 
 # backup pyprojects file
-pyproject.toml
 pyproject_bp.toml
 
-
+# build file
+build/
