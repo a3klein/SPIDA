@@ -13,6 +13,11 @@ from dotenv import load_dotenv  # type: ignore
 
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
+from spida.utilities.site_utils import (
+    _load_metadata,
+    append_brain_region_qc_metrics,
+    generate_soma_gene_proportions,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -32,52 +37,6 @@ def cli(ctx, config):
     ctx.ensure_object(dict)
     pass
 
-
-def _load_metadata(
-    exp_name : str, 
-    reg_name : str,
-    prefix_name : str | None = None,
-    lab : str = None,
-    brain_region : str = "WB",
-    zarr_store : str = None,
-    site_dir : str | Path = None,
-): 
-    import spatialdata as sd
-    from spida.utilities.sd_utils import _gen_keys
-    from spida._constants import IMAGE_KEY, SHAPES_KEY, POINTS_KEY, TABLE_KEY
-
-
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    if site_dir is None: 
-        site_dir = os.getenv("SPIDA_SITE_DIR", None)
-    if isinstance(site_dir, str):
-        site_dir = Path(site_dir)
-
-    BR = brain_region if brain_region is not None else "WB"
-    dir_name = f"{exp_name}_{reg_name}" if lab is None else f"{exp_name}_{reg_name}_{lab}"
-    img_dir = site_dir / "images" / BR / dir_name # for the images store dir
-    img_dir.mkdir(parents=True, exist_ok=True)
-    data_dir = site_dir / "data" / BR / dir_name # for the images store dir
-    data_dir.mkdir(parents=True, exist_ok=True)
-    sdata_path = Path(zarr_store) / exp_name / reg_name
-    sdata = sd.read_zarr(sdata_path)
-
-    logger.info(f"Output Directory for SPIDA site: {site_dir}.\n\t Image Dir: {img_dir}.\n\t Data Dir: {data_dir}")
-
-    KEYS = _gen_keys('default', exp_name, reg_name)
-    image_key = KEYS[IMAGE_KEY]
-    if prefix_name is not None: 
-        KEYS = _gen_keys(prefix_name, exp_name, reg_name)
-        shapes_key = KEYS[SHAPES_KEY]
-        table_key = KEYS[TABLE_KEY]
-        points_key = KEYS[POINTS_KEY]
-    else: 
-        shapes_key = None
-        table_key = None
-        points_key = None
-
-    return sdata, img_dir, data_dir, (image_key, shapes_key, table_key, points_key)
 
 @cli.command(cls=RichCommand, help="Generate QC figures for a given sample for the SPIDA website.")
 @click.argument("exp_name", type=str)
@@ -146,6 +105,12 @@ def generate_load_qc_figs(
 @click.option("--brain-region", type=str, default="WB", help="Name of the brain region (default: WB)")
 @click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
 @click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
+@click.option(
+    "--neuron-type-col",
+    type=str,
+    default=None,
+    help="Column in adata.obs to use for neuron type grouping (optional).",
+)
 @click.pass_context
 def generate_seg_qc_figs(
     ctx,
@@ -156,6 +121,7 @@ def generate_seg_qc_figs(
     brain_region : str = "WB",
     zarr_store : str = None,
     site_dir : str | Path = None,
+    neuron_type_col: str | None = None,
 ): 
     """
     Generate QC figures for a given segmentation, and save them to the appropriate directory for the SPIDA website.
@@ -185,80 +151,39 @@ def generate_seg_qc_figs(
         logger.warning(f"Table key {table_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
     else:
         adata_seg = sdata[table_key].copy()
+        logger.info("plot_seg_qc")
         plot_seg_qc(adata_seg, prefix_name, img_dir)
+        logger.info("append_brain_region_qc_metrics")
+        append_brain_region_qc_metrics(
+            adata_seg,
+            brain_region=brain_region,
+            exp_name=exp_name,
+            reg_name=reg_name,
+            segmentation=prefix_name,
+            site_dir=site_dir,
+            lab=lab,
+            neuron_type_col=neuron_type_col,
+        )
     
     filt_table_key = table_key + "_filt"
     if filt_table_key not in sdata:
         logger.warning(f"Table key {filt_table_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
     else: 
         adata_seg = sdata[filt_table_key].copy()
+        logger.info("plot_cell_cluster")
         plot_cell_cluster(adata_seg, prefix_name, img_dir)
         try: 
+            logger.info("plot_seg_clust_dotplot")
             plot_seg_clust_dotplot(adata_seg, prefix_name, img_dir)
         except ValueError as e:
             logger.warning(f"Could not generate dotplot for {prefix_name} in experiment {exp_name} region {reg_name} due to error: {e}")
 
-
-
-def generate_soma_gene_proportions(points, _seg_key, out_dir): 
-    import numpy as np
-    if "cell_id" in points.columns:
-        points['in_cell'] = (points['cell_id'] > 0).map({True: "soma", False: "outside"}).astype('category')
-        use_col = "cell_id"
-    else: 
-        points['in_cell'] = (~points['assignment'].isna()).map({True: "soma", False: "outside"}).astype('category')
-        use_col = "x"
-    gass = points.groupby(["in_cell", "gene"], observed=False)[use_col].count().reset_index()
-    gass = gass.pivot(index='gene', columns='in_cell', values=use_col).fillna(0)
-    gass_norm = gass.apply(lambda x: x / x.sum(), axis=1).sort_values(by="soma")
-    gass_norm['total counts'] = gass.sum(axis=1)
-    gass_norm['log total counts'] = np.log10(gass_norm['total counts'] + 1)
-    gass_norm.to_csv(os.path.join(out_dir, f"{_seg_key}_soma_gene_proportions.csv"))
-    return gass_norm
-    
-
-@cli.command(cls=RichCommand, help="Generate soma gene proportion csv for a given segmentation for the SPIDA website.")
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
-@click.argument("prefix_name", type=str)
-@click.option("--lab", type=str, default=None, help="Name of the lab (optional)")
-@click.option("--brain-region", type=str, default="WB", help="Name of the brain region (default: WB)")
-@click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
-@click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
-@click.pass_context
-def load_soma_gene_proportions(
-    ctx,
-    exp_name : str, 
-    reg_name : str,
-    prefix_name : str,
-    lab : str = None,
-    brain_region : str = "WB",
-    zarr_store : str = None,
-    site_dir : str | Path = None,
-): 
-    sdata, out_dir, keys = _load_metadata(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
-        lab=lab,
-        brain_region=brain_region,
-        zarr_store=zarr_store,
-        site_dir=site_dir
-    )
-    logger.info(f"Generating Seg QC figures for experiment {exp_name} region {reg_name}, segmentation {prefix_name}")
-    image_key = keys[0]
-    shapes_key = keys[1]
-    table_key = keys[2]
-    points_key = keys[3]
-
-    
-# TODO: Add a couple of functions for generating csvs (i.e. the soma vs neuropil .csv for each segmentation / )
-# if points_key not in sdata: 
-#     logger.warning(f"Points key {points_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping soma gene proportion calculation for {prefix_name}.")
-#     continue
-# points = sdata[points_key].compute()    
-# generate_soma_gene_proportions(points, _seg_key, out_dir_region)
-
+    if points_key not in sdata: 
+        logger.warning(f"Points key {points_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping soma gene proportion calculation for {prefix_name}.")
+    else:
+        points = sdata[points_key].compute()
+        logger.info("generate_soma_gene_proportions")
+        generate_soma_gene_proportions(points, prefix_name, data_dir)
 
 
 @cli.command(cls=RichCommand, help="Generate data.json manifest for the SPIDA website from the images and data directories.")
