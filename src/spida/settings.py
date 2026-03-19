@@ -1,6 +1,8 @@
 import os
 import sys
 import logging
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 # try to use psutil for parent process inspection; fall back to /proc if unavailable
 try:
@@ -15,6 +17,24 @@ try:
 except Exception:
     RichHandler = None
     _RICH_AVAILABLE = False
+
+
+def _env_flag_true(name: str, default: bool = False) -> bool:
+    """Parse boolean-like environment variables.
+
+    Truthy values: 1, true, yes, on
+    Falsy values: 0, false, no, off
+    """
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _get_parent_cmdline() -> str:
@@ -167,24 +187,91 @@ def configure_logging_for_runtime(level: int = logging.INFO, logger: logging.Log
         root.addHandler(sh)
 
     root.setLevel(level)
+
+    # Keep noisy dependency loggers from flooding output while still surfacing warnings/errors.
+    logging.getLogger("spatialdata").setLevel(logging.WARNING)
+
+    # Apply warning filters used across SPIDA entry points.
+    config_warnings()
+
     return env
 
 
 
 
-def config_warnings():
-    """
-    Turning off warnings for some internal libraries that are not relevant for the user.
+def config_warnings(
+    extra_filters: Iterable[Mapping[str, Any]] | None = None,
+    reset_existing_filters: bool = False,
+) -> None:
+    """Configure warning filters for known noisy dependencies.
+
+    Parameters
+    ----------
+    extra_filters
+        Optional iterable of warning filter mappings passed to
+        ``warnings.filterwarnings``. This makes the behavior extensible without
+        touching SPIDA source each time a new warning appears.
+    reset_existing_filters
+        If ``True``, call ``warnings.resetwarnings()`` before applying defaults.
     """
     import warnings
-    warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
-    warnings.filterwarnings("ignore", category=UserWarning, module="anndata")
-    warnings.filterwarnings("ignore", category=UserWarning, module="scanpy")
-    warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
-    warnings.filterwarnings("ignore", category=UserWarning, module="xarray_schema")
-    warnings.filterwarnings("ignore", category=FutureWarning, module="dask")
-    warnings.filterwarnings("ignore", category=UserWarning, module="ome_zarr")
-    warnings.filterwarnings("ignore", category=SyntaxWarning, module="leidenalg")
+
+    # Env override for deep debugging:
+    # SPIDA_STRICT_WARNINGS=1 disables SPIDA's warning suppression filters.
+    if _env_flag_true("SPIDA_STRICT_WARNINGS", default=False):
+        if reset_existing_filters:
+            warnings.resetwarnings()
+        return
+
+    if reset_existing_filters:
+        warnings.resetwarnings()
+
+    # Optional warning classes from dependencies (safe fallback if unavailable).
+    unstable_spec_warning: type[Warning] = Warning
+    numba_perf_warning: type[Warning] = Warning
+    try:
+        from zarr.errors import UnstableSpecificationWarning  # type: ignore
+
+        unstable_spec_warning = UnstableSpecificationWarning
+    except Exception:
+        pass
+
+    try:
+        from numba.core.errors import NumbaPerformanceWarning  # type: ignore
+
+        numba_perf_warning = NumbaPerformanceWarning
+    except Exception:
+        pass
+
+    default_filters: list[dict[str, Any]] = [
+        # Existing broad filters.
+        {"action": "ignore", "category": UserWarning, "module": r"^zarr(\.|$)"},
+        {"action": "ignore", "category": UserWarning, "module": r"^anndata(\.|$)"},
+        {"action": "ignore", "category": UserWarning, "module": r"^scanpy(\.|$)"},
+        {"action": "ignore", "category": UserWarning, "module": r"^matplotlib(\.|$)"},
+        {"action": "ignore", "category": UserWarning, "module": r"^xarray_schema(\.|$)"},
+        {"action": "ignore", "category": FutureWarning, "module": r"^dask(\.|$)"},
+        {"action": "ignore", "category": UserWarning, "module": r"^ome_zarr(\.|$)"},
+        {"action": "ignore", "category": SyntaxWarning, "module": r"^leidenalg(\.|$)"},
+        {"action": "ignore", "category": UserWarning, "module": r"^xarray_schema(\.|$)"},
+        {"action": "ignore", "category": FutureWarning, "module": r"^dask\.dataframe"},
+        # {"action": "ignore", "category": RuntimeWarning, "module": r"^scipy\.sparse",
+        #     "message": r".*divide by zero encountered in reciprocal.*",
+        # },
+        {"action": "ignore", "category": UserWarning, "module": r"^libpysal\.weights"},
+        {"action": "ignore", "category": UserWarning, "module": r"^spatialdata_plot(\.|$)"},
+        {"action": "ignore", "category": RuntimeWarning, "module": r"^scanpy\.tools\._rank_genes_groups$"},
+        {"action": "ignore", "category": FutureWarning},
+        {"action": "ignore", "category": unstable_spec_warning, "module": r"^zarr(\.|$)"},
+        {"action": "ignore", "category": numba_perf_warning, "module": r"^scanpy(\.|$)"},
+    ]
+
+    for fw in default_filters:
+        warnings.filterwarnings(**fw)
+
+    if extra_filters:
+        for fw in extra_filters:
+            warnings.filterwarnings(**dict(fw))
 
 
 

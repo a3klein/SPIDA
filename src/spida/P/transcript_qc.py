@@ -112,23 +112,32 @@ def overlay_hexes(
         DataFrame containing the hexagonal grid geometry and metadata.
     """
 
+    logger.info(
+        "Starting hex overlay (hex_size=%s, hex_overlap=%s, gene_col=%s)",
+        hex_size,
+        hex_overlap,
+        gene_col,
+    )
     points = _ensure_geodataframe(points, x_col=x_col, y_col=y_col)
+    logger.info("Input points prepared: %s rows", len(points))
 
     # Create hexagonal grid
     total_bounds = points.total_bounds  # [minx, miny, maxx, maxy]
     grid = create_hexagonal_grid(total_bounds, hex_size, hex_overlap)
     grid["hex_id"] = grid.index.astype(str)
     grid = grid.set_index("hex_id")
+    logger.info("Hex grid created with %s candidate hexes", len(grid))
     
     # Spatial join to count points in each hexagon
     joint_grid = gpd.sjoin(grid, points, how="inner", predicate="contains")
-    logger.info(f"Created hexagonal grid with {len(grid)} hexes.")
+    logger.info("Spatial join completed: %s matched point/hex records", len(joint_grid))
 
     # Aggregate counts of points in each hexagon for each gene
     temp_count = joint_grid[gene_col].to_frame().reset_index()
     temp_count["count"] = 1
     temp_count = temp_count.groupby(["hex_id", gene_col], observed=True)["count"].sum().reset_index()
     X = temp_count.pivot(index="hex_id", columns=gene_col, values="count").fillna(0)
+    logger.info("Count matrix assembled with shape=%s", X.shape)
     del joint_grid
     del temp_count
 
@@ -137,6 +146,7 @@ def overlay_hexes(
     X.index = X.index.astype(int)
     X = X.sort_index()
     X = X.loc[:, ~X.columns.str.contains("Blank-")]
+    logger.info("Removed blank genes; matrix shape now=%s", X.shape)
 
     obs_serializable = _serialize_obs_geometry(df_obs)
 
@@ -152,6 +162,7 @@ def overlay_hexes(
     hex_area = hex_area_from_size(hex_size)
     adata_hex.obs["density"] = adata_hex.obs["tz_count"] / hex_area
     _add_hex_metadata(adata_hex, hex_size=hex_size, hex_overlap=hex_overlap)
+    logger.info("Created hex AnnData with %s hexes and %s genes", adata_hex.n_obs, adata_hex.n_vars)
 
     if return_grid:
         return adata_hex, _obs_to_grid_geodf(adata_hex.obs)
@@ -169,7 +180,9 @@ def get_or_create_hex_adata(
     force_recompute: bool = False,
 ):
     key = table_key or _hex_table_key(hex_size, hex_overlap)
+    logger.info("Resolving hex table '%s' (force_recompute=%s)", key, force_recompute)
     if not force_recompute and hasattr(sdata, "tables") and key in sdata.tables:
+        logger.info("Reusing existing hex table '%s' from sdata.tables", key)
         return sdata.tables[key], key
 
     points = sdata[points_key]
@@ -186,6 +199,7 @@ def get_or_create_hex_adata(
     _add_hex_metadata(adata_hex, hex_size=hex_size, hex_overlap=hex_overlap)
     sdata.tables[key] = adata_hex
     sdata.write_element(key)
+    logger.info("Stored new hex table '%s' with shape=%s", key, adata_hex.shape)
     return adata_hex, key
 
 def transcript_qc(
@@ -193,22 +207,30 @@ def transcript_qc(
     min_transcripts : int | None = None,
     min_density : float | None = None,
 ): 
+    logger.info(
+        "Starting transcript QC (min_transcripts=%s, min_density=%s)",
+        min_transcripts,
+        min_density,
+    )
     if "density" not in adata_hex.obs.columns:
         hex_area = adata_hex.uns.get("hexgrid", {}).get("hex_area_um2", None)
         if hex_area is None:
             raise ValueError("hex_area_um2 not found in adata_hex.uns['hexgrid']")
         adata_hex = adata_hex.copy()
         adata_hex.obs["density"] = adata_hex.obs["tz_count"] / hex_area
+        logger.info("Density column computed from hex metadata")
 
     adata_filt = _apply_hex_filter(
         adata_hex,
         min_transcripts=min_transcripts,
         min_density=min_density,
     )
+    logger.info("QC filtering complete: kept %s/%s hexes", adata_filt.n_obs, adata_hex.n_obs)
 
     grid = _obs_to_grid_geodf(adata_hex.obs.copy())
     grid["filtered"] = True
     grid.loc[adata_filt.obs.index, "filtered"] = False
+    logger.info("QC grid annotations prepared for %s hexes", len(grid))
     return adata_filt, grid
 
 def cluster_hexes(
@@ -223,6 +245,14 @@ def cluster_hexes(
     Cluster precomputed hex-binned AnnData.
     """
     adata_hex = adata_hex.copy()
+    logger.info(
+        "Starting hex clustering (resolution=%s, min_cells=%s, min_genes=%s, n_top_genes=%s, pca_comps=%s)",
+        leiden_resolution,
+        min_cells,
+        min_genes,
+        n_top_genes,
+        pca_comps,
+    )
 
     orig_hexes = adata_hex.shape[0]
     orig_genes = adata_hex.shape[1]    
@@ -240,12 +270,18 @@ def cluster_hexes(
     sc.pp.scale(adata_hex, max_value=10)
 
     sc.pp.highly_variable_genes(adata_hex, n_top_genes=n_top_genes)
+    logger.info("Highly variable genes computed")
     sc.tl.pca(adata_hex, n_comps=pca_comps)
+    logger.info("PCA completed")
     sc.pp.neighbors(adata_hex)
+    logger.info("Neighbor graph computed")
     sc.tl.umap(adata_hex)
+    logger.info("UMAP embedding computed")
     sc.tl.leiden(adata_hex, flavor="igraph", n_iterations=5, resolution=leiden_resolution)
+    logger.info("Leiden clustering completed")
 
     sc.tl.rank_genes_groups(adata_hex, groupby="leiden", method="wilcoxon")
+    logger.info("Rank genes groups completed")
     return adata_hex
 
 def run_transcript_qc(
@@ -263,6 +299,7 @@ def run_transcript_qc(
     persist_qc_shapes: bool = True,
     force_recompute: bool = False,
 ):
+    logger.info("run_transcript_qc started (points_key=%s)", points_key)
     adata_hex, table_key = get_or_create_hex_adata(
         sdata,
         points_key=points_key,
@@ -279,8 +316,10 @@ def run_transcript_qc(
         min_transcripts=min_transcripts,
         min_density=min_density,
     )
+    logger.info("Transcript QC finished for table '%s'", table_key)
 
     if persist_qc_shapes and hasattr(sdata, "__setitem__"):
+        logger.info("Persisting QC shapes to key '%s'", qc_shapes_key)
         try:
             # Override existing on-disk element when available.
             if hasattr(sdata, "elements_paths_on_disk") and hasattr(
@@ -297,6 +336,7 @@ def run_transcript_qc(
             sdata[qc_shapes_key] = grid_shapes
             if hasattr(sdata, "write_element"):
                 sdata.write_element(qc_shapes_key)
+            logger.info("QC shapes persisted to '%s'", qc_shapes_key)
         except Exception as e:
             logger.warning(
                 "Failed to persist transcript QC shapes '%s': %s",
@@ -305,6 +345,7 @@ def run_transcript_qc(
                 exc_info=True,
             )
 
+    logger.info("run_transcript_qc completed")
     return adata_qc, grid, table_key
 
 def run_cluster_hexes(
@@ -326,6 +367,7 @@ def run_cluster_hexes(
     cluster_table_key: str | None = None,
     force_recompute: bool = False,
 ):
+    logger.info("run_cluster_hexes started (points_key=%s)", points_key)
     adata_hex, table_key = get_or_create_hex_adata(
         sdata,
         points_key=points_key,
@@ -352,6 +394,7 @@ def run_cluster_hexes(
         n_top_genes=n_top_genes,
         pca_comps=pca_comps,
     )
+    logger.info("Hex clustering complete; resulting shape=%s", adata_clustered.shape)
 
     cluster_key = cluster_table_key or f"{_hex_table_key(hex_size, hex_overlap)}_clustered"
     
@@ -362,5 +405,6 @@ def run_cluster_hexes(
         sdata.delete_element_from_disk(cluster_key)  # Remove the old table from disk
     sdata.tables[cluster_key] = adata_clustered
     sdata.write_element(cluster_key)
+    logger.info("Clustered table persisted to key '%s'", cluster_key)
 
     return adata_clustered, cluster_key
