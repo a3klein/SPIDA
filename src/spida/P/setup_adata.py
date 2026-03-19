@@ -54,7 +54,7 @@ def run_setup(
     normalize_adata(adata, layer='volume_norm', log1p=True)
     _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35, consensus_cluster=True)
 
-    sc.tl.rank_genes_groups(adata, groupby="leiden", method="t-test_overestim_var")
+    sc.tl.rank_genes_groups(adata, groupby="base_leiden", method="t-test_overestim_var")
     
     return adata
 
