@@ -175,17 +175,18 @@ r-nloptr = ">=2.2.1,<3"
 libsodium = ">=1.0.20,<2"
 openssl = ">=3.6.0,<4"
 
-[feature.align.dependencies]
-anndata = ">=0.12"
-numpy = "*"
-pandas = "*"
-scanpy = "*"
-matplotlib = "*"
-plotly = ">=6.6.0,<7"
+# Align feature going to need GPU to be feasible to run
+#[feature.align.dependencies]
+#anndata = ">=0.12"
+#numpy = "*"
+#pandas = "*"
+#scanpy = "*"
+#matplotlib = "*"
+#plotly = ">=6.6.0,<7"
 
-[feature.align.pypi-dependencies]
+#[feature.align.pypi-dependencies]
 # stalign = { git = "https://github.com/JEFworks-Lab/STalign.git" }
-stalign = { path = "../programs/STalign" }
+#stalign = { path = "../programs/STalign" }
 
 # Setting environment names for all the features 
 [environments]
@@ -194,7 +195,7 @@ preprocessing = ['preprocessing', 'cpu']
 cellpose = ["cellpose"]
 mmc = ['mmc']
 dist = ["distribution"]
-align = ["align"]
+#align = ["align"]
 # deepcell = ["deepcell"]
 #mapmycells = ["mapmycells"]
 
