@@ -64,7 +64,7 @@ pixi run --frozen -e cellpose \
     {REGION} \
     --input_dir {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
     --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
-    --scale=4 \
+    --scale=6 \
     --image_ext=.decon.tif \
     --nuc_stain_name=DAPI \
     --cyto_stain_name=PolyT \
