@@ -30,7 +30,7 @@ cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 # --- Compute ---
 echo -e "\nRunning whole image deconvolution - PolyT - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing-gpu \
-    spida-S \
+    spida-S --config {CONFIG_PATH} \
     decon_image \
     -i {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {ROOT_DIR}/{EXPERIMENT}/out/dataorganization.csv \
@@ -42,8 +42,7 @@ pixi run --frozen -e preprocessing-gpu \
     --filter deconwolf \
     --filter_args tilesize 1000 \
     --gpu \
-    --plot_thr \
-    --config {CONFIG_PATH}
+    --plot_thr
 
 # --- Sync to S3 ---
 # Syncs the images directory which now contains the output .decon.tif files

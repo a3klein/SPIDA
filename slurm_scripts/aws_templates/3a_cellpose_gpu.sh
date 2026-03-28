@@ -29,7 +29,7 @@ cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 # --- Compute ---
 echo -e "\nRunning Cellpose segmentation on region {REGION} of experiment {EXPERIMENT}\n"
 pixi run --frozen -e cellpose \
-    python -m spida.S.cli \
+    python -m spida.S.cli --config {CONFIG_PATH} \
     run-segmentation-region \
     cellpose \
     {EXPERIMENT} \
@@ -42,8 +42,7 @@ pixi run --frozen -e cellpose \
     --cyto_stain_name=PolyT \
     --flow_threshold=0 \
     --cellprob_threshold=-2 \
-    --tile_norm_blocksize=2960 \
-    --config {CONFIG_PATH}
+    --tile_norm_blocksize=2960
 
 # --- Sync to S3 ---
 echo -e "\nSyncing cellpose segmentation to S3...\n"

@@ -27,42 +27,38 @@ cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 # --- Compute ---
 echo -e "\nIngesting region {REGION} of experiment {EXPERIMENT}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.S.cli \
+    python -m spida.S.cli --config {CONFIG_PATH} \
     ingest-region \
     {EXPERIMENT} \
-    {REGION} \
-    --config {CONFIG_PATH}
+    {REGION}
 
 echo -e "\nRunning Transcript QC\n"
 pixi run --frozen -e preprocessing \
-    spida-P \
+    spida-P --config {CONFIG_PATH} \
     transcript-qc \
     {EXPERIMENT} \
     {REGION} \
     --hex_size 30 \
-    --min_transcripts 100 \
-    --config {CONFIG_PATH}
+    --min_transcripts 100
 
 echo -e "\nClustering Hexagons\n"
 pixi run --frozen -e preprocessing \
-    spida-P \
+    spida-P --config {CONFIG_PATH} \
     cluster-hexes \
     {EXPERIMENT} \
     {REGION} \
     --hex_size 30 \
     --leiden_resolution 0.6 \
-    --min_transcripts 100 \
-    --config {CONFIG_PATH}
+    --min_transcripts 100
 
 echo -e "\nGenerating Load QC Figures\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.site \
+    python -m spida.site --config {CONFIG_PATH} \
     generate-load-qc-figs \
     {EXPERIMENT} \
     {REGION} \
     --brain-region {BR} \
-    --lab salk \
-    --config {CONFIG_PATH}
+    --lab salk
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
