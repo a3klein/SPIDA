@@ -14,8 +14,8 @@ nvcc --version
 # --- Sync from S3 ---
 echo -e "\nSyncing raw images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
-aws s3 sync {S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ --exclude "region_*"
-aws s3 sync {S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
+rsync -av --exclude "region_*" /s3-data/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/
+rsync -av /s3-data/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
@@ -48,4 +48,4 @@ pixi run --frozen -e preprocessing-gpu \
 # --- Sync to S3 ---
 # Syncs the images directory which now contains the output .decon.tif files
 echo -e "\nSyncing deconvoluted images to S3...\n"
-aws s3 sync {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ {S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/
+rsync -av {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ /s3-data/spatial_data/{EXPERIMENT}/out/{REGION}/images/

@@ -3,7 +3,7 @@
 # DESCRIPTION: Ingest region into spatialdata zarr store, run transcript QC and hexagon clustering.
 
 #SBATCH -J start_{EXP_N}_{REG_N}
-#SBATCH --partition=cpu
+#SBATCH --partition=cpu-ondemand
 #SBATCH --constraint=c6id.12xlarge
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
@@ -11,8 +11,8 @@
 # --- Sync from S3 ---
 echo -e "\nSyncing raw data from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}
-aws s3 sync {S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ --exclude "region_*"
-aws s3 sync {S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/
+rsync -av --exclude "region_*" /s3-data/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/
+rsync -av /s3-data/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
@@ -66,5 +66,5 @@ pixi run --frozen -e preprocessing \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
-aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ {S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/
-aws s3 sync {ROOT_DIR}/images/ {S3_BUCKET}/spida_outputs/images/
+rsync -av {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ /s3-data/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/
+rsync -av {ROOT_DIR}/images/ /s3-data/spida_outputs/images/
