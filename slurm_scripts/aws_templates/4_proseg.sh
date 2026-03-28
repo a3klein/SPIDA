@@ -28,7 +28,7 @@ cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 # --- Compute ---
 echo -e "\nRunning ProSeg segmentation - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.S.cli \
+    python -m spida.S.cli --config {CONFIG_PATH} \
     run-segmentation-region \
     proseg \
     {EXPERIMENT} \
@@ -41,51 +41,46 @@ pixi run --frozen -e preprocessing \
     --nuclear-reassignment-prob=0.05 \
     --cell-compactness=0.05 \
     --diffusion-probability=0.01 \
-    --overwrite=True \
-    --config {CONFIG_PATH}
+    --overwrite=True
 
 echo -e "\nLoading ProSeg segmentation - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.S.cli \
+    python -m spida.S.cli --config {CONFIG_PATH} \
     load-segmentation-region \
     {EXPERIMENT} \
     {REGION} \
     {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_cell \
     --type proseg \
-    --prefix_name proseg_cell \
-    --config {CONFIG_PATH}
+    --prefix_name proseg_cell
 
 echo -e "\nFiltering cells - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.P.cli \
+    python -m spida.P.cli --config {CONFIG_PATH} \
     filter_cells_region \
     {EXPERIMENT} \
     {REGION} \
     proseg_cell \
     --seg_fam proseg \
-    --cutoffs_path {CUTOFFS_PATH} \
-    --config {CONFIG_PATH}
+    --cutoffs_path {CUTOFFS_PATH}
 
 echo -e "\nSetting up AnnData - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.P.cli \
+    python -m spida.P.cli --config {CONFIG_PATH} \
     setup_adata_region \
     {EXPERIMENT} \
     {REGION} \
     proseg_cell \
-    --suffix _filt \
-    --config {CONFIG_PATH}
+    --suffix _filt
 
 echo -e "\nGenerating segmentation QC figures\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.site \
+    python -m spida.site --config {CONFIG_PATH} \
     generate-seg-qc-figs \
     {EXPERIMENT} \
     {REGION} \
     proseg_cell \
     --brain-region {BR} \
-    --lab salk \
-    --config {CONFIG_PATH}
+    --lab salk
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"

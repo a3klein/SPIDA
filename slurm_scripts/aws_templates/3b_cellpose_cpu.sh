@@ -30,55 +30,50 @@ cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 # --- Compute ---
 echo -e "\nLoading deconvoluted images - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.S.cli \
+    python -m spida.S.cli --config {CONFIG_PATH} \
     load-decon-images \
     {EXPERIMENT} \
     {REGION} \
-    {ROOT_DIR} \
-    --config {CONFIG_PATH}
+    {ROOT_DIR}
 
 echo -e "\nLoading cellpose segmentation - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.S.cli \
+    python -m spida.S.cli --config {CONFIG_PATH} \
     load-segmentation-region \
     {EXPERIMENT} \
     {REGION} \
     {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
     --type vpt \
     --prefix_name cellpose_cell \
-    --transcript-qc \
-    --config {CONFIG_PATH}
+    --transcript-qc
 
 echo -e "\nFiltering cells - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.P.cli \
+    python -m spida.P.cli --config {CONFIG_PATH} \
     filter_cells_region \
     {EXPERIMENT} \
     {REGION} \
     cellpose_cell \
-    --cutoffs_path {CUTOFFS_PATH} \
-    --config {CONFIG_PATH}
+    --cutoffs_path {CUTOFFS_PATH}
 
 echo -e "\nSetting up AnnData - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.P.cli \
+    python -m spida.P.cli --config {CONFIG_PATH} \
     setup_adata_region \
     {EXPERIMENT} \
     {REGION} \
     cellpose_cell \
-    --suffix _filt \
-    --config {CONFIG_PATH}
+    --suffix _filt
 
 echo -e "\nGenerating segmentation QC figures\n"
 pixi run --frozen -e preprocessing \
-    python -m spida.site \
+    python -m spida.site --config {CONFIG_PATH} \
     generate-seg-qc-figs \
     {EXPERIMENT} \
     {REGION} \
     cellpose_cell \
     --brain-region {BR} \
-    --lab salk \
-    --config {CONFIG_PATH}
+    --lab salk
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
