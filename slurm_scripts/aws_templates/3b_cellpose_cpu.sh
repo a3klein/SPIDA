@@ -13,9 +13,9 @@ echo -e "\nSyncing zarr store, segmentation, and images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
 mkdir -p {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}
 mkdir -p {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell
-aws s3 sync {S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/
-aws s3 sync {S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
-aws s3 sync {S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/
+rsync -av /s3-data/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/
+rsync -av /s3-data/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
+rsync -av /s3-data/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
@@ -82,6 +82,6 @@ pixi run --frozen -e preprocessing \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
-aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ {S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/
-aws s3 sync {ROOT_DIR}/data/anndata/ {S3_BUCKET}/spida_outputs/data/anndata/
-aws s3 sync {ROOT_DIR}/images/ {S3_BUCKET}/spida_outputs/images/
+rsync -av {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ /s3-data/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/
+rsync -av {ROOT_DIR}/data/anndata/ /s3-data/spida_outputs/data/anndata/
+rsync -av {ROOT_DIR}/images/ /s3-data/spida_outputs/images/

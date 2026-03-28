@@ -14,7 +14,7 @@ nvcc --version
 # --- Sync from S3 ---
 echo -e "\nSyncing deconvoluted images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
-aws s3 sync {S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
+rsync -av /s3-data/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
@@ -47,4 +47,4 @@ pixi run --frozen -e cellpose \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing cellpose segmentation to S3...\n"
-aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ {S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/
+rsync -av {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ /s3-data/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/

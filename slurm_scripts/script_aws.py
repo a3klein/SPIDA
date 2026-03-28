@@ -44,7 +44,6 @@ _SCRIPT_DIR = Path(__file__).parent
 _DEFAULT_TEMPLATE_DIR = _SCRIPT_DIR / "aws_templates"
 _DEFAULT_OUTPUT_DIR = Path("/home/ubuntu/aklein/slurm_jobs")
 _DEFAULT_CONFIG_DIR = Path("/home/ubuntu/aklein/spida_config")
-_DEFAULT_S3_BUCKET = "s3://salk-workstation-data-dev-020125249408"
 _DEFAULT_LOG_DIR = Path("/home/ubuntu/aklein/spida_logs")
 
 
@@ -144,12 +143,6 @@ def _parse_list(arg: str) -> list:
          "(e.g. CTX_config.json, THM_config.json).",
 )
 @click.option(
-    "--s3_bucket",
-    default=_DEFAULT_S3_BUCKET,
-    show_default=True,
-    help="S3 bucket base URL (no trailing slash).",
-)
-@click.option(
     "--exp_n",
     default=None,
     help="Override the derived short experiment name (EXP_N).",
@@ -177,7 +170,6 @@ def config_templates_aws(
     output_dir: Path,
     template_dir: Path,
     config_dir: Path,
-    s3_bucket: str,
     exp_n: str | None,
     reg_n: str | None,
     steps: list,
@@ -315,7 +307,6 @@ def config_templates_aws(
                     BR=brain_region,
                     EXP_N=exp_n,
                     REG_N=current_reg_n,
-                    S3_BUCKET=s3_bucket,
                     ROOT_DIR=ROOT_DIR,
                     SEGMENTATION_DIR=SEGMENTATION_DIR,
                     CUTOFFS_PATH=CUTOFFS_PATH,
