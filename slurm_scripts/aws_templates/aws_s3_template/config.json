@@ -1,0 +1,14 @@
+{
+    "RUST_BIN_PATH": "/home/ubuntu/.cargo/bin/",
+    "VPT_BIN_PATH": "/home/ubuntu/micromamba/envs/vpt/bin",
+    "DECONWOLF_CONFIG": "/home/ubuntu/aklein/spida_config/deconwolf.ini",
+    "ZARR_STORAGE_PATH": "/scratch/data/zarr_store",
+    "PROCESSED_ROOT_PATH": "/scratch",
+    "SEGMENTATION_OUT_PATH": "/scratch/data/segmentation",
+    "ANNDATA_STORE_PATH": "/scratch/data/anndata",
+    "ANNOTATION_STORE_PATH": "/scratch/data/annotation",
+    "IMAGE_STORE_PATH": "/scratch/images",
+    "CUTOFFS_PATH": "/home/ubuntu/aklein/spida_config/filtering_cutoffs.json",
+    "CELLPOSE_MODEL_PATH": "/home/ubuntu/aklein/.cellpose/models",
+    "SPIDA_SITE_DIR": "/home/ubuntu/aklein/site-images"
+}

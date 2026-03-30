@@ -11,11 +11,21 @@ The brain-region config file ({config_dir}/{BR}_config.json) is required and
 provides ROOT_DIR, SEGMENTATION_DIR, and CUTOFFS_PATH.  It is also passed
 verbatim as CONFIG_PATH so SPIDA commands receive --config at runtime.
 
+Two template variants are available, selected with --template_type:
+  rsync  (default) — transfers data via rsync over the S3 FUSE mount at /s3-data/
+                     uses slurm_scripts/aws_templates/
+  s3               — transfers data via 'aws s3 sync' using the EC2 instance IAM role
+                     uses slurm_scripts/aws_s3_templates/
+
 Usage examples
 --------------
-# Single region:
+# Single region (rsync, default):
 python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
     --brain_region CTX --region_name region_UCI-5224 --lab salk
+
+# Single region (aws s3 sync):
+python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
+    --brain_region CTX --region_name region_UCI-5224 --lab salk --template_type s3
 
 # All regions in an experiment (discovers region_* dirs from a local path):
 python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
@@ -41,10 +51,14 @@ import click
 # ---------------------------------------------------------------------------
 
 _SCRIPT_DIR = Path(__file__).parent
-_DEFAULT_TEMPLATE_DIR = _SCRIPT_DIR / "aws_templates"
+_TEMPLATE_DIRS = {
+    "rsync": _SCRIPT_DIR / "aws_templates" / "aws_rsync_template",
+    "s3":    _SCRIPT_DIR / "aws_templates" / "aws_s3_template",
+}
 _DEFAULT_OUTPUT_DIR = Path("/home/ubuntu/aklein/slurm_jobs")
 _DEFAULT_CONFIG_DIR = Path("/home/ubuntu/aklein/spida_config")
 _DEFAULT_LOG_DIR = Path("/home/ubuntu/aklein/spida_logs")
+_DEFAULT_S3_BUCKET = "salk-workstation-data-dev-020125249408"
 
 
 # ---------------------------------------------------------------------------
@@ -127,12 +141,26 @@ def _parse_list(arg: str) -> list:
     help="Root directory for generated job scripts.",
 )
 @click.option(
-    "--template_dir",
-    type=click.Path(exists=True, dir_okay=True, path_type=Path),
-    default=_DEFAULT_TEMPLATE_DIR,
+    "--template_type",
+    type=click.Choice(["rsync", "s3"], case_sensitive=False),
+    default="s3",
     show_default=True,
-    help="Directory containing the *.sh template files. "
-         "Defaults to slurm_scripts/aws_templates/ next to this script.",
+    help="Template variant to use. 'rsync' transfers via the S3 FUSE mount (/s3-data/); "
+         "'s3' uses 'aws s3 sync' with the EC2 instance IAM role.",
+)
+@click.option(
+    "--template_dir",
+    type=click.Path(exists=False, dir_okay=True, path_type=Path),
+    default=None,
+    show_default=False,
+    help="Override the template directory. "
+         "Defaults to aws_templates/ (rsync) or aws_s3_templates/ (s3) next to this script.",
+)
+@click.option(
+    "--s3_bucket",
+    default=_DEFAULT_S3_BUCKET,
+    show_default=True,
+    help="S3 bucket name (without s3:// prefix). Fills {S3_BUCKET} in s3 templates.",
 )
 @click.option(
     "--config_dir",
@@ -168,7 +196,9 @@ def config_templates_aws(
     lab: str | None,
     data_path: Path | None,
     output_dir: Path,
-    template_dir: Path,
+    template_type: str,
+    template_dir: Path | None,
+    s3_bucket: str,
     config_dir: Path,
     exp_n: str | None,
     reg_n: str | None,
@@ -187,10 +217,15 @@ def config_templates_aws(
         )
         sys.exit(1)
 
+    # Resolve template directory: explicit --template_dir overrides --template_type default
+    if template_dir is None:
+        template_dir = _TEMPLATE_DIRS[template_type.lower()]
+
     if not template_dir.exists():
         click.echo(
             f"ERROR: template directory not found: {template_dir}\n"
-            "Copy the aws/template/ files to that location or pass --template_dir.",
+            f"Copy the aws/{'aws_s3_template' if template_type == 's3' else 'template'}/ "
+            "files to that location or pass --template_dir.",
             err=True,
         )
         sys.exit(1)
@@ -202,7 +237,7 @@ def config_templates_aws(
     if not config_file.exists():
         click.echo(
             f"ERROR: brain-region config not found: {config_file}\n"
-            f"Create it from aws/template/config.json and adjust paths for {brain_region}.",
+            f"Create it from aws/aws_rsync_template/config.json and adjust paths for {brain_region}.",
             err=True,
         )
         sys.exit(1)
@@ -311,6 +346,7 @@ def config_templates_aws(
                     SEGMENTATION_DIR=SEGMENTATION_DIR,
                     CUTOFFS_PATH=CUTOFFS_PATH,
                     CONFIG_PATH=CONFIG_PATH,
+                    S3_BUCKET=s3_bucket,
                     STEP_1=step1,
                     STEP_2=step2,
                     STEP_3=step3,
