@@ -21,18 +21,20 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 echo -e "\nSyncing zarr store and cellpose segmentation from S3...\n"
 mkdir -p {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}
 mkdir -p {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell
-aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/
-aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/
+aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
+aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ --only-show-errors
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
     git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
 fi
+echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "preprocessing"; then
     pixi install -e preprocessing
 fi
 cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
+mkdir /scratch/images
 
 # --- Compute ---
 echo -e "\nRunning ProSeg segmentation - {REG_N} - {EXP_N}\n"
@@ -93,7 +95,7 @@ pixi run --frozen -e preprocessing \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
-aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/proseg_cell/
-aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/
-aws s3 sync {ROOT_DIR}/data/anndata/ s3://{S3_BUCKET}/spida_outputs/data/anndata/
-aws s3 sync {ROOT_DIR}/images/ s3://{S3_BUCKET}/spida_outputs/images/
+aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/proseg_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/proseg_cell/ --only-show-errors
+aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
+aws s3 sync {ROOT_DIR}/data/anndata/ s3://{S3_BUCKET}/spida_outputs/data/anndata/ --only-show-errors
+aws s3 sync {ROOT_DIR}/images/ s3://{S3_BUCKET}/spida_outputs/images/ --only-show-errors

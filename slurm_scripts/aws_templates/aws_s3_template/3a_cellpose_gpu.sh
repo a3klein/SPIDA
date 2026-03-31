@@ -23,17 +23,19 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 # --- Sync from S3 ---
 echo -e "\nSyncing deconvoluted images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ --only-show-errors
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
     git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
 fi
+echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "cellpose"; then
     pixi install -e cellpose
 fi
 cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
+mkdir /scratch/images
 
 # --- Compute ---
 echo -e "\nRunning Cellpose segmentation on region {REGION} of experiment {EXPERIMENT}\n"
@@ -55,4 +57,4 @@ pixi run --frozen -e cellpose \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing cellpose segmentation to S3...\n"
-aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/
+aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ --only-show-errors
