@@ -24,18 +24,20 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 echo -e "\nSyncing raw images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ \
-    --exclude "region_*"
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
+    --exclude "region_*" --only-show-errors
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ --only-show-errors
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
     git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
 fi
+echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "preprocessing-gpu"; then
     pixi install -e preprocessing-gpu
 fi
 cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
+mkdir /scratch/images
 
 # --- Compute ---
 echo -e "\nRunning whole image deconvolution - PolyT - {REG_N} - {EXP_N}\n"
@@ -46,7 +48,7 @@ pixi run --frozen -e preprocessing-gpu \
     --data_org_path {ROOT_DIR}/{EXPERIMENT}/out/dataorganization.csv \
     -o {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images \
     --channels PolyT \
-    --tile_size 2960 \
+    --tile_size 2500 \
     --overlap 400 \
     --z_step 1.5 \
     --filter deconwolf \
@@ -57,4 +59,4 @@ pixi run --frozen -e preprocessing-gpu \
 # --- Sync to S3 ---
 # Syncs the images directory which now contains the output .decon.tif files
 echo -e "\nSyncing deconvoluted images to S3...\n"
-aws s3 sync {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/
+aws s3 sync {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ --only-show-errors

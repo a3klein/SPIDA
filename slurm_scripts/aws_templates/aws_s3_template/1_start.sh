@@ -21,18 +21,20 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 echo -e "\nSyncing raw data from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ \
-    --exclude "region_*"
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/
+    --exclude "region_*" --only-show-errors
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/ --only-show-errors
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
     git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
 fi
+echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "preprocessing"; then
     pixi install -e preprocessing
 fi
 cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
+mkdir /scratch/images
 
 # --- Compute ---
 echo -e "\nIngesting region {REGION} of experiment {EXPERIMENT}\n"
@@ -72,5 +74,5 @@ pixi run --frozen -e preprocessing \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
-aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/
-aws s3 sync {ROOT_DIR}/images/ s3://{S3_BUCKET}/spida_outputs/images/
+aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
+aws s3 sync {ROOT_DIR}/images/ s3://{S3_BUCKET}/spida_outputs/images/ --only-show-errors
