@@ -4,7 +4,8 @@
 
 #SBATCH -J start_{EXP_N}_{REG_N}
 #SBATCH --partition=cpu-ondemand
-#SBATCH --constraint=c6id.12xlarge
+#SBATCH --constraint=cpu-32vcpu
+#SBATCH --mem=128G
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 
@@ -21,8 +22,10 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 echo -e "\nSyncing raw data from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ \
-    --exclude "region_*" --only-show-errors
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/ --only-show-errors
+    --exclude "region_*" --no-progress
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/ --no-progress
+
+tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
