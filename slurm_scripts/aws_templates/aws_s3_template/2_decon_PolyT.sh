@@ -5,8 +5,10 @@
 #SBATCH -J decon_PolyT_{EXP_N}_{REG_N}
 #SBATCH --partition=gpu-l40s-ondemand
 #SBATCH --constraint=g6e.4xlarge
+#SBATCH --ntasks-per-node=16
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/2_decon_PolyT_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/2_decon_PolyT_{EXP_N}_{REG_N}.out
+#SBATCH --exclusive
 
 nvidia-smi
 nvcc --version
@@ -24,8 +26,10 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 echo -e "\nSyncing raw images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ \
-    --exclude "region_*" --only-show-errors
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ --only-show-errors
+    --exclude "region_*" --no-progress
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ --no-progress
+
+tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
@@ -48,7 +52,7 @@ pixi run --frozen -e preprocessing-gpu \
     --data_org_path {ROOT_DIR}/{EXPERIMENT}/out/dataorganization.csv \
     -o {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images \
     --channels PolyT \
-    --tile_size 2500 \
+    --tile_size 2960 \
     --overlap 400 \
     --z_step 1.5 \
     --filter deconwolf \
