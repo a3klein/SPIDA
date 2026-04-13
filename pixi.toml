@@ -54,7 +54,7 @@ pytorch-cpu = "*"
 
 # Defining Features
 [feature.preprocessing.dependencies]
-spatialdata = ">=0.7.2,<0.8"
+spatialdata = ">=0.6.1,<0.7"
 spatialdata-io = ">=0.5.1,<0.6"
 spatialdata-plot = ">=0.2.13,<0.3"
 anndata = ">=0.12.7,<0.13"

@@ -5,7 +5,7 @@
 #SBATCH -J start_{EXP_N}_{REG_N}
 #SBATCH --partition=cpu-ondemand
 #SBATCH --constraint=cpu-32vcpu
-#SBATCH --mem=128G
+#SBATCH --ntasks-per-node=32
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 

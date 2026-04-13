@@ -6,7 +6,6 @@
 #SBATCH --partition=cpu-ondemand
 #SBATCH --constraint=cpu-32vcpu
 #SBATCH --ntasks-per-node=32
-#SBATCH --mem=128G
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/4_proseg_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/4_proseg_{EXP_N}_{REG_N}.out
 
@@ -23,8 +22,8 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 echo -e "\nSyncing zarr store and cellpose segmentation from S3...\n"
 mkdir -p {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}
 mkdir -p {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell
-aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ --no-progress
-aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ --no-progress
+aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
+aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ --only-show-errors
 
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
