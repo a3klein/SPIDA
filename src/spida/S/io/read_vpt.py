@@ -38,6 +38,10 @@ def _get_polygons(
     # geo_df = geo_df[geo_df.geometry.is_valid]  # Remove invalid geometries
     geo_df.geometry = geo_df.geometry.map(lambda x: cast_to_mp(x))
     geo_df.index = geo_df[DEFAULT_PRESET["METADATA_CELL_KEY"]].astype(str)
+    # Rename 'z' metadata column to avoid spatialdata treating 2D polygons as 3D.
+    # spatialdata adds 'z' to axes if any column is named 'z', even for 2D geometries.
+    if "z" in geo_df.columns:
+        geo_df = geo_df.rename(columns={"z": "z_layer"})
     return ShapesModel.parse(geo_df, transformations=transformations)
 
 

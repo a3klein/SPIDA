@@ -31,7 +31,7 @@ tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
-    git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
+    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 fi
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
