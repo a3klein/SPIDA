@@ -127,6 +127,7 @@ def generate_seg_qc_figs(
     Generate QC figures for a given segmentation, and save them to the appropriate directory for the SPIDA website.
     """
     from spida.pl.site_figs import plot_segload, plot_seg_qc, plot_cell_cluster, plot_seg_clust_dotplot
+    from spida.P.filtering import ensure_qc_metrics
 
     sdata, img_dir, data_dir, keys = _load_metadata(
         exp_name=exp_name,
@@ -151,6 +152,7 @@ def generate_seg_qc_figs(
         logger.warning(f"Table key {table_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
     else:
         adata_seg = sdata[table_key].copy()
+        adata_seg = ensure_qc_metrics(adata_seg, exp_name, reg_name, prefix_name)
         logger.info("plot_seg_qc")
         plot_seg_qc(adata_seg, prefix_name, img_dir)
         logger.info("append_brain_region_qc_metrics")

@@ -29,7 +29,7 @@ tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
-    git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
+    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 fi
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
@@ -72,6 +72,16 @@ pixi run --frozen -e preprocessing \
     generate-load-qc-figs \
     {EXPERIMENT} \
     {REGION} \
+    --brain-region {BR} \
+    --lab salk
+
+echo -e "\nGenerating default Segmentation QC figures\n"
+pixi run --frozen -e preprocessing \
+    python -m spida.site --config {CONFIG_PATH} \
+    generate-seg-qc-figs \
+    {EXPERIMENT} \
+    {REGION} \
+    default \
     --brain-region {BR} \
     --lab salk
 

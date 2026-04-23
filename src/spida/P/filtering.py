@@ -230,6 +230,140 @@ class Filter:
         return df_feature
 
 
+_SEG_FAM_MAP: dict[str, str] = {
+    "default": "default",
+    "proseg": "proseg",
+    "cellpose_nuclei": "default",
+    "cellposeSAM": "default",
+    "proseg_nuclei": "proseg",
+    "proseg_SAM": "proseg",
+    "proseg_v3": "proseg",
+    "mesmer": "default",
+}
+
+# Columns written by both run_filtering and compute_qc_metrics
+_QC_METRIC_COLS: tuple[str, ...] = (
+    "nCount_RNA",
+    "nFeature_RNA",
+    "nBlank",
+    "nCount_RNA_per_Volume",
+    "volume",
+)
+
+# All cutoff keys accessed by plot_seg_qc; None → no threshold line drawn
+_CUTOFF_NULL_DEFAULTS: dict[str, None] = {
+    "volume_min": None,
+    "volume_max": None,
+    "n_count_min": None,
+    "n_count_max": None,
+    "n_gene_min": None,
+    "n_gene_max": None,
+    "n_blank_min": None,
+    "n_blank_max": None,
+    "n_count_per_volume_min": None,
+    "n_count_per_volume_max": None,
+}
+
+
+def compute_qc_metrics(
+    adata: ad.AnnData,
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str,
+    donor_name: str | None = None,
+    seg_fam: str | None = None,
+) -> ad.AnnData:
+    """
+    Compute per-cell QC metrics from adata.X and merge them into adata.obs.
+
+    Adds nCount_RNA, nFeature_RNA, nBlank, and nCount_RNA_per_Volume without
+    applying any filtering cutoffs or adding pass_qc columns.  Useful for
+    segmentations such as the default VPT table that have not been through
+    run_filtering().
+
+    Parameters
+    ----------
+    adata :
+        Must contain adata.obsm["blank"] for blank-gene counting.
+    exp_name, reg_name, prefix_name :
+        Passed to Filter for compound index construction.
+    donor_name :
+        Optional donor label forwarded to Filter.
+    seg_fam :
+        Preset family override ("default" or "proseg").  Inferred from
+        prefix_name via _SEG_FAM_MAP when None.
+    """
+    if seg_fam is None:
+        seg_fam = _SEG_FAM_MAP.get(prefix_name, "default")
+    PRESET = PROSEG_PRESET if seg_fam == "proseg" else DEFAULT_PRESET
+
+    filter_instance = Filter(
+        adata, exp_name, reg_name, prefix_name, donor_name=donor_name, PRESET=PRESET
+    )
+    features = filter_instance.get_features()
+
+    try:
+        ff = adata.obs.reset_index().set_index(CELL_ID)
+    except (KeyError, ValueError):
+        ff = adata.obs.copy()
+
+    if CELL_ID not in ff.columns:
+        res = (
+            features.to_pandas()
+            .set_index("Index")
+            .join(ff, on=CELL_ID, how="inner", lsuffix="", rsuffix="_old")
+        )
+    else:
+        res = (
+            features.to_pandas()
+            .set_index("Index")
+            .merge(ff, on=CELL_ID, how="inner", suffixes=["", "_old"])
+            .set_index("Index")
+        )
+
+    to_delete = [c for c in res.columns if "_old" in c]
+    adata.obs = res.drop(columns=to_delete)
+    adata = _validate_adata(adata)
+    return adata.copy()
+
+
+def ensure_qc_metrics(
+    adata: ad.AnnData,
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str,
+    donor_name: str | None = None,
+    seg_fam: str | None = None,
+) -> ad.AnnData:
+    """
+    Ensure per-cell QC metrics exist in adata.obs and that adata.uns["cutoffs"]
+    contains all keys expected by the QC plotting functions.
+
+    If any column in _QC_METRIC_COLS is absent, calls compute_qc_metrics() to
+    populate them.  Missing cutoff keys are filled with None so that
+    plot_feature_distribution() omits threshold lines rather than crashing.
+    Existing cutoff values are left untouched.
+
+    This is effectively a no-op when the table has already been through
+    run_filtering().
+    """
+    if any(col not in adata.obs.columns for col in _QC_METRIC_COLS):
+        adata = compute_qc_metrics(
+            adata, exp_name, reg_name, prefix_name,
+            donor_name=donor_name, seg_fam=seg_fam,
+        )
+
+    cutoffs = dict(adata.uns.get("cutoffs", {}))
+    for key in _CUTOFF_NULL_DEFAULTS:
+        cutoffs.setdefault(key, None)
+    adata.uns["cutoffs"] = cutoffs
+
+    if "pass_qc" not in adata.obs.columns:
+        adata.obs["pass_qc"] = True
+
+    return adata
+
+
 def run_filtering(
     adata: ad.AnnData,
     exp_name: str,
