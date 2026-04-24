@@ -77,15 +77,30 @@ def project_to_3D(input_file, output_file: str | Path = None):
     """
     if output_file is None:
         output_file = input_file.with_suffix(".3d.tif")
-    decon_img = iio.imread(input_file)
-
-    if decon_img.ndim == 3: 
-        # Get the middle z_stack_size slices
-        start = (decon_img.shape[0] - z_stack_size) // 2
-        end = start + z_stack_size
-        decon_img_3d = decon_img[start:end]
-    else: 
-        decon_img_3d = decon_img.squeeze()
+    # Read only the needed pages one at a time to avoid loading the full padded volume.
+    try:
+        with tifffile.TiffFile(input_file) as tf:
+            n_slices = len(tf.pages)
+            start = (n_slices - z_stack_size) // 2
+            end = start + z_stack_size
+            if start < 0 or end > n_slices:
+                raise ValueError(
+                    f"TIFF has {n_slices} pages but z_stack_size={z_stack_size}"
+                )
+            decon_img_3d = np.stack([tf.pages[i].asarray() for i in range(start, end)])
+    except Exception:
+        logger.warning(
+            "project_to_3D: page-level read failed for %s — falling back to full load",
+            input_file,
+        )
+        decon_img = iio.imread(input_file)
+        if decon_img.ndim == 3:
+            start = (decon_img.shape[0] - z_stack_size) // 2
+            end = start + z_stack_size
+            decon_img_3d = decon_img[start:end].copy()
+            del decon_img
+        else:
+            decon_img_3d = decon_img.squeeze()
 
     # Save the 3D projected tile
     iio.imwrite(output_file, decon_img_3d)
@@ -216,6 +231,7 @@ def decon_image(
                 large_img = iio.imread(_fn)
                 stack_3d.append(large_img)
             large_img = np.stack(stack_3d, axis=0)
+            del stack_3d  # Free per-z-slice arrays; large_img now holds the sole copy of the 3D volume.
             channel_image_path = channel_image_path[0].parent / f"{channel_image_path[0].stem[:-1]}_stack.tif"
         else:
             channel_image_path = channel_image_path[0]
@@ -286,7 +302,7 @@ def decon_image(
                 exp_x = []
                 for z in range(len(x)): 
                     if (z == 0) or (z == len(x) - 1): 
-                        for j in range(z_stack_expand_slices): 
+                        for _ in range(z_stack_expand_slices):
                             exp_x.append(x[0])
                     else: 
                         exp_x.append(x[z])
@@ -303,7 +319,12 @@ def decon_image(
             saved_files = save_tiles(tiles, sub_tile_info, output_dir, func=to_3D)
         logger.info(f"Saved {len(saved_files)} tiles to {output_dir}")
 
-        del tiles  # Clear memory
+        del tiles  # Tiles are NumPy views into large_img, not copies; this only removes the view objects.
+        # Capture shape metadata then release the 3D volume from RAM — all tile data is on disk
+        # and large_img is not needed again until reconstruction (where only the shape is required).
+        _img_shape = large_img.shape
+        if is_3d:
+            del large_img  # Release the full 3D volume (z_stack_size × FOV) during deconvolution.
 
         logger.info(f"Applying {filter} filter")
         # Setting the deconwolf args
@@ -353,7 +374,7 @@ def decon_image(
         logger.info("Completed deconvolution and 2D projection for all tiles.")
 
         if is_3d:
-            depth = int(large_img.shape[0])
+            depth = _img_shape[0]
             suffix = ".decon.3d" if _zstackexpand else ".decon"
             logger.info(
                 f"Reconstructing deconvolved 3D image one z-slice at a time (depth={depth})"
@@ -363,7 +384,7 @@ def decon_image(
                 z_slice = reconstruct_image_from_tile_files(
                     output_dir=output_dir,
                     tile_info=sub_tile_info,
-                    original_shape=large_img.shape,
+                    original_shape=_img_shape,
                     suffix=suffix,
                     match_pre=match_pre,
                     z_index=z,
@@ -391,7 +412,7 @@ def decon_image(
         deconed_image = reconstruct_image_from_tile_files(
             output_dir=output_dir,
             tile_info=sub_tile_info,
-            original_shape=large_img.shape,
+            original_shape=_img_shape,
             suffix=".decon.2d",
             match_pre=match_pre,
         )
