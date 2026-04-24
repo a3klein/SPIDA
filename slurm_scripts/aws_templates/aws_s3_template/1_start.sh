@@ -5,7 +5,8 @@
 #SBATCH -J start_{EXP_N}_{REG_N}
 #SBATCH --partition=cpu-ondemand
 #SBATCH --constraint=cpu-32vcpu
-#SBATCH --mem=128G
+#SBATCH --ntasks-per-node=32
+#SBATCH --exclusive
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 
@@ -29,7 +30,7 @@ tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
-    git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
+    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 fi
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
@@ -73,7 +74,19 @@ pixi run --frozen -e preprocessing \
     {EXPERIMENT} \
     {REGION} \
     --brain-region {BR} \
-    --lab salk
+    --lab salk \
+    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
+
+echo -e "\nGenerating default Segmentation QC figures\n"
+pixi run --frozen -e preprocessing \
+    python -m spida.site --config {CONFIG_PATH} \
+    generate-seg-qc-figs \
+    {EXPERIMENT} \
+    {REGION} \
+    default \
+    --brain-region {BR} \
+    --lab salk \
+    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"

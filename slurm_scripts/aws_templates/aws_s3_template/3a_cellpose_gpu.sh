@@ -25,13 +25,13 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 # --- Sync from S3 ---
 echo -e "\nSyncing deconvoluted images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/ --no-progress
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/ --only-show-errors
 
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
-    git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
+    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 fi
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA

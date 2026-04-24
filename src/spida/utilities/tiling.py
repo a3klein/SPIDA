@@ -1,5 +1,6 @@
 from pathlib import Path
 from collections.abc import Callable
+import logging
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,8 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
+
+logger = logging.getLogger(__name__)
 
 
 def tile_image_with_overlap(
@@ -733,6 +736,11 @@ def reconstruct_image_from_tile_files(
 
             return tifffile.imread(path, key=plane)
         except Exception:
+            logger.warning(
+                "_read_tiff_plane: fast page read failed for %s plane %d — falling back to full load",
+                path,
+                plane,
+            )
             arr = iio.imread(path)
             if arr.ndim == 3:
                 return arr[plane]
