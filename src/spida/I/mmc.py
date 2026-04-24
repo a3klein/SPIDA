@@ -568,6 +568,10 @@ class MMCAnnotator:
         
         self.logger.info(f"Found hierarchy levels: {hierarchy_list}")
         
+        #TODO: a more elegant solution to align the index types maybe? 
+        adata.obs.index = adata.obs.index.astype(str)
+        results_df.index = results_df.index.astype(str)
+
         # Add columns to obs
         for h in hierarchy_list:
             score_col = f"{h}_bootstrapping_probability"
@@ -689,6 +693,7 @@ def annotate_region(
     plot: bool = False,
     palette_path: str | Path = None,
     plot_path: str | Path = None,
+    plot_name: str = "mmc_annotation_plots",
     **annotation_params,
 ) -> int:
     """
@@ -756,12 +761,15 @@ def annotate_region(
     # if filtering, do it in the function
     if filter_annot: 
         query_adata.obs['mmc_total_filt'] = filt_adata_mmc(query_adata, hierarchy_list, annot_name="mmc", score_ext="transfer_score", **annotation_params)
+    for col in hierarchy_list: 
+        query_adata.obs[f'mmc_{col}'] = query_adata.obs[f'mmc_{col}'].astype(str).astype("category")
+        query_adata.obs[f'mmc_{col}_transfer_score'] = query_adata.obs[f'mmc_{col}_transfer_score'].astype(float).fillna(0)
     query_adata.write_h5ad(query_path)
 
     # if plotting
     if plot: 
         logger.info("Generating annotation plots")
-        plot_path = Path(plot_path) / exp_name / prefix_name / reg_name / "mmc_annotation_plots.pdf"
+        plot_path = Path(plot_path) / exp_name / prefix_name / reg_name / f"{plot_name}.pdf"
         from spida.pl.annot_plots import plot_annot
         plot_annot(
             adata = query_adata, 
@@ -773,7 +781,7 @@ def annotate_region(
             filt_column = "total_filt",
             score_ext = "transfer_score",
             umap_col = "base_umap",
-            single_clust_plot_thr = 30,
+            single_clust_plot_thr = 40,
         )
     
     return 0
@@ -789,6 +797,7 @@ def annotate_experiment(
     plot: bool = False,
     palette_path: str | Path = None,
     plot_path: str | Path = None,
+    plot_mame: str = "mmc_annotation_plots",
     **annotation_params,
 ) -> int:
     """
@@ -844,6 +853,7 @@ def annotate_experiment(
             plot=plot,
             palette_path=palette_path,
             plot_path=plot_path,
+            plot_name=plot_name,
             **annotation_params,
         )
     

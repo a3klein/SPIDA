@@ -13,6 +13,7 @@ from spida._constants import (
     CELL_VOLUME,
     PROSEG_PRESET,
     DEFAULT_PRESET,
+    DAPI_COL,
 )  # type: ignore
 
 
@@ -69,7 +70,10 @@ class Filter:
         except pl.exceptions.PolarsError:
             df_obs = pl.DataFrame(self.adata.obs)
 
-        df_meta = df_obs.select([CELL_ID, CELL_X, CELL_Y, CELL_VOLUME])
+        select_cols = [CELL_ID, CELL_X, CELL_Y, CELL_VOLUME]
+        if DAPI_COL in df_obs.columns:
+            select_cols.append(DAPI_COL)
+        df_meta = df_obs.select(select_cols)
         df_meta = self.load_info(df_meta)
         return df_meta
 
@@ -223,6 +227,18 @@ class Filter:
         self.adata.uns["cutoffs"]["n_count_per_volume_min"] = n_count_per_volume_min
         self.adata.uns["cutoffs"]["n_count_per_volume_max"] = n_count_per_volume_max
 
+        df_feature = df_feature.with_columns(
+            pl.col(CELL_ID).is_in(judge[CELL_ID].implode()).alias("pass_qc")
+        )
+        
+        DAPI_filter = False
+        if DAPI_COL in df_feature.columns:
+            DAPI_filter = df_feature.filter(~pl.col('pass_qc_pre'))[DAPI_COL].quantile(DAPI_quantile)
+            judge = df_feature.filter(
+                pl.col("pass_qc") & (pl.col(DAPI_COL) >= DAPI_filter)
+            ).select(CELL_ID)
+            
+        self.adata.uns['cutoffs']['DAPI_filter_min'] = DAPI_filter            
         df_feature = df_feature.with_columns(
             pl.col(CELL_ID).is_in(judge[CELL_ID].implode()).alias("pass_qc")
         )

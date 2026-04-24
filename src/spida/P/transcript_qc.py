@@ -280,6 +280,11 @@ def cluster_hexes(
     sc.tl.leiden(adata_hex, flavor="igraph", n_iterations=5, resolution=leiden_resolution)
     logger.info("Leiden clustering completed")
 
+    try:
+        from ..utilities.degs import call_degs_scran
+        call_degs_scran(adata_hex, celltype_col="leiden", uns_key="scran_markers", num_threads=4)
+    except Exception:
+        pass
     sc.tl.rank_genes_groups(adata_hex, groupby="leiden", method="wilcoxon")
     logger.info("Rank genes groups completed")
     return adata_hex

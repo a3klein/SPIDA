@@ -638,8 +638,9 @@ def mmc_setup(
     default=13,
     help='Random number generator seed. Defaults to 13.'
 )
-@click.option("--filter_annotations", type=bool, is_flag=True, default=True, help='Whether to filter annotations based on the number of markers. Defaults to True.')
+@click.option("--filter_annotations", type=bool, is_flag=True, default=False, help='Whether to filter annotations based on the number of markers. Defaults to False.')
 @click.option("--plot", type=bool, is_flag=True, default=False, help='Whether to plot the annotation results. Defaults to False.')
+@click.option("--plot_name", type=click.STRING, default="mmc_annotation_plots", help='Name for the annotation plots. Defaults to "mmc_annotation_plots".')
 @click.option("--palette_path", type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False), default=None, help='Path to a custom palette file for plotting. Defaults to None.')
 @click.option("--image_store", type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True), default=None, help='Path to the image store for saving plots. Defaults to None..')
 @click.pass_context
@@ -658,8 +659,9 @@ def mmc_annotation_region(
     bootstrap_factor: float = 0.8,
     bootstrap_iterations: int = 100,
     rng_seed: int = 13,
-    filter_annotations: bool = True,
+    filter_annotations: bool = False,
     plot: bool = False,
+    plot_name: str = "mmc_annotation_plots",
     palette_path: str = None,
     image_store: str = None,
     **kwargs,
@@ -681,7 +683,7 @@ def mmc_annotation_region(
     --bootstrap_factor: Bootstrap factor (default: 0.8)
     --bootstrap_iterations: Bootstrap iterations (default: 100)
     --rng_seed: Random seed (default: 13)
-    --filter_annotations: Whether to filter annotations based on the number of markers (default: True)
+    --filter_annotations: Whether to filter annotations based on the number of markers (default: False)
     --plot: Whether to plot the annotation results (default: False)
     --palette_path: Path to a custom palette file for plotting (default: None)
     --image_store: Path to the image store for saving plots (default: None)
@@ -714,6 +716,7 @@ def mmc_annotation_region(
         rng_seed=rng_seed,
         filter_annot=filter_annotations,
         plot=plot,
+        plot_name=plot_name,
         palette_path=palette_path,
         image_store_path=image_store,
         **kwargs,
@@ -783,6 +786,7 @@ def mmc_annotation_region(
 )
 @click.option("--filter_annotations", type=bool, is_flag=True, default=True, help='Whether to filter annotations based on the number of markers. Defaults to True.')
 @click.option("--plot", type=bool, is_flag=True, default=False, help='Whether to plot the annotation results. Defaults to False.')
+@click.option("--plot_name", type=click.STRING, default="mmc_annotation_plots", help='Name for the annotation plots. Defaults to "mmc_annotation_plots".')
 @click.option("--palette_path", type=click.Path(exists=True, file_okay=True, path_type=str, dir_okay=False), default=None, help='Path to a custom palette file for plotting. Defaults to None.')
 @click.option("--image_store", type=click.Path(exists=True, file_okay=False, path_type=str, dir_okay=True), default=None, help='Path to the image store for saving plots. Defaults to None..')
 @click.pass_context
@@ -801,6 +805,7 @@ def mmc_annotation_experiment(
     rng_seed: int = 13,
     filter_annotations: bool = True,
     plot: bool = False,
+    plot_name: str = "mmc_annotation_plots",
     palette_path: str = None,
     image_store: str = None,
     **kwargs,
@@ -845,6 +850,7 @@ def mmc_annotation_experiment(
         rng_seed=rng_seed,
         filter_annot=filter_annotations,
         plot=plot,
+        plot_name=plot_name,
         palette_path=palette_path,
         image_store_path=image_store,
     )

@@ -92,6 +92,7 @@ def _calc_embeddings(
     harmony_nclust: int = 20,
     max_iter_harmony: int = 20,
     consensus_cluster: bool = True,
+    **kwargs
 ): 
     """ Calculate the UMAP and tSNE embeddings for the AnnData object and given layer"""
     if (use_rep is not None) and (layer is not None): 
@@ -129,7 +130,7 @@ def _calc_embeddings(
             basis = f"{key_added}pca" if use_rep is None else use_rep
             pcs = adata.obsm[basis]
             harmony_out = hm.run_harmony(pcs, adata.obs, _key, max_iter_harmony=max_iter_harmony, nclust=harmony_nclust)
-            adata.obsm[f'{key_added}_pca_harmony'] = harmony_out.Z_corr
+            adata.obsm[f'{key_added}pca_harmony'] = harmony_out.Z_corr
             # Using harmony directly since the scanpy implementation is outdated. 
             # sce.pp.harmony_integrate(adata,
             #                         key=_key,
@@ -169,6 +170,7 @@ def _calc_embeddings(
                 clustering_name=f"{key_added}leiden",
                 leiden_resolution=leiden_res,
                 use_rep=use_rep,
+                **kwargs
             )
         except Exception as e:
             logger.warning(f"Consensus clustering failed with error: {e}. Falling back to standard Leiden clustering.")
@@ -268,6 +270,7 @@ def _consensus_cluster(
     max_iter = 50,
     n_jobs = 24,
     target_accuracy = 0.9,
+    **kwargs
 ): 
     """
     Perform consensus clustering on an AnnData object using the ALLCools implementation.

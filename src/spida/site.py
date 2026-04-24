@@ -189,24 +189,38 @@ def generate_seg_qc_figs(
 @cli.command(cls=RichCommand, help="Generate data.json manifest for the SPIDA website from the images and data directories.")
 @click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
 @click.option("--experiment-alias-re", type=str, default=r"4x1-([^/]+)-(?:E|Q)", help="Regular expression to extract experiment alias from folder names (default: r'4x1-([^/]+)-(?:E|Q)')")
-@click.option("--region-alias-re", type=str, default=r"region_([^/_]+)", help="Regular expression to extract region alias from folder names (default: r'region_([^/_]+)')")
+@click.option("--region-alias-re", type=str, default=r"region_([^/_]+)_", help="Regular expression to extract region alias from folder names (default: r'region_([^/_]+)_')")
+@click.option("--include-lab", is_flag=True, default=False, help="Include lab alias in the manifest (default: False). Uses --lab-alias-re if provided, otherwise defaults to extracting text after the last underscore.")
+@click.option("--lab-alias-re", type=str, default=None, help="Regular expression to extract lab alias from folder names. Only used when --include-lab is set. (default: r'_([^_]+)$')")
+@click.option("--naming-map", type=click.Path(exists=True), default=None, help="Path to a CSV file mapping folder names to aliases. Expected columns: Name, EXP name, Donor name, Lab. Takes precedence over regex options.")
 @click.pass_context
 def generate_data_manifest(
     ctx,
     site_dir : str | Path = None,
     experiment_alias_re : str = r"4x1-([^/]+)-(?:E|Q)",
-    region_alias_re : str = r"region_([^/_]+)",
-): 
+    region_alias_re : str = r"region_([^/_]+)_",
+    include_lab : bool = False,
+    lab_alias_re : str = None,
+    naming_map : str | Path = None,
+):
     """Generate data.json manifest from images and data directories.
 
     Assumes folder structure:
         images/{brain_region}/{experiment}_{region}
         data/{brain_region}/{experiment}_{region}
 
-    Alias rules: (these may be subject to change as this expands)
-    - experiment alias: text between "4x1-" and "-E" or "-Q"
-    - region alias (donor): text after "region_"
+    Alias rules can be specified via --naming-map (CSV) or regex options:
+    - experiment alias: --experiment-alias-re (default: text between "4x1-" and "-E" or "-Q")
+    - region alias (donor): --region-alias-re (default: text after "region_" until next underscore)
+    - lab alias: only included when --include-lab is set; uses --lab-alias-re if provided,
+      otherwise defaults to text after the last underscore in the folder name
+
+    When --naming-map is provided, the CSV lookup takes precedence over regex options.
+    The CSV must have a "Name" column (matching folder names) and may include
+    "EXP name", "Donor name", and "Lab" columns.
     """
+    import csv
+
     if site_dir is None:
         site_dir = os.getenv("SPIDA_SITE_DIR", None)
     if isinstance(site_dir, str):
@@ -215,16 +229,40 @@ def generate_data_manifest(
     DATA_DIR = site_dir / "data" # absolutes
     OUTPUT_FILE = site_dir / "data.json" # absolutes
 
+    # Build naming lookup from CSV if provided
+    naming_lookup: dict[str, dict] = {}
+    if naming_map is not None:
+        with open(naming_map, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                name = row.get("Name", "").strip()
+                if name:
+                    naming_lookup[name] = row
+
     EXPERIMENT_ALIAS_RE = re.compile(experiment_alias_re)
     REGION_ALIAS_RE = re.compile(region_alias_re)
+    _default_lab_re = r"_([^_]+)$"
+    LAB_ALIAS_RE = re.compile(lab_alias_re if lab_alias_re else _default_lab_re) if include_lab else None
 
     def experiment_alias(name: str) -> str:
+        if name in naming_lookup and naming_lookup[name].get("EXP name", "").strip():
+            return naming_lookup[name]["EXP name"].strip()
         match = EXPERIMENT_ALIAS_RE.search(name)
         return match.group(1) if match else name
 
     def region_alias(name: str) -> str:
+        if name in naming_lookup and naming_lookup[name].get("Donor name", "").strip():
+            return naming_lookup[name]["Donor name"].strip()
         match = REGION_ALIAS_RE.search(name)
         return match.group(1) if match else name
+
+    def lab_alias(name: str) -> str | None:
+        if name in naming_lookup and naming_lookup[name].get("Lab", "").strip():
+            return naming_lookup[name]["Lab"].strip()
+        if LAB_ALIAS_RE is not None:
+            match = LAB_ALIAS_RE.search(name)
+            return match.group(1) if match else None
+        return None
 
     def collect_files(folder: Path, suffix: str | None = None) -> list[str]:
         if not folder.exists():
@@ -250,16 +288,18 @@ def generate_data_manifest(
 
         for experiment_dir in sorted(p for p in region_dir.iterdir() if p.is_dir()):
             data_dir = DATA_DIR / region_dir.name / experiment_dir.name
-            region_entry["experiments"].append(
-                {
-                    "id": experiment_dir.name,
-                    "label": experiment_dir.name,
-                    "alias": experiment_alias(experiment_dir.name),
-                    "region_alias": region_alias(experiment_dir.name),
-                    "image_files": collect_files(experiment_dir),
-                    "data_files": collect_files(data_dir, suffix=".csv"),
-                }
-            )
+            exp_entry = {
+                "id": experiment_dir.name,
+                "label": experiment_dir.name,
+                "alias": experiment_alias(experiment_dir.name),
+                "region_alias": region_alias(experiment_dir.name),
+                "image_files": collect_files(experiment_dir),
+                "data_files": collect_files(data_dir, suffix=".csv"),
+            }
+            lab = lab_alias(experiment_dir.name)
+            if lab is not None:
+                exp_entry["lab"] = lab
+            region_entry["experiments"].append(exp_entry)
 
         brain_regions.append(region_entry)
 

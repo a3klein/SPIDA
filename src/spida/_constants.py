@@ -21,7 +21,7 @@ CELL_Y = "CENTER_Y"
 CELL_FOV = "fov"
 CELL_VOLUME = "volume"
 GEOMETRY_COL = "geometry"
-
+DAPI_COL = "DAPI_high_pass"
 
 DEFAULT_PRESET = {
     "tz_cell_id": "cell",
