@@ -107,3 +107,13 @@ pixi run --frozen -e preprocessing \
     cellpose_cell \
     --suffix _filt \
     --plot
+
+echo -e "\nGenerating segmentation QC figures\n"
+pixi run --frozen -e preprocessing \
+    python -m spida.site {CONFIG} \
+    generate-seg-qc-figs \
+    {EXPERIMENT} \
+    {REGION} \
+    cellpose_cell \
+    --brain-region HIPP \
+    --lab salk
