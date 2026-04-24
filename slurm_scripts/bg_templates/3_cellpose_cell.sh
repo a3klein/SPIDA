@@ -10,8 +10,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=128gb
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/BG_R/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/BG_R/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
 
 module purge
 module load modtree/gpu
@@ -95,7 +95,7 @@ pixi run --frozen -e preprocessing \
     {REGION} \
     cellpose_cell \
     --plot \
-    --cutoffs_path {CUTOFFS_PATH}
+    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/BG_R/config/filtering_cutoffs.json
 
 echo -e "\n\tSetting up AnnData - {REG_N} - {EXP_N}\n"
 # SETUP ADATA 
@@ -115,5 +115,5 @@ pixi run --frozen -e preprocessing \
     {EXPERIMENT} \
     {REGION} \
     cellpose_cell \
-    --brain-region HIPP \
+    --brain-region BG \
     --lab salk

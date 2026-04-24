@@ -1,27 +1,20 @@
 #!/bin/bash
-# FILENAME: cellpose_cell.sh
+# FILENAME = proseg_cell_v4.sh 
 
-#SBATCH -A mcb130189-gpu
-#SBATCH -J cellpose_cell_{EXP_N}_{REG_N}
-#SBATCH -p gpu
-#SBATCH --time=2:00:00
+#SBATCH -A mcb130189
+#SBATCH -J proseg_cell_{EXP_N}_{REG_N}
+#SBATCH -p wholenode
+#SBATCH --time=1:30:00
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=64
+#SBATCH --ntasks=128
 #SBATCH --mem=128gb
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/3a_cellpose_cell_{EXP_N}_{REG_N}.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/4a_proseg_cell_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/4a_proseg_cell_{EXP_N}_{REG_N}.out
 
 module purge
-module load modtree/gpu
-module load ngc
-module load mpc
-module load cuda/12.0.1
-module load pytorch/21.09-py3
+module load modtree/cpu
 module list
 
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/anvil/projects/x-mcb130189/aklein/programs/gsl/lib
 export PATH="/home/x-aklein2/.pixi/bin:$PATH"
 export SLURM_TMPDIR="${{SLURM_TMPDIR:-${{TMPDIR:-/tmp}}}}"
 export PIXI_HOME="${{SLURM_TMPDIR}}/pixi_home_${{SLURM_JOB_ID:-$$}}"
@@ -40,50 +33,40 @@ echo -e ${{RATTLER_CACHE_DIR}}
 
 cd "$WORKDIR"
 sleep 10
-
+pixi --version
 pixi install --frozen -e preprocessing
-pixi install --frozen -e cellpose
 
-echo -e "\n\tLoading Deconvoluted Images - {REG_N} - {EXP_N}\n"
-# Loading in deconvoluted images
+PREFIX=proseg_cell
+
+echo -e "\n\tRunning ProSeg Cell on Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
+
+# SEGMENTATION
 pixi run --frozen -e preprocessing \
-    python -m spida.S.cli {CONFIG} \
-    load-decon-images \
-    {EXPERIMENT} \
-    {REGION} \
-    {ROOT_PATH} \
-    --plot
-
-echo -e "\n\tRunning Cellpose SAM on Region {REG_N} of Experiment {EXP_N}\n"
-# Running Cellpose
-pixi run --frozen -e cellpose \
     python -m spida.S.cli {CONFIG} \
     run-segmentation-region \
-    cellpose \
+    proseg \
     {EXPERIMENT} \
     {REGION} \
-    --input_dir {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
-    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
-    --scale=4 \
-    --image_ext=.decon.tif \
-    --nuc_stain_name=DAPI \
-    --cyto_stain_name=PolyT \
-    --flow_threshold=0 \
-    --cellprob_threshold=-2 \
-    --tile_norm_blocksize=2960 \
+    --input_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ \
+    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/${{PREFIX}} \
+    --voxel-layers=7 \
+    --ncomponents=10 \
+    --enforce-connectivity=True \
+    --nuclear-reassignment-prob=0.05 \
+    --cell-compactness=0.05 \
+    --diffusion-probability=0.01 \
+    --overwrite=True
 
-
-echo -e "\n\tLoading Segmentation - {REG_N} - {EXP_N}\n"
-# Loading in the segmentation into the zarr store
+echo -e "\n\tLoading ProSeg Segmentation - {REG_N} - {EXP_N}\n"
+# LOAD PROSEG SEGMENTATION
 pixi run --frozen -e preprocessing \
     python -m spida.S.cli {CONFIG} \
-    load-segmentation-region  \
+    load-segmentation-region \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
-    --type vpt \
-    --prefix_name cellpose_cell \
-    --transcript-qc \
+    {SEGMENTATION_DIR}/{EXPERIMENT}/${{PREFIX}} \
+    --type proseg \
+    --prefix_name ${{PREFIX}} \
     --plot
 
 echo -e "\n\tFiltering Cells - {REG_N} - {EXP_N}\n"
@@ -93,9 +76,10 @@ pixi run --frozen -e preprocessing \
     filter_cells_region \
     {EXPERIMENT} \
     {REGION} \
-    cellpose_cell \
+    ${{PREFIX}} \
+    --seg_fam proseg \
     --plot \
-    --cutoffs_path {CUTOFFS_PATH}
+    --cutoffs_path /home/x-aklein2/projects/aklein/BICAN/HIPP/config/filtering_cutoffs_proseg.json
 
 echo -e "\n\tSetting up AnnData - {REG_N} - {EXP_N}\n"
 # SETUP ADATA 
@@ -104,7 +88,7 @@ pixi run --frozen -e preprocessing \
     setup_adata_region \
     {EXPERIMENT} \
     {REGION} \
-    cellpose_cell \
+    ${{PREFIX}} \
     --suffix _filt \
     --plot
 
@@ -114,6 +98,6 @@ pixi run --frozen -e preprocessing \
     generate-seg-qc-figs \
     {EXPERIMENT} \
     {REGION} \
-    cellpose_cell \
+    ${{PREFIX}} \
     --brain-region HIPP \
     --lab salk
