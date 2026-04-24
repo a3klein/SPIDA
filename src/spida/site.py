@@ -7,7 +7,7 @@ from pathlib import Path
 import json
 import re
 
-import click 
+import click
 from rich_click import RichCommand, RichGroup, echo as rich_echo # type: ignore
 from dotenv import load_dotenv  # type: ignore
 
@@ -17,6 +17,7 @@ from spida.utilities.site_utils import (
     _load_metadata,
     append_brain_region_qc_metrics,
     generate_soma_gene_proportions,
+    load_naming_map,
 )
 
 import logging
@@ -46,17 +47,19 @@ def cli(ctx, config):
 @click.option("--plot-decon", is_flag=True, default=False, help="Whether to plot deconvolved images (default: False)")
 @click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
 @click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
+@click.option("--naming-map", type=click.Path(exists=True), default=None, help="Path to naming_map.csv for human-readable labels (optional)")
 @click.pass_context
 def generate_load_qc_figs(
     ctx,
-    exp_name : str, 
+    exp_name : str,
     reg_name : str,
     lab : str = None,
     brain_region : str = "WB",
     zarr_store : str = None,
     site_dir : str | Path = None,
-    plot_decon : bool = False
-): 
+    plot_decon : bool = False,
+    naming_map : str | None = None,
+):
     """
     Generate QC figures for a given experiment and region, and save them to the appropriate directory for the SPIDA website.
     """
@@ -65,32 +68,33 @@ def generate_load_qc_figs(
 
     logger.info(f"Generating load QC figures for experiment {exp_name} region {reg_name}")
 
-    sdata, img_dir, data_dir, keys = _load_metadata(
+    sdata, img_dir, data_dir, keys, _ = _load_metadata(
         exp_name=exp_name,
         reg_name=reg_name,
         lab=lab,
         brain_region=brain_region,
         zarr_store=zarr_store,
-        site_dir=site_dir
+        site_dir=site_dir,
+        naming_map=naming_map,
     )
-    
+
     image_key = keys[0]
     decon_image_key = "decon_image"
     tz_qc_key = "transcript_qc_shapes"
     tz_qc_table_key = "adata_hex_s30.0_o0.0_clustered"
-    
-    try: 
+
+    try:
         grid=sdata[tz_qc_key].copy()
     except KeyError:
         logger.info(f"Key {tz_qc_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping QC plots.")
         tz_qc_grid_key = "adata_hex_s30.0_o0.0"
         adata_hex = sdata[tz_qc_grid_key].copy()
-        adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)    
+        adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)
 
     cmap="RdYlGn_r"
     adata_hex = sdata[tz_qc_table_key].copy()
-    adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)    
-    
+    adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)
+
     plot_load_images(sdata, image_key, img_dir)
     if plot_decon:
         plot_decon_images(sdata, decon_image_key, img_dir)
@@ -111,10 +115,11 @@ def generate_load_qc_figs(
     default=None,
     help="Column in adata.obs to use for neuron type grouping (optional).",
 )
+@click.option("--naming-map", type=click.Path(exists=True), default=None, help="Path to naming_map.csv for human-readable labels (optional)")
 @click.pass_context
 def generate_seg_qc_figs(
     ctx,
-    exp_name : str, 
+    exp_name : str,
     reg_name : str,
     prefix_name : str,
     lab : str = None,
@@ -122,21 +127,23 @@ def generate_seg_qc_figs(
     zarr_store : str = None,
     site_dir : str | Path = None,
     neuron_type_col: str | None = None,
-): 
+    naming_map: str | None = None,
+):
     """
     Generate QC figures for a given segmentation, and save them to the appropriate directory for the SPIDA website.
     """
     from spida.pl.site_figs import plot_segload, plot_seg_qc, plot_cell_cluster, plot_seg_clust_dotplot
     from spida.P.filtering import ensure_qc_metrics
 
-    sdata, img_dir, data_dir, keys = _load_metadata(
+    sdata, img_dir, data_dir, keys, naming_map_df = _load_metadata(
         exp_name=exp_name,
         reg_name=reg_name,
         prefix_name=prefix_name,
         lab=lab,
         brain_region=brain_region,
         zarr_store=zarr_store,
-        site_dir=site_dir
+        site_dir=site_dir,
+        naming_map=naming_map,
     )
     logger.info(f"Generating Seg QC figures for experiment {exp_name} region {reg_name}, segmentation {prefix_name}")
     image_key = keys[0]
@@ -146,7 +153,7 @@ def generate_seg_qc_figs(
 
     if shapes_key not in sdata:
         logger.warning(f"Shapes key {shapes_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
-    else: 
+    else:
         plot_segload(sdata, image_key, shapes_key, prefix_name, img_dir)
     if table_key not in sdata:
         logger.warning(f"Table key {table_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
@@ -165,22 +172,23 @@ def generate_seg_qc_figs(
             site_dir=site_dir,
             lab=lab,
             neuron_type_col=neuron_type_col,
+            naming_map=naming_map_df,
         )
-    
+
     filt_table_key = table_key + "_filt"
     if filt_table_key not in sdata:
         logger.warning(f"Table key {filt_table_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping segmentation QC plots for {prefix_name}.")
-    else: 
+    else:
         adata_seg = sdata[filt_table_key].copy()
         logger.info("plot_cell_cluster")
         plot_cell_cluster(adata_seg, prefix_name, img_dir)
-        try: 
+        try:
             logger.info("plot_seg_clust_dotplot")
             plot_seg_clust_dotplot(adata_seg, prefix_name, img_dir)
         except ValueError as e:
             logger.warning(f"Could not generate dotplot for {prefix_name} in experiment {exp_name} region {reg_name} due to error: {e}")
 
-    if points_key not in sdata: 
+    if points_key not in sdata:
         logger.warning(f"Points key {points_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping soma gene proportion calculation for {prefix_name}.")
     else:
         points = sdata[points_key].compute()
@@ -198,7 +206,7 @@ def generate_data_manifest(
     site_dir : str | Path = None,
     experiment_alias_re : str = r"4x1-([^/]+)-(?:E|Q)",
     region_alias_re : str = r"region_([^/_]+)",
-): 
+):
     """Generate data.json manifest from images and data directories.
 
     Assumes folder structure:
@@ -269,7 +277,7 @@ def generate_data_manifest(
     OUTPUT_FILE.write_text(json.dumps(output, indent=2), encoding="utf-8")
     logger.info(f"Wrote {OUTPUT_FILE}")
 
-#TODO: for the generate manifest also add a fodler for .csv files in the same layout as images (?) --> This gets annoying for integrating the stuff from multiple labs? 
+#TODO: for the generate manifest also add a fodler for .csv files in the same layout as images (?) --> This gets annoying for integrating the stuff from multiple labs?
 
 #TODO: For each experiment extract metadata such as genes/cell ... for each segmentation and save it to one csv shared across all experiment!
 
@@ -278,7 +286,7 @@ cli.add_command(generate_seg_qc_figs)
 cli.add_command(generate_data_manifest)
 
 if __name__ == "__main__":
-    
+
     # Configure root logger with INFO level handlers (to allow INFO messages through)
     env = configure_logging_for_runtime(
         level=logging.INFO,  # Handlers need to accept INFO level
@@ -286,12 +294,12 @@ if __name__ == "__main__":
     # Set root logger level to WARNING to suppress other modules
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.WARNING)
-    
+
     # Set the entire spida package to INFO level as well
     spida_logger = logging.getLogger('spida')
     spida_logger.setLevel(logging.INFO)
     # Set the level for the current logger
     logger.setLevel(logging.INFO) # Set the level for the current logger
     logger.info(f"Logging configured for environment: {env}")
-            
+
     cli()
