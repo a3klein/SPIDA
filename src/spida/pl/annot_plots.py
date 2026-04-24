@@ -19,7 +19,7 @@ def plot_annot(
     filt_column : str | None = "filt",
     score_ext : str | None = "transfer_score",
     umap_col : str = "base_umap",
-    single_clust_plot_thr : int = 15,
+    single_clust_plot_thr : int = 40,
 ):
     """
     Plotting results from an annotation run
@@ -140,7 +140,7 @@ def plot_annot(
                 adata = adata[adata.obs[f"{annot_name}_{filt_column}"] == True].copy()
             if adata.obs[f"{annot_name}_{_cc}"].nunique() <= single_clust_plot_thr:
                 ncols = 4
-                nrows = int(np.ceil(len(adata.obs[f"{annot_name}_{_cc}"].cat.categories) / ncols))
+                nrows = max(1, int(np.ceil(len(adata.obs[f"{annot_name}_{_cc}"].cat.categories) / ncols)))
                 pp = palette[_cc] if palette_path is not None else None
                 fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*4, nrows*4))
                 for ct, ax in zip(adata.obs[f"{annot_name}_{_cc}"].cat.categories, axes.flatten()):

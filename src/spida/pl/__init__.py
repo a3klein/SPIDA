@@ -30,6 +30,12 @@ from .palettes import add_colors
 from .transcript_plots import plot_hex_qc, plot_hex_clusters
 
 
+try:
+    from .deg_plots import plot_dotplot, plot_volcano
+except Exception as _e:
+    import warnings
+    warnings.warn(f"deg_plots not available: {_e}")
+
 from matplotlib.backends.backend_pdf import PdfPages
 def save_cluster_panels_pdf(output_pdf, figs):
     """

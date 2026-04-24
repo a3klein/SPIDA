@@ -76,58 +76,53 @@ def _get_joined_deg_list(
     """
     Running DEG analysis on both the reference and query datasets to get a joint list of genes to use for integration.
     """
-    from ..utilities.degs import call_degs_by_celltype, summarize_deg_results
-
+    from ..utilities.degs import (
+        call_degs_scran, summarize_scran_results,
+        call_degs_scanpy, summarize_scanpy_results,
+    )
 
     verbosity = False
     inner_verbose = False
-    if verbose >= 2: 
+    if verbose >= 2:
         inner_verbose = True
-    if verbose >= 1: 
+    if verbose >= 1:
         verbosity = True
 
-    try: 
-        deg_ref = call_degs_by_celltype(
-            adata=ref_adata,
-            celltype_col=ref_col_level,
-            min_cells=min_cells,
-            logfc_threshold=logfc_threshold,
-            pval_threshold=pval_threshold,
-            method=method,
-            correction_method=correction_method,
-            save_results=False,
-            verbose=inner_verbose
-        )  
+    def _collect_genes(adata, celltype_col, n):
+        try:
+            raw = call_degs_scran(
+                adata, celltype_col=celltype_col,
+                min_cells=min_cells, verbose=inner_verbose,
+            )
+            summary = summarize_scran_results(raw, n_genes=n)
+            top_col = next(c for c in summary.columns if c.startswith('top_') and c.endswith('_markers'))
+            return np.unique([g for genes in summary[top_col] for g in genes])
+        except Exception as e:
+            logger.warning(f"scran DEGs failed ({e}), falling back to scanpy")
+            raw = call_degs_scanpy(
+                adata, celltype_col=celltype_col,
+                min_cells=min_cells, logfc_threshold=logfc_threshold,
+                pval_threshold=pval_threshold, method=method,
+                correction_method=correction_method,
+                save_results=False, verbose=inner_verbose,
+            )
+            summary = summarize_scanpy_results(raw, top_n=n)
+            up = np.unique([g for genes in summary['top_upregulated'] for g in genes])
+            dn = np.unique([g for genes in summary['top_downregulated'] for g in genes])
+            return np.unique(np.concatenate((up, dn)))
 
-        summary_ref = summarize_deg_results(deg_ref, top_n=top_n)
-
-        up_genes = np.unique([item for sublist in summary_ref['top_upregulated'] for item in sublist])
-        down_genes = np.unique([item for sublist in summary_ref['top_downregulated'] for item in sublist])
-        ref_genes = np.unique(np.concatenate((up_genes, down_genes)))
-    except ValueError as e: 
-        ref_genes = []
+    try:
+        ref_genes = _collect_genes(ref_adata, ref_col_level, top_n)
+    except Exception as e:
+        logger.warning(f"Reference DEGs failed entirely: {e}")
+        ref_genes = np.array([])
     if verbosity: logger.info(f"Total unique genes in top {top_n} reference: {len(ref_genes)}")
 
     try:
-        deg_qry = call_degs_by_celltype(
-            adata=qry_adata,
-            celltype_col=qry_col_level,
-            min_cells=min_cells,
-            logfc_threshold=logfc_threshold,
-            pval_threshold=pval_threshold,
-            method=method,
-            correction_method=correction_method,
-            save_results=False,
-            verbose=inner_verbose
-        )  
-
-        deg_qry = summarize_deg_results(deg_qry, top_n=top_n)
-
-        up_genes = np.unique([item for sublist in deg_qry['top_upregulated'] for item in sublist])
-        down_genes = np.unique([item for sublist in deg_qry['top_downregulated'] for item in sublist])
-        qry_genes = np.unique(np.concatenate((up_genes, down_genes)))
-    except ValueError as e:
-        qry_genes = []
+        qry_genes = _collect_genes(qry_adata, qry_col_level, top_n)
+    except Exception as e:
+        logger.warning(f"Query DEGs failed entirely: {e}")
+        qry_genes = np.array([])
     if verbosity: logger.info(f"Total unique genes in top {top_n} query: {len(qry_genes)}")
 
     total_genes = np.unique(np.concatenate((ref_genes, qry_genes)))
@@ -333,13 +328,23 @@ def _joint_embeddings(
     min_dist:float = 0.25,
     leiden_res:int = 1,
     knn:int = 50,
+    target_accuracy=0.85,
     **kwargs
 ): 
     """
     For calculating the joint embeddings from the integrated PCA space
     """
     from ..utilities.ad_utils import _calc_embeddings
-    return _calc_embeddings(adata, use_rep=use_rep, key_added=key_added, leiden_res=leiden_res, knn=knn, min_dist=min_dist, **kwargs)
+    return _calc_embeddings(
+        adata,
+        use_rep=use_rep,
+        key_added=key_added,
+        leiden_res=leiden_res,
+        knn=knn,
+        min_dist=min_dist,
+        target_accuracy=target_accuracy,
+        **kwargs
+    )
 
 def _clust2clust_transfer(
     adata_comb, 

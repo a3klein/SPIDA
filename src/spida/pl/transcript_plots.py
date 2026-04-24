@@ -19,6 +19,22 @@ def _get_leiden_color_dict(adata_hex):
 
 # Helper Scripts for custom dotplot based on scanpy's rank_genes_groups results.
 # This avoids importing scnapy in the plotting module 
+def _top_genes_from_scran_uns(adata, uns_key: str = 'scran_markers', n_genes: int = 5) -> list[str]:
+    """Return a flat, deduplicated gene list from scran results stored in adata.uns."""
+    from spida.utilities.degs import summarize_scran_results_from_uns
+    summary = summarize_scran_results_from_uns(adata, uns_key=uns_key, top_n=n_genes)
+    top_col = next((c for c in summary.columns if c.startswith('top_') and c.endswith('_markers')), None)
+    if top_col is None:
+        return []
+    seen, genes = set(), []
+    for gene_list in summary[top_col]:
+        for g in (gene_list or []):
+            if g not in seen:
+                genes.append(g)
+                seen.add(g)
+    return genes
+
+
 def _top_rank_genes_from_uns(adata_hex, n_genes: int = 5) -> list[str]:
     if "rank_genes_groups" not in adata_hex.uns:
         return []
@@ -63,9 +79,17 @@ def _plot_rank_genes_dotplot_matplotlib(
         ax.text(0.5, 0.5, f"No {cluster_col} in adata.obs", ha="center", va="center", transform=ax.transAxes)
         return fig, ax
 
-    # Getting the top genes from the rank_genes_groups results. 
-    genes = _top_rank_genes_from_uns(adata_hex, n_genes=n_genes)
-    genes = [g for g in genes if g in adata_hex.var_names] # making sure in adata
+    # Try scran markers first, fall back to scanpy rank_genes_groups
+    genes = []
+    if 'scran_markers' in adata_hex.uns:
+        try:
+            genes = _top_genes_from_scran_uns(adata_hex, uns_key='scran_markers', n_genes=n_genes)
+            genes = [g for g in genes if g in adata_hex.var_names]
+        except Exception:
+            genes = []
+    if not genes:
+        genes = _top_rank_genes_from_uns(adata_hex, n_genes=n_genes)
+        genes = [g for g in genes if g in adata_hex.var_names]
     
     # Making sure there are genes
     if len(genes) == 0:

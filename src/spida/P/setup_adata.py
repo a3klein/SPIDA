@@ -54,8 +54,13 @@ def run_setup(
     normalize_adata(adata, layer='volume_norm', log1p=True)
     _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35, consensus_cluster=True)
 
+    try:
+        from ..utilities.degs import call_degs_scran
+        call_degs_scran(adata, celltype_col="base_leiden", uns_key="scran_markers", num_threads=4)
+    except Exception:
+        pass
     sc.tl.rank_genes_groups(adata, groupby="base_leiden", method="t-test_overestim_var")
-    
+
     return adata
 
 
