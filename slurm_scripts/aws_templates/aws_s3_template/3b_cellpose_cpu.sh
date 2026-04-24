@@ -6,6 +6,7 @@
 #SBATCH --partition=cpu-ondemand
 #SBATCH --constraint=cpu-32vcpu
 #SBATCH --ntasks-per-node=32
+#SBATCH --exclusive
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/3b_cellpose_cpu_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/3b_cellpose_cpu_{EXP_N}_{REG_N}.out
 
@@ -87,7 +88,8 @@ pixi run --frozen -e preprocessing \
     {REGION} \
     cellpose_cell \
     --brain-region {BR} \
-    --lab salk
+    --lab salk \
+    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"

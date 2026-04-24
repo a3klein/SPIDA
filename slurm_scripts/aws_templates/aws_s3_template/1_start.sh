@@ -6,6 +6,7 @@
 #SBATCH --partition=cpu-ondemand
 #SBATCH --constraint=cpu-32vcpu
 #SBATCH --ntasks-per-node=32
+#SBATCH --exclusive
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/1_start_{EXP_N}_{REG_N}.out
 
@@ -73,7 +74,8 @@ pixi run --frozen -e preprocessing \
     {EXPERIMENT} \
     {REGION} \
     --brain-region {BR} \
-    --lab salk
+    --lab salk \
+    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
 
 echo -e "\nGenerating default Segmentation QC figures\n"
 pixi run --frozen -e preprocessing \
@@ -83,7 +85,8 @@ pixi run --frozen -e preprocessing \
     {REGION} \
     default \
     --brain-region {BR} \
-    --lab salk
+    --lab salk \
+    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
