@@ -6,7 +6,7 @@
 #SBATCH --partition=cpu-ondemand
 #SBATCH --constraint=cpu-32vcpu
 #SBATCH --ntasks-per-node=32
-#SBATCH --mem=128G
+#SBATCH --exclusive
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/4_proseg_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/4_proseg_{EXP_N}_{REG_N}.out
 
@@ -23,14 +23,20 @@ export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 echo -e "\nSyncing zarr store and cellpose segmentation from S3...\n"
 mkdir -p {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}
 mkdir -p {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell
-aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ --no-progress
-aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ --no-progress
+aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
+aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ --only-show-errors
+
+# VPT sum-signals needs the raw MERSCOPE images (micron_to_mosaic transform + image TIFs).
+# These live in spatial_data on S3 — they are NOT re-uploaded by step 1, so must be pulled here.
+echo -e "\nSyncing raw images for VPT sum-signals...\n"
+mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ --only-show-errors
 
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
-    git clone https://github.com/a3klein/SPIDA.git /scratch/SPIDA
+    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 fi
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
@@ -95,7 +101,8 @@ pixi run --frozen -e preprocessing \
     {REGION} \
     proseg_cell \
     --brain-region {BR} \
-    --lab salk
+    --lab salk \
+    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"

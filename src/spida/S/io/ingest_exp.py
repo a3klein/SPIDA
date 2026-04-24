@@ -587,6 +587,7 @@ def load_decon_images(
     )
     if f"images/{image_name}" not in sdata.elements_paths_on_disk():
         sdata.write_element(image_name)
+        sdata.write_metadata(image_name)
     else:
         logger.warning(
             f"Images {image_name} already exists in the spatialdata object. Not overwriting it."

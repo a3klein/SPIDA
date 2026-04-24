@@ -11,6 +11,37 @@ from spida.utilities.sd_utils import _gen_keys
 from spida._constants import IMAGE_KEY, SHAPES_KEY, POINTS_KEY, TABLE_KEY
 
 
+def load_naming_map(path: str | Path | None) -> pd.DataFrame | None:
+    """Load the naming_map.csv, indexed by Name column. Returns None if path is None."""
+    if path is None:
+        return None
+    return pd.read_csv(path, index_col="Name")
+
+
+def lookup_naming_entry(
+    naming_map: pd.DataFrame | None,
+    exp_name: str,
+    reg_name: str,
+    lab: str | None = None,
+) -> dict | None:
+    """
+    Return {brain_region, exp_alias, donor, lab} for the given experiment/region/lab,
+    or None if the naming map is absent or has no matching row.
+    """
+    if naming_map is None:
+        return None
+    key = f"{exp_name}_{reg_name}_{lab}" if lab is not None else f"{exp_name}_{reg_name}"
+    if key not in naming_map.index:
+        return None
+    row = naming_map.loc[key]
+    return {
+        "brain_region": row["Brain Region"],
+        "exp_alias": row["EXP name"],
+        "donor": row["Donor name"],
+        "lab": row["Lab"],
+    }
+
+
 def _load_metadata(
     exp_name: str,
     reg_name: str,
@@ -19,6 +50,7 @@ def _load_metadata(
     brain_region: str = "WB",
     zarr_store: str | None = None,
     site_dir: str | Path | None = None,
+    naming_map: str | Path | None = None,
 ):
     import spatialdata as sd
 
@@ -29,7 +61,10 @@ def _load_metadata(
     if isinstance(site_dir, str):
         site_dir = Path(site_dir)
 
-    br = brain_region if brain_region is not None else "WB"
+    naming_map_df = load_naming_map(naming_map)
+    entry = lookup_naming_entry(naming_map_df, exp_name, reg_name, lab)
+    br = (entry["brain_region"] if entry else brain_region) or "WB"
+
     dir_name = f"{exp_name}_{reg_name}" if lab is None else f"{exp_name}_{reg_name}_{lab}"
     img_dir = site_dir / "images" / br / dir_name
     img_dir.mkdir(parents=True, exist_ok=True)
@@ -50,7 +85,7 @@ def _load_metadata(
         table_key = None
         points_key = None
 
-    return sdata, img_dir, data_dir, (image_key, shapes_key, table_key, points_key)
+    return sdata, img_dir, data_dir, (image_key, shapes_key, table_key, points_key), naming_map_df
 
 
 def generate_soma_gene_proportions(points, segmentation_key: str, out_dir: str | Path):
@@ -79,6 +114,7 @@ def append_brain_region_qc_metrics(
     site_dir: str | Path | None,
     lab: str | None = None,
     neuron_type_col: str | None = None,
+    naming_map: pd.DataFrame | None = None,
 ) -> None:
     if site_dir is None:
         site_dir = os.getenv("SPIDA_SITE_DIR", None)
@@ -87,17 +123,23 @@ def append_brain_region_qc_metrics(
     if site_dir is None:
         return
 
-    br = brain_region if brain_region is not None else "WB"
+    entry = lookup_naming_entry(naming_map, exp_name, reg_name, lab)
+    if entry is not None:
+        brain_region_alias = entry["exp_alias"]
+        donor = entry["donor"]
+        replicate = entry["lab"]
+        br = entry["brain_region"] or "WB"
+    else:
+        alias_match = re.search(r"4x1-([^/]+)-(?:E|Q)", exp_name)
+        brain_region_alias = alias_match.group(1) if alias_match else exp_name
+        donor_match = re.search(r"region_([^/_]+)", reg_name)
+        donor = donor_match.group(1) if donor_match else reg_name
+        replicate = lab or "unknown"
+        br = brain_region if brain_region is not None else "WB"
+
     data_root = site_dir / "data" / br
     data_root.mkdir(parents=True, exist_ok=True)
     output_file = data_root / "qc_metrics.csv"
-
-    alias_match = re.search(r"4x1-([^/]+)-(?:E|Q)", exp_name)
-    brain_region_alias = alias_match.group(1) if alias_match else exp_name
-
-    donor_match = re.search(r"region_([^/_]+)", reg_name)
-    donor = donor_match.group(1) if donor_match else reg_name
-    replicate = lab or "unknown"
 
     df_obs = adata.obs.copy()
     if neuron_type_col and neuron_type_col in df_obs.columns:

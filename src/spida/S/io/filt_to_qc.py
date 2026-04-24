@@ -82,9 +82,9 @@ def _resolve_qc_regions(
 		raise TypeError(
 			"`qc_regions` must be a GeoDataFrame, DataFrame, AnnData, or a key into `sdata`."
 		)
-	# what's returned is just the geometries which pass the qc. So any intersect will work with these geoms. 
+	# what's returned is just the geometries which pass the qc. So any intersect will work with these geoms.
 	if qc_gdf.empty:
-		print("QC regions resolved to an empty GeoDataFrame.")
+		logger.warning("QC regions resolved to an empty GeoDataFrame — all cells will be filtered out.")
 	return qc_gdf
 
 
@@ -243,6 +243,13 @@ def apply_qc_filter_to_segmentation(
         points_cell_id_col=points_cell_id_col,
         keep_cell_ids=keep_cell_ids,
     )
+
+    if table_filt.n_obs == 0:
+        raise ValueError(
+            f"QC filter removed all {n_table_before} cells from '{table_key}'. "
+            "The segmentation shapes and the QC pass-regions do not overlap spatially — "
+            "check that both are in the same coordinate system (micron space)."
+        )
 
     # Loading back into the spatialdata object
     sdata[shapes_key] = shapes_filt
