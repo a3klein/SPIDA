@@ -2,8 +2,11 @@
 # log files
 **/lightning_logs/
 
-# Personal 
+# Personal
 .env
+CLAUDE.md
+.claude/
+.claude/settings.local.json
 
 # pixi environments
 .pixi
