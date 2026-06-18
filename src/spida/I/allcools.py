@@ -41,14 +41,14 @@ def _downsample_reference(
         ref_adata = _downsample_ref_clusters(ref_adata, cluster_col, max_cells=max_cluster_size)
     return ref_adata
 
-#TODO: cef calls from ALLCools here instead?
 def _allcools_cef(
-    ref_adata, 
+    ref_adata,
     qry_adata,
     ref_col_level: str = 'Subclass_label',
+    qry_col_level: str = None,
     top_n: int = 200,
     alpha: float = 0.05,
-): 
+):
     from ALLCools.clustering import cluster_enriched_features # type: ignore
     cluster_enriched_features(ref_adata,
                             cluster_col=ref_col_level,
@@ -56,9 +56,21 @@ def _allcools_cef(
                             alpha=alpha,
                             stat_plot=False,
                             method="rna")
-    cef = ref_adata.var[f'{ref_col_level}_enriched_features']
-    cef = cef[cef].index
-    return cef
+    ref_cef = ref_adata.var[f'{ref_col_level}_enriched_features']
+    ref_cef = ref_cef[ref_cef].index
+
+    if qry_col_level is not None and qry_col_level in qry_adata.obs.columns:
+        cluster_enriched_features(qry_adata,
+                                cluster_col=qry_col_level,
+                                top_n=top_n,
+                                alpha=alpha,
+                                stat_plot=False,
+                                method="rna")
+        qry_cef = qry_adata.var[f'{qry_col_level}_enriched_features']
+        qry_cef = qry_cef[qry_cef].index
+        return ref_cef.union(qry_cef)
+
+    return ref_cef
 
 def _get_joined_deg_list(
     ref_adata, 
@@ -161,7 +173,7 @@ def _allcools_pca(
         ] = True
     else:
         train_cell[:] = True
-    ref_adata.obs["Train"] = train_cell.copy()
+    ref_adata.obs["Train"] = train_cell
 
     ndim = min(100, ref_adata.obs["Train"].sum() - 1, ref_adata.shape[1] - 1)
     model = TruncatedSVD(n_components=ndim, algorithm="arpack", random_state=0)
@@ -210,11 +222,13 @@ def _allcools_seurat_wrapper(ref_adata, qry_adata, **kwargs):
     """
 
     logger.info("Concatenating reference and query")
-    adata = ref_adata.concatenate(
-        qry_adata,
-        batch_categories=["ref", "query"],
-        batch_key="Modality",
+    adata = ad.concat(
+        [ref_adata, qry_adata],
+        label="Modality",
+        keys=["ref", "query"],
+        join="outer",
         index_unique=None,
+        uns_merge="same",
     )
 
     # ncell = ref_adata.shape[0] + qry_adata.shape[0]
@@ -296,30 +310,73 @@ def _transfer_labels(
         key_dist="X_pca",
         k_weight=label_transfer_k,
     )
-    # IF WANTING TO SAVE THE TRANSFER RESULTS 
+    # IF WANTING TO SAVE THE TRANSFER RESULTS
     if save_transfer is not None:
         logger.info(f"Saving label transfer results to {save_transfer}")
         label_transfer[rna_cell_type].to_csv(save_transfer, sep="\t")
-    labels = label_transfer[rna_cell_type].columns.tolist()
+    score_df = label_transfer[rna_cell_type]   # (n_query × n_labels) DataFrame
+    labels = score_df.columns.tolist()
     adata.obs[f"allcools_{rna_cell_type}"] = adata.obs.index.to_series().map(
-        label_transfer[rna_cell_type]
-        .apply(lambda x: labels[np.argmax(x)], axis=1)
-        .to_dict()
+        score_df.apply(lambda x: labels[np.argmax(x)], axis=1).to_dict()
     )
     adata.obs[f"allcools_{rna_cell_type}_transfer_score"] = (
         adata.obs.index.to_series().map(
-            label_transfer[rna_cell_type]
-            .apply(lambda x: x[np.argmax(x)], axis=1)
-            .to_dict()
+            score_df.apply(lambda x: x[np.argmax(x)], axis=1).to_dict()
         )
     )
-    adata.obs["all_annot"] = [
-        adata.obs.loc[x, rna_cell_type]
-        if pd.isnull(adata.obs.loc[x, f"allcools_{rna_cell_type}"])
-        else adata.obs.loc[x, f"allcools_{rna_cell_type}"]
-        for x in adata.obs.index
+    allcools_col = adata.obs[f"allcools_{rna_cell_type}"]
+    ref_col = adata.obs.get(rna_cell_type)
+    if ref_col is not None:
+        adata.obs["all_annot"] = np.where(allcools_col.isna(), ref_col, allcools_col)
+    else:
+        adata.obs["all_annot"] = allcools_col
+    return adata, score_df
+
+def filt_adata_allcools(
+    adata: ad.AnnData,
+    label_col: str,
+    transfer_score_threshold: float = 0.5,
+    score_col: str = None,
+    filt_col: str = None,
+) -> None:
+    """Filter allcools annotation by transfer score, modifying adata.obs in place.
+
+    Cells whose transfer score is below transfer_score_threshold are relabeled
+    "unknown" in the output filt_col.  Cells with no score (NaN — typically ref
+    cells in a combined object) are left unchanged.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Must contain label_col and the corresponding score column.
+    label_col : str
+        Full label column name, e.g. "allcools_Subclass".
+    transfer_score_threshold : float
+        Cells with score < threshold are marked "unknown". Default 0.5.
+    score_col : str, optional
+        Score column; defaults to f"{label_col}_transfer_score".
+    filt_col : str, optional
+        Output column; defaults to f"{label_col}_filt".
+    """
+    if score_col is None:
+        score_col = f"{label_col}_transfer_score"
+    if filt_col is None:
+        filt_col = f"{label_col}_filt"
+
+    adata.obs[filt_col] = adata.obs[label_col].astype("category")
+    if "unknown" not in adata.obs[filt_col].cat.categories:
+        adata.obs[filt_col] = adata.obs[filt_col].cat.add_categories("unknown")
+
+    low_quality = adata.obs.index[
+        adata.obs[score_col].notna() & (adata.obs[score_col] < transfer_score_threshold)
     ]
-    return adata
+    adata.obs.loc[low_quality, filt_col] = "unknown"
+    n_scored = adata.obs[score_col].notna().sum()
+    logger.info(
+        f"filt_adata_allcools: {len(low_quality)} / {n_scored} scored cells marked "
+        f"unknown (score < {transfer_score_threshold})"
+    )
+
 
 def _joint_embeddings(
     adata : ad.AnnData,
@@ -347,7 +404,74 @@ def _joint_embeddings(
     )
 
 def _clust2clust_transfer(
-    adata_comb, 
+    adata_comb,
+    ref_cell_type_column="Subclass",
+    joint_cluster_column="integrated_leiden",
+    ref_proportion=0.8,
+    ref_cell_count=5,
+    qry_cell_count=5,
+    ref_batch_modality_key="ref",
+    qry_batch_modality_key="query",
+):
+    """Proportion-threshold cluster-to-cluster label transfer.
+
+    For each integrated Leiden cluster, assigns the dominant reference cell type
+    if it clears ref_proportion and minimum cell count thresholds; otherwise marks
+    as "unknown".  Mirrors the notebook inline c2c logic with explicit parameters.
+    """
+    ref_obs = adata_comb.obs.loc[adata_comb.obs["Modality"] == ref_batch_modality_key]
+    qry_obs = adata_comb.obs.loc[adata_comb.obs["Modality"] == qry_batch_modality_key]
+
+    ref_vc = (
+        ref_obs.groupby(joint_cluster_column, observed=True)[ref_cell_type_column]
+        .value_counts(normalize=True)
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+    ref_vc.drop_duplicates(joint_cluster_column, keep="first", inplace=True)
+    ref_vc.rename(columns={"proportion": f"{ref_cell_type_column}_proportion"}, inplace=True)
+    df_map = ref_vc.set_index(joint_cluster_column)
+
+    df_map[f"{ref_cell_type_column}_cell_count"] = (
+        df_map.index.to_series()
+        .map(ref_obs.groupby(joint_cluster_column, observed=True)[ref_cell_type_column].count())
+        .astype(float)   # cast away Categorical before fillna so 0 is a valid fill value
+        .fillna(0)
+        .astype(int)
+    )
+    df_map["qry_cell_count"] = (
+        df_map.index.to_series()
+        .map(qry_obs.groupby(joint_cluster_column, observed=True).size())
+        .astype(float)   # same fix
+        .fillna(0)
+        .astype(int)
+    )
+
+    added_col = f"c2c_allcools_label_{ref_cell_type_column}"
+    adata_comb.uns[f"{joint_cluster_column}_{ref_cell_type_column}_map"] = df_map.copy()
+
+    df_filtered = df_map.query(
+        f"{ref_cell_type_column}_cell_count >= {ref_cell_count} & qry_cell_count >= {qry_cell_count}"
+    )
+    df_filtered = df_filtered.query(f"{ref_cell_type_column}_proportion >= {ref_proportion}")
+
+    cluster_to_label = df_filtered[ref_cell_type_column].to_dict()
+    adata_comb.obs[added_col] = (
+        adata_comb.obs[joint_cluster_column]
+        .map(cluster_to_label)
+        .fillna("unknown")
+        .astype("category")
+    )
+
+    logger.info(
+        f"c2c proportion transfer: {len(cluster_to_label)} / {len(ref_vc)} clusters assigned "
+        f"(ref_proportion>={ref_proportion}, ref_cell_count>={ref_cell_count}, qry_cell_count>={qry_cell_count})"
+    )
+    return adata_comb
+
+
+def _allcools_clust2clust_transfer(
+    adata_comb,
     ref_cell_type_column = "Subclass",
     joint_cluster_column = "integrated_leiden",
     confusion_matrix_cluster_min_value = 0.25,
@@ -356,9 +480,9 @@ def _clust2clust_transfer(
     qry_only_cluster_threshold = 50,
     ref_only_cluster_threshold = 20,
     integration_round: int = 1,
-    ref_batch_modality_key: str = "ref", 
+    ref_batch_modality_key: str = "ref",
     qry_batch_modality_key: str = "query",
-): 
+):
     data = adata_comb.obs.loc[~adata_comb.obs[joint_cluster_column].isna(), [joint_cluster_column, ref_cell_type_column]].value_counts().unstack(fill_value=0)
     data = data.drop(columns=['nan']) if 'nan' in data.columns else data
 
@@ -441,6 +565,7 @@ def _clust2clust_transfer(
                     run_joint_embeddings=True,
                     joint_embedding_leiden_res=0.5,
                     run_clust_label_transfer=True,
+                    c2c_method="allcools",
                     integration_round=2,
                     confusion_matrix_cluster_resolution=1,
                     confusion_matrix_cluster_min_value=0.1,
@@ -497,7 +622,13 @@ def run_allcools_seurat(
     harmony_nclust_joint_embeddings: int = 30,
     max_iter_harmony_joint_embeddings: int = 20,
     harmony_batch_keys: str | list[str] = "Modality",
+    filter_on_score: bool = False,
+    transfer_score_threshold: float = 0.5,
     run_clust_label_transfer: bool = True,
+    c2c_method: str = "proportion",
+    ref_proportion: float = 0.8,
+    ref_cell_count: int = 5,
+    qry_cell_count: int = 5,
     confusion_matrix_cluster_min_value = 0.25,
     confusion_matrix_cluster_max_value = 0.9,
     confusion_matrix_cluster_resolution = 1.5,
@@ -555,6 +686,7 @@ def run_allcools_seurat(
                 ref_adata,
                 qry_adata_ds,
                 ref_col_level=cef_col,
+                qry_col_level=qry_cluster_column,
                 top_n=top_deg_genes,
                 alpha=0.05,
             )
@@ -586,15 +718,26 @@ def run_allcools_seurat(
 
     # Get the Seurat Integration object
     adata_comb, integrator = _allcools_seurat_wrapper(ref_adata, qry_adata_ds, **kwargs)
+    pre_cols = set(qry_adata_ds.obs.columns).union(ref_adata.obs.columns)
+    del ref_adata, qry_adata_ds
+
 
     # Transfer labels to adata:
-    adata_comb = _transfer_labels(
+    adata_comb, _score_df = _transfer_labels(
         adata_comb,
         integrator,
         rna_cell_type=rna_cell_type_column,
         label_transfer_k=label_transfer_k,
         save_transfer=save_label_transfer_path
     )
+
+    # Filter by transfer score if requested
+    if filter_on_score:
+        filt_adata_allcools(
+            adata_comb,
+            label_col=f"allcools_{rna_cell_type_column}",
+            transfer_score_threshold=transfer_score_threshold,
+        )
 
     # Run joint embeddings if needed
     if run_joint_embeddings:
@@ -611,24 +754,41 @@ def run_allcools_seurat(
             **kwargs)
         
     # Running the cluster2cluster label transfer
-    if run_clust_label_transfer: 
-        adata_comb = _clust2clust_transfer(
-            adata_comb,
-            ref_cell_type_column=rna_cell_type_column,
-            joint_cluster_column="integrated_leiden",
-            confusion_matrix_cluster_min_value=confusion_matrix_cluster_min_value,
-            confusion_matrix_cluster_max_value=confusion_matrix_cluster_max_value,
-            confusion_matrix_cluster_resolution=confusion_matrix_cluster_resolution,
-            qry_only_cluster_threshold=qry_only_cluster_threshold,
-            ref_only_cluster_threshold=ref_only_cluster_threshold,
-            integration_round=integration_round,
-        )
+    if run_clust_label_transfer:
+        if c2c_method == "allcools":
+            adata_comb = _allcools_clust2clust_transfer(
+                adata_comb,
+                ref_cell_type_column=rna_cell_type_column,
+                joint_cluster_column="integrated_leiden",
+                confusion_matrix_cluster_min_value=confusion_matrix_cluster_min_value,
+                confusion_matrix_cluster_max_value=confusion_matrix_cluster_max_value,
+                confusion_matrix_cluster_resolution=confusion_matrix_cluster_resolution,
+                qry_only_cluster_threshold=qry_only_cluster_threshold,
+                ref_only_cluster_threshold=ref_only_cluster_threshold,
+                integration_round=integration_round,
+            )
+        else:
+            adata_comb = _clust2clust_transfer(
+                adata_comb,
+                ref_cell_type_column=rna_cell_type_column,
+                joint_cluster_column="integrated_leiden",
+                ref_proportion=ref_proportion,
+                ref_cell_count=ref_cell_count,
+                qry_cell_count=qry_cell_count,
+            )
 
 
-    pre_cols = set(qry_adata_ds.obs.columns).union(ref_adata.obs.columns)
     post_cols = adata_comb.obs.columns
     cols_to_add = list(set(post_cols) - set(pre_cols))
     qry_adata = _add_obs_columns(adata_comb, qry_adata, cols_to_add)
+
+    # Store full per-label score matrix so downstream QC can inspect non-max scores.
+    # obsm key: allcools_{col}_score_matrix  (n_cells × n_labels numpy array)
+    # uns  key: allcools_{col}_score_labels  (list of label names)
+    _score_key  = f"allcools_{rna_cell_type_column}_score_matrix"
+    _labels_key = f"allcools_{rna_cell_type_column}_score_labels"
+    qry_adata.obsm[_score_key] = _score_df.loc[qry_adata.obs_names].values
+    qry_adata.uns[_labels_key] = _score_df.columns.tolist()
 
     if save_query:
         qry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -684,5 +844,5 @@ def _add_obs_columns(adata_source, adata_target, cols_to_add):
     # For any remaining columns, use the original assignment
     remaining_cols = [col for col in cols_to_add if col not in adata_target.obs.columns]
     if remaining_cols:
-        adata_target.obs[remaining_cols] = adata_source.obs[remaining_cols].copy()
+        adata_target.obs[remaining_cols] = adata_source.obs[remaining_cols]
     return adata_target

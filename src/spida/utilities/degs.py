@@ -435,6 +435,8 @@ def call_degs_pydeseq2(
     design_formula: str | None = None,
     min_samples: int = 3,
     lfc_shrink: bool = True,
+    refit_cooks: bool = True,
+    size_factors_fit_type: str = 'ratio',
     pval_threshold: float = 0.05,
     logfc_threshold: float = 0.5,
     n_cpus: int = 1,
@@ -470,6 +472,21 @@ def call_degs_pydeseq2(
         Min donors/samples required per group; raises ValueError if not met.
     lfc_shrink : bool
         Apply apeGLM LFC shrinkage after fitting. Default True.
+    refit_cooks : bool
+        Whether to refit genes flagged as Cook's distance outliers. Default
+        True (DESeq2 default). Set to False when you have few pseudobulk
+        samples per group (e.g. 3–6 donors): with small n the Cook's
+        threshold is aggressive and may replace real signal. Has no effect
+        when all groups have fewer than min_replicates=7 samples (outlier
+        replacement is skipped automatically in that case).
+    size_factors_fit_type : str
+        Method for estimating size factors. Options:
+        - 'ratio' (default): median-of-ratios, the DESeq2 standard. Works
+          well when most genes are non-zero across samples.
+        - 'poscounts': uses only positive counts per gene; more robust when
+          pseudobulk samples are sparse (many zero-count genes). Recommended
+          for MERFISH panels or datasets with many lowly expressed genes.
+        - 'iterative': iterative least-squares fallback; rarely needed.
     pval_threshold, logfc_threshold : float
         Thresholds for the 'significant' flag (uses padj and log2FoldChange).
     n_cpus : int
@@ -554,7 +571,8 @@ def call_degs_pydeseq2(
         counts=counts_df,
         metadata=meta_df,
         design=design_formula,
-        refit_cooks=True,
+        refit_cooks=refit_cooks,
+        size_factors_fit_type=size_factors_fit_type,
         inference=inference,
     )
     dds.deseq2()

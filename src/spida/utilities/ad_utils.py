@@ -87,26 +87,46 @@ def _calc_embeddings(
     knn:int=25,
     p_cutoff: float = 0.1,
     run_embedding: bool = True,
+    do_umap: bool = True,
+    do_tsne: bool = False,
     run_harmony: bool = False,
     batch_key: str | list[str] = "dataset_id",
     harmony_nclust: int = 20,
     max_iter_harmony: int = 20,
+    run_bbknn: bool = False,
+    bbknn_batch_key: str | None = None, # if None, will use batch_key for bbknn batch key.
+    bbknn_computation="cKDTree", # annoy / pynndescent / cKDTree
+    bbknn_metric="euclidean",
+    bbknn_n_neighbors_within_batch: int = 3,
     consensus_cluster: bool = True,
+    n_top_genes: int | None = None,
     **kwargs
-): 
+):
     """ Calculate the UMAP and tSNE embeddings for the AnnData object and given layer"""
     if (use_rep is not None) and (layer is not None): 
         raise ValueError("Either use_rep or layer can be specified, not both.")
     from ALLCools.clustering import tsne, significant_pc_test  # type: ignore
+    if run_bbknn: 
+        try:
+            from bbknn import bbknn
+        except ImportError as e:
+            e.add_note("Please install `bbknn` and try again.")
+            raise
     
     chunked = (adata.shape[0] > 50000) and (layer is None)
     
-    if use_rep is None: 
+    if use_rep is None:
+        if n_top_genes is not None:
+            # Restrict PCA to highly variable genes so noisy lowly-variable
+            # genes don't dilute within-class variance (especially helpful in
+            # MERFISH panels where many genes are off-target in a given class).
+            sc.pp.highly_variable_genes(adata, n_top_genes=n_top_genes, layer=layer)
         sc.pp.pca(
             adata,
             n_comps=min(min(adata.shape) - 1, 100),
             chunked=chunked,
             layer=layer,
+            use_highly_variable=(n_top_genes is not None),
             key_added=f"{key_added}pca"
         )
         significant_pc_test(adata, p_cutoff=p_cutoff, update=True, obsm=f"{key_added}pca", downsample=100000)
@@ -125,42 +145,56 @@ def _calc_embeddings(
         else:
             raise ValueError("batch_key must be a string or a list of strings")
 
-        for i, _key in enumerate(batch_key):
+        for _key in batch_key:
             adata.obs[_key] = adata.obs[_key].astype("category")
-            basis = f"{key_added}pca" if use_rep is None else use_rep
-            pcs = adata.obsm[basis]
-            harmony_out = hm.run_harmony(pcs, adata.obs, _key, max_iter_harmony=max_iter_harmony, nclust=harmony_nclust)
-            adata.obsm[f'{key_added}pca_harmony'] = harmony_out.Z_corr
-            # Using harmony directly since the scanpy implementation is outdated. 
-            # sce.pp.harmony_integrate(adata,
-            #                         key=_key,
-            #                         basis=basis if i == 0 else f"{key_added}pca_harmony",
-            #                         adjusted_basis=f"{key_added}pca_harmony",
-            #                         nclust=harmony_nclust,
-            #                         max_iter_harmony=max_iter_harmony) #X_pca_harmony
-        use_rep = f"{key_added}pca_harmony"    
+        # Single joint call: harmonypy supports vars_use as a list and corrects all
+        # covariates simultaneously. The previous loop was a bug: it restarted from
+        # the raw PCA each iteration (use_rep was never None here), so only the last
+        # batch key's correction survived.
+        pcs = adata.obsm[use_rep]
+        harmony_out = hm.run_harmony(pcs, adata.obs, batch_key, max_iter_harmony=max_iter_harmony, nclust=harmony_nclust)
+        adata.obsm[f'{key_added}pca_harmony'] = harmony_out.Z_corr
+        use_rep = f"{key_added}pca_harmony"
+        n_pcs = significant_pc_test(adata, p_cutoff=p_cutoff, update=True, obsm=use_rep, downsample=100000)    
             
-    sc.pp.neighbors(adata, use_rep=use_rep, n_neighbors=knn)
+    adata.uns.pop("neighbors", None)
+    if run_bbknn: 
+        if bbknn_batch_key is None:
+            bbknn_batch_key = batch_key[0] if isinstance(batch_key, list) else batch_key
+        assert bbknn_batch_key in adata.obs.columns, f"bbknn_batch_key '{bbknn_batch_key}' not found in adata.obs"
+        bbknn(
+            adata=adata,
+            batch_key=bbknn_batch_key,
+            use_rep=use_rep,
+            n_pcs = n_pcs,
+            neighbors_within_batch=bbknn_n_neighbors_within_batch,
+            metric=bbknn_metric,
+
+            computation=bbknn_computation
+        )
+    else:
+        sc.pp.neighbors(adata, use_rep=use_rep, n_neighbors=knn)
     
     # If running embedding (usually in R1 = True, R2... = False)
     if run_embedding:
-        sc.tl.umap(adata, min_dist=min_dist, random_state=13, key_added=f"X_{key_added}umap")
-        dump_embedding(adata, from_name=f"{key_added}umap", to_name=f"{key_added}umap")
+        if do_umap: 
+            sc.tl.umap(adata, min_dist=min_dist, random_state=13, key_added=f"X_{key_added}umap")
+            dump_embedding(adata, from_name=f"{key_added}umap", to_name=f"{key_added}umap")
 
-        
-        temp_tsne = adata.obsm['X_tsne'].copy() if "X_tsne" in adata.obsm.keys() else None
-        tsne(
-            adata,
-            obsm=use_rep,
-            metric="euclidean",
-            exaggeration=-1,
-            perplexity=50,
-            n_jobs=-1,
-        )
-        adata.obsm[f"X_{key_added}tsne"] = adata.obsm['X_tsne'].copy()
-        if temp_tsne is not None:
-            adata.obsm['X_tsne'] = temp_tsne
-        dump_embedding(adata, from_name=f"{key_added}tsne", to_name=f"{key_added}tsne")
+        if do_tsne:
+            temp_tsne = adata.obsm['X_tsne'].copy() if "X_tsne" in adata.obsm.keys() else None
+            tsne(
+                adata,
+                obsm=use_rep,
+                metric="euclidean",
+                exaggeration=-1,
+                perplexity=50,
+                n_jobs=-1,
+            )
+            adata.obsm[f"X_{key_added}tsne"] = adata.obsm['X_tsne'].copy()
+            if temp_tsne is not None:
+                adata.obsm['X_tsne'] = temp_tsne
+            dump_embedding(adata, from_name=f"{key_added}tsne", to_name=f"{key_added}tsne")
     
     # Clustering using leiden
     if consensus_cluster: 
@@ -198,13 +232,14 @@ def multi_round_clustering(
     batch_key: str | list[str] = "dataset_id",
     harmony_nclust: int = 20,
     max_iter_harmony: int = 20,
+    consensus_cluster: bool = True,
 ):
     """ Perform multiple rounds of clustering on the AnnData object """
     if isinstance(leiden_res, (int, float)):
         leiden_res = [leiden_res] * num_rounds
     elif len(leiden_res) != num_rounds:
         raise ValueError("leiden_res must be a single value or a list of length num_rounds")
-    
+
     adata = _calc_embeddings(
         adata,
         layer=layer,
@@ -219,8 +254,9 @@ def multi_round_clustering(
         batch_key=batch_key,
         harmony_nclust=harmony_nclust,
         max_iter_harmony=max_iter_harmony,
+        consensus_cluster=consensus_cluster,
     )
-    if run_harmony: 
+    if run_harmony:
         use_rep = f"{key_added}round1_pca_harmony"
         layer = None
 
@@ -231,7 +267,11 @@ def multi_round_clustering(
         for _group in adata.obs[f"{key_added}round{i}_leiden"].cat.categories:
             idx = adata.obs[f"{key_added}round{i}_leiden"] == _group
             if np.sum(idx) < min_group_size:
-                df_to_add.loc[idx, f"{key_added}round{i+1}_leiden"] = _adata_sub.obs[f"{key_added}round{i}_leiden"].astype(str)
+                # Group too small to subcluster: carry the round-i label straight through.
+                # (Previously referenced `_adata_sub` before it was assigned.)
+                df_to_add.loc[idx, f"{key_added}round{i+1}_leiden"] = (
+                    adata.obs.loc[idx, f"{key_added}round{i}_leiden"].astype(str)
+                )
                 continue
             _adata_sub = adata[idx].copy()
             _adata_sub = _calc_embeddings(
@@ -245,6 +285,7 @@ def multi_round_clustering(
                 p_cutoff=p_cutoff,
                 run_embedding=False,
                 run_harmony=False,
+                consensus_cluster=consensus_cluster,
             )
             # transfer back to original adata
             df_add = _adata_sub.obs[f"{key_added}round{i}_leiden"].astype(str) + "_" + _adata_sub.obs[f"{key_added}round{i+1}_sub_leiden"].astype(str)
