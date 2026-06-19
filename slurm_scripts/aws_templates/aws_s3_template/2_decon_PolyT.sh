@@ -27,7 +27,8 @@ echo -e "\nSyncing raw images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ \
     --exclude "region_*" --no-progress
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ --no-progress
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ \
+    --exclude "*" --include "mosaic_PolyT_*" --no-progress
 
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 

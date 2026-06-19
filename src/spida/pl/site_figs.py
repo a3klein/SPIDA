@@ -324,19 +324,23 @@ def plot_seg_qc(adata, segmentation_key, out_dir):
     plt.savefig(os.path.join(out_dir, f"seg_qc_{segmentation_key}_n_count_per_volume_distribution.svg"))
     plt.close()
 
-    # TODO: figure out if the DAPI filter is active
-    # if adata.uns['cutoffs']['DAPI_filter']: 
-    # fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
-    # plot_feature_distribution(
-    #     adata.obs[adata.obs["pass_qc_pre"]] if "pass_qc_pre" in adata.obs.columns else adata.obs,
-    #     feature="nCount_RNA_per_Volume",
-    #     feature_alias="Transcripts Per Cell Size",
-    #     min_val=adata.uns["cutoffs"]["n_count_per_volume_min"],
-    #     max_val=adata.uns["cutoffs"]["n_count_per_volume_max"],
-    #     ax=ax,
-    # )
-    # plt.savefig(os.path.join(out_dir, f"seg_qc_{segmentation_key}_n_count_per_volume_distribution.svg"))
-    # plt.close()
+    # DAPI distribution: only emitted when DAPI_high_pass is available (VPT sum-signals
+    # populates it on cellpose tables; proseg tables don't have it). Cutoff line is the
+    # per-region DAPI floor written by Filter.filter_cells; None when the DAPI filter is
+    # disabled / not applied yet (default_table at step 1), in which case
+    # plot_feature_distribution simply omits the cutoff line.
+    if "DAPI_high_pass" in adata.obs.columns:
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
+        plot_feature_distribution(
+            adata.obs[adata.obs["pass_qc_pre"]] if "pass_qc_pre" in adata.obs.columns else adata.obs,
+            feature="DAPI_high_pass",
+            feature_alias="DAPI Intensity (high-pass)",
+            min_val=adata.uns["cutoffs"].get("DAPI_filter_min"),
+            max_val=None,
+            ax=ax,
+        )
+        plt.savefig(os.path.join(out_dir, f"seg_qc_{segmentation_key}_DAPI_distribution.svg"))
+        plt.close()
 
     fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
     plot_filt_cells(adata.obs, ax=ax, title="Filtered Cells")
