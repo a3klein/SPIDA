@@ -42,6 +42,10 @@ cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 mkdir /scratch/images
 
 # --- Compute ---
+# IMAGE_EXT is set by script_aws.py (--force_2d_segmentation flag).
+# .decon.tif = standard; _z3.decon.tif = middle z-slice for 3D experiments.
+IMAGE_EXT="{IMAGE_EXT}"
+
 echo -e "\nRunning Cellpose segmentation on region {REGION} of experiment {EXPERIMENT}\n"
 pixi run --frozen -e cellpose \
     python -m spida.S.cli --config {CONFIG_PATH} \
@@ -52,7 +56,7 @@ pixi run --frozen -e cellpose \
     --input_dir {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
     --scale=4 \
-    --image_ext=.decon.tif \
+    --image_ext=$IMAGE_EXT \
     --nuc_stain_name=DAPI \
     --cyto_stain_name=PolyT \
     --flow_threshold=0 \

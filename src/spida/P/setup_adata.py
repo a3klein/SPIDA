@@ -50,8 +50,8 @@ def run_setup(
 
     # Normalize gene count by volume
     adata.layers['volume_norm'] = scp.csr_matrix(adata.X / adata.obs['volume'].values[:, np.newaxis])
-    adata.X = adata.layers['volume_norm'].copy()
-    normalize_adata(adata, layer='volume_norm', log1p=True)
+    adata.X = adata.layers['raw'].copy()
+    normalize_adata(adata, layer='raw', log1p=True)
     _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35, consensus_cluster=True)
 
     try:

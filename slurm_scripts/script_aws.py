@@ -189,6 +189,14 @@ def _parse_list(arg: str) -> list:
     help="Comma-separated list of steps to enable in chain.sh (1-4). "
          "Default 'all' enables every step.",
 )
+@click.option(
+    "--force_2d_segmentation",
+    is_flag=True,
+    default=False,
+    help="Use the middle z-slice (_z3.decon.tif) for cellpose input instead of the full "
+         "deconvolved image (.decon.tif). Use for 3D experiments (PSC-01, MTC_REPEAT) "
+         "where segmentation should stay consistent with 2D brain regions.",
+)
 def config_templates_aws(
     experiment_name: str,
     brain_region: str,
@@ -203,6 +211,7 @@ def config_templates_aws(
     exp_n: str | None,
     reg_n: str | None,
     steps: list,
+    force_2d_segmentation: bool,
 ):
     """Generate AWS Slurm job scripts for EXPERIMENT_NAME."""
 
@@ -303,6 +312,13 @@ def config_templates_aws(
         step4 = "true" if "4" in steps else "false"
 
     # ------------------------------------------------------------------
+    # Cellpose image extension
+    # ------------------------------------------------------------------
+    image_ext = "_z3.decon.tif" if force_2d_segmentation else ".decon.tif"
+    if force_2d_segmentation:
+        click.echo("  force_2d_segmentation=True → cellpose will use _z3.decon.tif")
+
+    # ------------------------------------------------------------------
     # Process each region
     # ------------------------------------------------------------------
     for current_region in region_names:
@@ -351,6 +367,7 @@ def config_templates_aws(
                     STEP_2=step2,
                     STEP_3=step3,
                     STEP_4=step4,
+                    IMAGE_EXT=image_ext,
                 )
             except KeyError as e:
                 click.echo(

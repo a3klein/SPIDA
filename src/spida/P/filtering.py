@@ -132,23 +132,24 @@ class Filter:
             .alias("nCount_RNA_per_Volume")
         )
 
-        return df_join.select(
-            [
-                "Index",
-                CELL_ID,
-                "experiment",
-                "region",
-                "segmentation",
-                "donor",
-                CELL_X,
-                CELL_Y,
-                CELL_VOLUME,
-                "nCount_RNA",
-                "nFeature_RNA",
-                "nBlank",
-                "nCount_RNA_per_Volume",
-            ]
-        )
+        cols = [
+            "Index",
+            CELL_ID,
+            "experiment",
+            "region",
+            "segmentation",
+            "donor",
+            CELL_X,
+            CELL_Y,
+            CELL_VOLUME,
+            "nCount_RNA",
+            "nFeature_RNA",
+            "nBlank",
+            "nCount_RNA_per_Volume",
+        ]
+        if DAPI_COL in df_join.columns:
+            cols.append(DAPI_COL)
+        return df_join.select(cols)
 
     def filter_cells(self, cutoffs: dict) -> pl.DataFrame:
         """
@@ -231,17 +232,26 @@ class Filter:
             pl.col(CELL_ID).is_in(judge[CELL_ID].implode()).alias("pass_qc")
         )
         
-        DAPI_filter = False
-        if DAPI_COL in df_feature.columns:
-            DAPI_filter = df_feature.filter(~pl.col('pass_qc_pre'))[DAPI_COL].quantile(DAPI_quantile)
-            judge = df_feature.filter(
-                pl.col("pass_qc") & (pl.col(DAPI_COL) >= DAPI_filter)
-            ).select(CELL_ID)
-            
-        self.adata.uns['cutoffs']['DAPI_filter_min'] = DAPI_filter            
-        df_feature = df_feature.with_columns(
-            pl.col(CELL_ID).is_in(judge[CELL_ID].implode()).alias("pass_qc")
-        )
+        # DAPI floor: q-th quantile of pass_qc_pre==False cells' DAPI_high_pass.
+        # Computed per-region (per-anndata) — within-experiment intensity scale is shared.
+        # JSON disable: DAPI_quantile == null / false / missing -> skip filter entirely.
+        DAPI_quantile = cutoffs.get("DAPI_quantile", None)
+        DAPI_filter = None
+        if (
+            DAPI_quantile is not None
+            and DAPI_quantile is not False
+            and DAPI_COL in df_feature.columns
+        ):
+            failed_dapi = df_feature.filter(~pl.col("pass_qc_pre"))[DAPI_COL]
+            if failed_dapi.len() > 0:
+                DAPI_filter = float(failed_dapi.quantile(DAPI_quantile))
+                judge = df_feature.filter(
+                    pl.col("pass_qc") & (pl.col(DAPI_COL) >= DAPI_filter)
+                ).select(CELL_ID)
+                df_feature = df_feature.with_columns(
+                    pl.col(CELL_ID).is_in(judge[CELL_ID].implode()).alias("pass_qc")
+                )
+        self.adata.uns["cutoffs"]["DAPI_filter_min"] = DAPI_filter
 
         return df_feature
 
@@ -278,6 +288,7 @@ _CUTOFF_NULL_DEFAULTS: dict[str, None] = {
     "n_blank_max": None,
     "n_count_per_volume_min": None,
     "n_count_per_volume_max": None,
+    "DAPI_filter_min": None,
 }
 
 
