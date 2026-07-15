@@ -7,6 +7,7 @@
 CLAUDE.md
 .claude/
 .claude/settings.local.json
+design_decisions.md
 
 # pixi environments
 .pixi

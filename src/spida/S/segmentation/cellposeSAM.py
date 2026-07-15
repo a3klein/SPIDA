@@ -498,7 +498,7 @@ def run_cellposeSAM(
     if is_3d: 
         logger.info("Adding ZIndex, ZLevel, and EntityID columns to GeoDataFrame for 3D data.")
         gdf['ZIndex'] = gdf['z']
-        gdf['ZLevel'] = gdf['z'] * micron_per_z  # Assuming 1.5 microns per z layer
+        gdf['ZLevel'] = (gdf['z'] + 1) * micron_per_z
         gdf['UID'] = gdf['tile_id'].astype(str) + '-' + gdf['ID'].astype(str)
         gdf['EntityID'] = pd.factorize(gdf['UID'])[0] + 1  # Unique integer ID for each cell, starting from 1
         # dissolving to remove overlap artifacts
