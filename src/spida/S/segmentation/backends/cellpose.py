@@ -7,21 +7,11 @@ from pathlib import Path
 import warnings
 import logging
 
-import multiprocessing as mp
-from functools import partial
-from tqdm import tqdm
-import itertools
-
 from natsort import natsorted
 import skimage as ski
-from shapely.geometry import Polygon
-import geopandas as gpd
 import cv2
-from spida.utilities.tiling import (
-    tile_image_with_overlap,
-    merge_tile_polygons,
-)  # , merge_overlapping_polygons
 
+from .masks import masks_to_geodataframe
 from cellpose import models, core, io  # type: ignore
 
 # io.logger_setup() # TODO: Maybe put this in a temporary file since this creates race conditions between multiple runs. 
@@ -243,127 +233,7 @@ def _cellpose_wrapper(
         return model.eval(img, **eval_kwargs)
 
 
-def convert_mask(mask_id, masks, tolerance=0.5):
-    """Convert a single mask to a polygon.
-    Parameters
-    ----------
-    mask_id : int
-        A single mask to convert.
-    masks : np.ndarray
-        A (Y,X) or (Z,Y,X) numpy array of segmentation masks.
-    tolerance : float, optional
-        The maximum allowed geometry displacement. The higher this value, the smaller the number of vertices in the resulting geometry.
-    Returns
-    -------
-    shapely.geometry.Polygon
-        The converted polygon.
-    """
-
-    polygons = []
-    cells = []
-    layers = []
-    mask = masks == mask_id
-    # Do this across all z layers
-    for m in np.where(mask.any(axis=(1, 2)))[0]:
-        # Pad mask to ensure contours are closed
-        padded_mask = np.pad(mask[m], 1, mode="constant")
-        contours = ski.measure.find_contours(padded_mask, 0.5)
-        contours = [contour - 1 for contour in contours]
-        if len(contours[0]) > 3:
-            polygons.append(
-                Polygon(contours[0]).simplify(
-                    tolerance=tolerance, preserve_topology=True
-                )
-            )
-            cells.append(mask_id)
-            layers.append(m)
-    return polygons, cells, layers
-
-
-def _masks_to_polygons(masks: np.ndarray, tolerance: float = 0.5):
-    """Convert Cellpose masks to polygons.
-
-    Parameters:
-    masks (np.ndarray): Cellpose segmentation masks.
-    tolerance (float): Tolerance for polygon simplification.
-
-    Returns:
-    tuple: List of polygons, list of cell IDs, list of z layers.
-    """
-    mask_ids = np.unique(masks)[1:]
-
-    if masks.ndim == 2: 
-        masks = np.expand_dims(masks, axis=0)
-    masks = masks.swapaxes(-1, -2)
-    mask_ids = np.unique(masks)[1:]  # Exclude background (0)
-
-    polygons = []
-    for mask_id in mask_ids:
-        polygons_batch, cells_batch, layers_batch = convert_mask(
-            mask_id, masks, tolerance=tolerance
-        )
-        polygons.append((polygons_batch, cells_batch, layers_batch))
-
-    # Or using itertools.chain for efficiency with large datasets:
-    all_polygons = list(
-        itertools.chain.from_iterable(
-            polygons_batch for polygons_batch, _, _ in polygons
-        )
-    )
-    all_cells = list(
-        itertools.chain.from_iterable(cells_batch for _, cells_batch, _ in polygons)
-    )
-    all_layers = list(
-        itertools.chain.from_iterable(layers_batch for _, _, layers_batch in polygons)
-    )
-
-    gdf = gpd.GeoDataFrame(
-        {"ID": all_cells, "Geometry": all_polygons, "z": all_layers},
-        geometry="Geometry",
-        crs=None,
-    )
-    # logging.info(f"Converting {len(mask_ids)} masks to polygons; gdf shape: {gdf.shape}.")
-    return gdf
-
-
-# NEW USING SKIMAGE FIND CONTOURS
-def masks_to_geodataframe(
-    masks: np.ndarray,
-    tolerance: float = 0.5,
-    tile_size: int | tuple = 1000,
-    overlap: int | tuple = 200,
-):
-    """Convert Cellpose masks to a GeoDataFrame with polygons."""
-    tiles, tile_info = tile_image_with_overlap(
-        masks, tile_size=tile_size, overlap=overlap
-    )
-    logger.info(f"Generated {len(tiles)} tiles.")
-
-    parallel_func = partial(
-        _masks_to_polygons,
-        tolerance=tolerance,  # Adjust tolerance as needed
-    )
-
-    with mp.Pool(max_cpu) as pool:
-        geo_list = list(tqdm(pool.map(parallel_func, tiles), total=len(tiles)))
-
-    # Merge all tiles into global coordinates
-    merged_polygons = merge_tile_polygons(tile_info, geo_list, geom_col="Geometry")
-
-    logger.info("Finished Conversion")
-
-    return merged_polygons
-
-    # Took the final dissolve step outside of the merge tiles because it is N-D dependent
-    # final_polygons = merged_polygons.dissolve(by="ID").reset_index()
-    
-    # Optional: merge overlapping polygons across tile boundaries
-    # --> Does not work with 3D stacks, however dissolve is already doing a good job of merging across tile boundaries, so may not be necessary.
-    # final_polygons = merge_overlapping_polygons(merged_polygons)
-
-    # return final_polygons
-
-def run_cellposeSAM(
+def run_cellpose(
     root_dir: str,
     output_dir: str,
     region: str,
@@ -381,7 +251,7 @@ def run_cellposeSAM(
     **kwargs,
 ):
     """
-    Run Cellpose SAM segmentation on a specified region.
+    Run Cellpose segmentation on a specified region.
     Parameters:
         root_dir (str): The root directory containing the images.
         output_dir (str): The directory where the output files will be saved.
@@ -413,11 +283,7 @@ def run_cellposeSAM(
     logger.info(f"project_3d_to_2d = {project_3d_to_2d}")
     logger.info(f"stitch_threshold = {stitch_threshold}")
     for key, value in kwargs.items():
-        logger.info(f"Cellpose SAM parameter: {key} = {value}")
-
-    global max_cpu
-    max_cpu = mp.cpu_count()
-    logger.info(f"Max CPU count: {max_cpu}")
+        logger.info(f"Cellpose parameter: {key} = {value}")
 
     # Ensure the output directory exists
     Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
@@ -493,19 +359,15 @@ def run_cellposeSAM(
     tile_size = kwargs.pop("tile_size", 1000)
     overlap = kwargs.pop("overlap", 200)
 
-    # masks to geodataframe
+    # masks to geodataframe (already dissolved to one polygon per cell per z-plane)
     gdf = masks_to_geodataframe(masks, tile_size=tile_size, overlap=overlap)
-    if is_3d: 
+    if is_3d:
         logger.info("Adding ZIndex, ZLevel, and EntityID columns to GeoDataFrame for 3D data.")
         gdf['ZIndex'] = gdf['z']
         gdf['ZLevel'] = (gdf['z'] + 1) * micron_per_z
-        gdf['UID'] = gdf['tile_id'].astype(str) + '-' + gdf['ID'].astype(str)
-        gdf['EntityID'] = pd.factorize(gdf['UID'])[0] + 1  # Unique integer ID for each cell, starting from 1
-        # dissolving to remove overlap artifacts
-        gdf['gz_id'] = gdf['ID'].astype(str) + "_" + gdf['z'].astype(str)
-        gdf = gdf.dissolve(by="gz_id").reset_index().drop(columns=['gz_id'])
-    else: 
-        gdf = gdf.dissolve(by="ID").reset_index()
+        # one EntityID per cell, consistent across its z-planes (ID is the global
+        # cellpose label; fragments were already dissolved by (ID, z) upstream)
+        gdf['EntityID'] = pd.factorize(gdf['ID'])[0] + 1
 
     gdf.geometry = gdf.geometry.affine_transform(
         [scale, 0, 0, scale, 0, 0]

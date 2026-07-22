@@ -598,7 +598,15 @@ def _sumsig_image_task(args):
     ``ids`` and ``geoms`` are the z-plane subset only (kept small so each worker
     receives minimal pickled data).
     """
+    import warnings
     import rasterio
+    from rasterio.errors import NotGeoreferencedWarning
+
+    # The MERSCOPE mosaic tiffs carry no CRS/geotransform (they're pixel-space
+    # microscopy images); we apply our own micron->pixel affine to the polygons,
+    # so rasterio's identity-transform fallback is expected. Silence the per-open
+    # NotGeoreferencedWarning (one per image; noisy at scale).
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
 
     path, stain, ids, geoms, transform, gdal_cachemax_mb = args
     raw_vals, filt_vals, out_ids = [], [], []
@@ -620,7 +628,7 @@ def sum_signals(
     micron_to_mosaic_path: str | Path,
     output_csv: str | Path | None = None,
     *,
-    n_jobs: int | None = None,
+    n_jobs: int | None = 7,
     gdal_cachemax_mb: int = 256,
 ) -> pd.DataFrame:
     """Sum mosaic-image intensity inside each cell, per stain (VPT ``sum-signals``).
@@ -637,8 +645,13 @@ def sum_signals(
     Parameters
     ----------
     n_jobs
-        Number of parallel worker processes (one image per task). ``None`` lets
-        the executor choose; ``1`` runs sequentially.
+        Number of parallel worker processes (one image per task). Default 7.
+        This step is IO-bound (reading large mosaics), not CPU-bound: benchmarking
+        on THM1 3D (49 images) showed wall time is minimised around 6-8 workers and
+        gets *worse* beyond that (IO contention), while SU cost (cores x wall) keeps
+        climbing. 7 (= the z-stack layer count) sits in that sweet spot; more workers
+        cost more SUs AND run slower. ``None`` lets the executor choose (~32 on a big
+        node -> slow + expensive); ``1`` runs sequentially.
     gdal_cachemax_mb
         Cap on GDAL's block cache per worker, in MB (default 256). GDAL otherwise
         defaults to ~5% of RAM, which on large-memory nodes lets each worker grow
