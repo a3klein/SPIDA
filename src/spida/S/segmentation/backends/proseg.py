@@ -195,7 +195,9 @@ def _proseg_3d_to_vpt_parquet(shapes_3d: gpd.GeoDataFrame, micron_per_z: float, 
     shapes_3d['z'] = shapes_3d['layer']
     shapes_3d['ID'] = shapes_3d['cell']
     shapes_3d['ZIndex'] = shapes_3d['layer']
-    shapes_3d['Zlevel'] = shapes_3d['ZIndex'] * micron_per_z
+    # 1-based ZLevel (every plane owns a full micron_per_z slab), consistent with
+    # cellpose/convert-geometry; column name standardized to "ZLevel".
+    shapes_3d['ZLevel'] = (shapes_3d['ZIndex'] + 1) * micron_per_z
     shapes_3d['EntityID'] = pd.factorize(shapes_3d['ID'])[0] + 1
     shapes_3d.to_parquet(output_path, index=False)
 

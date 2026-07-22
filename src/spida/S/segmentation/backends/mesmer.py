@@ -6,11 +6,9 @@ import logging
 from PIL import Image
 import numpy as np
 
-import supervision as spv
-from shapely.geometry import Polygon
-import geopandas as gpd
-
 from deepcell.applications import Mesmer  # type: ignore
+
+from .masks import masks_to_geodataframe
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit on image size
 load_dotenv()
@@ -83,28 +81,6 @@ def _mesmer_wrapper(
     )
 
 
-# TODO: fix this like I fixed the Cellpose SAM one
-def _masks_to_geodataframe(masks):
-    """
-    Convert segmentation masks to a GeoDataFrame with polygons.
-    Parameters:
-    masks (np.ndarray): segmentation masks.
-    Returns:
-    gpd.GeoDataFrame: GeoDataFrame containing polygons of the masks.
-    """
-    polygons = spv.mask_to_polygons(masks)
-    sh_polygons = [Polygon(p) for p in polygons]
-
-    gdf = gpd.GeoDataFrame(
-        {
-            "Geometry": sh_polygons,
-            "ID": [i for i in range(len(sh_polygons))],
-        },
-        geometry="Geometry",
-    )
-    return gdf
-
-
 def run_mesmer(root_dir: Path, output_dir: Path, region: str, **kwargs):
     """
     Run Mesmer segmentation on a specified region.
@@ -135,6 +111,10 @@ def run_mesmer(root_dir: Path, output_dir: Path, region: str, **kwargs):
     logger.info(f"Mesmer segmentation completed for region {region}.")
     logger.info(f"Number of masks detected: {len(np.unique(masks)) - 1}")
 
-    # Save masks and flows
-    gdf = _masks_to_geodataframe(masks[0, ..., 0])
+    # Convert label mask to polygons (shared, canonical mask->polygon path)
+    gdf = masks_to_geodataframe(
+        masks[0, ..., 0],
+        tile_size=kwargs.get("tile_size", 1000),
+        overlap=kwargs.get("overlap", 200),
+    )
     gdf.to_parquet(f"{output_dir}/{region}/polygons.parquet", index=False)

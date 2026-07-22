@@ -10,7 +10,7 @@ from cellpose import core
 
 pytest.importorskip("cellpose")
 
-from spida.S.segmentation import cellposeSAM
+from spida.S.segmentation.backends import cellpose
 
 
 def _write_tif(path: Path, array: np.ndarray) -> None:
@@ -22,7 +22,7 @@ def test_load_image_downscale_2d_single_channel(tmp_path: Path):
     img = np.arange(16, dtype=np.uint16).reshape(4, 4)
     _write_tif(tmp_path / "img_DAPI.tif", img)
 
-    loaded = cellposeSAM._load_image(
+    loaded = cellpose._load_image(
         tmp_path,
         image_ext=".tif",
         nuc_stain_name="DAPI",
@@ -43,7 +43,7 @@ def test_load_image_downscale_3d_stack(tmp_path: Path):
     for idx, plane in enumerate(stack):
         _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
 
-    loaded = cellposeSAM._load_image(
+    loaded = cellpose._load_image(
         tmp_path,
         image_ext=".tif",
         nuc_stain_name="DAPI",
@@ -64,7 +64,7 @@ def test_load_image_downscale_with_cyto(tmp_path: Path):
     _write_tif(tmp_path / "img_DAPI.tif", nuc)
     _write_tif(tmp_path / "img_PolyT.tif", cyto)
 
-    loaded = cellposeSAM._load_image(
+    loaded = cellpose._load_image(
         tmp_path,
         image_ext=".tif",
         nuc_stain_name="DAPI",
@@ -79,44 +79,8 @@ def test_load_image_downscale_with_cyto(tmp_path: Path):
     assert np.allclose(loaded[1], expected_cyto)
 
 
-def test_masks_to_geodataframe_simple(tmp_path: Path):
-    masks = np.zeros((32, 32), dtype=np.uint16)
-    masks[2:8, 2:8] = 1
-    masks[12:20, 12:20] = 2
-
-    cellposeSAM.max_cpu = 1
-    gdf = cellposeSAM.masks_to_geodataframe(masks, tile_size=32, overlap=8)
-
-    assert not gdf.empty
-    assert set(gdf["ID"].unique()) == {1, 2}
-    assert gdf.geometry.notna().all()
-
-
-def test_masks_to_geodataframe_upscale_preserves_location(tmp_path: Path):
-    scale = 4
-    masks = np.zeros((1100, 1100), dtype=np.uint16)
-    masks[200:240, 220:260] = 1
-    masks[800:840, 900:940] = 2
-
-    cellposeSAM.max_cpu = 1
-    gdf = cellposeSAM.masks_to_geodataframe(masks, tile_size=64, overlap=16)
-    gdf.geometry = gdf.geometry.affine_transform([scale, 0, 0, scale, 0, 0])
-
-    assert set(gdf["ID"].unique()) == {1, 2}
-
-    expected_centroids = {}
-    for mask_id in (1, 2):
-        coords = np.column_stack(np.where(masks == mask_id))
-        # coords are (row, col); geometry uses (x=col, y=row)
-        centroid_rc = coords.mean(axis=0)
-        expected_centroids[mask_id] = np.array(
-            [centroid_rc[1] * scale, centroid_rc[0] * scale]
-        )
-
-    for _, row in gdf.iterrows():
-        geom = row["Geometry"]
-        centroid = np.array([geom.centroid.x, geom.centroid.y])
-        assert np.allclose(centroid, expected_centroids[row["ID"]], atol=scale)
+# mask->polygon tests moved to tests/test_masks.py (backends/masks.py has no
+# cellpose dependency, so they run in the standard preprocessing env).
 
 
 class _DummyModel:
@@ -132,10 +96,10 @@ class _DummyModel:
 
 def test_cellpose_wrapper_3d_reorders_channels(monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellposeSAM, "_load_model", lambda **_: dummy)
+    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
 
     img = np.zeros((2, 3, 5, 7), dtype=np.float32)
-    cellposeSAM._cellpose_wrapper(img, do_3D=True)
+    cellpose._cellpose_wrapper(img, do_3D=True)
 
     assert dummy.img.shape == (7, 3, 5, 2)
     assert dummy.kwargs["channel_axis"] == -1
@@ -144,10 +108,10 @@ def test_cellpose_wrapper_3d_reorders_channels(monkeypatch):
 
 def test_cellpose_wrapper_2d_stack_reorders_channels(monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellposeSAM, "_load_model", lambda **_: dummy)
+    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
 
     img = np.zeros((2, 3, 5, 7), dtype=np.float32)
-    cellposeSAM._cellpose_wrapper(img, do_3D=False)
+    cellpose._cellpose_wrapper(img, do_3D=False)
 
     assert dummy.img.shape == (7, 3, 5, 2)
     assert dummy.kwargs["channel_axis"] == -1
@@ -156,14 +120,14 @@ def test_cellpose_wrapper_2d_stack_reorders_channels(monkeypatch):
 
 def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellposeSAM, "_load_model", lambda **_: dummy)
+    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
 
     nuc = np.arange(16, dtype=np.uint16).reshape(4, 4)
     cyto = np.arange(16, dtype=np.uint16).reshape(4, 4) * 2
     _write_tif(tmp_path / "img_DAPI.tif", nuc)
     _write_tif(tmp_path / "img_PolyT.tif", cyto)
 
-    img = cellposeSAM._load_image(
+    img = cellpose._load_image(
         tmp_path,
         image_ext=".tif",
         nuc_stain_name="DAPI",
@@ -171,7 +135,7 @@ def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch
         downscale=None,
     )
 
-    cellposeSAM._cellpose_wrapper(img, do_3D=False)
+    cellpose._cellpose_wrapper(img, do_3D=False)
 
     assert dummy.img.shape == (4, 4, 2)
     assert dummy.kwargs["channel_axis"] == -1
@@ -180,7 +144,7 @@ def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch
 
 def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellposeSAM, "_load_model", lambda **_: dummy)
+    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
 
     stack = [
         np.full((4, 4), fill_value=1, dtype=np.uint16),
@@ -189,7 +153,7 @@ def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatc
     for idx, plane in enumerate(stack):
         _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
 
-    img = cellposeSAM._load_image(
+    img = cellpose._load_image(
         tmp_path,
         image_ext=".tif",
         nuc_stain_name="DAPI",
@@ -197,7 +161,7 @@ def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatc
         downscale=None,
     )
 
-    cellposeSAM._cellpose_wrapper(img, do_3D=False, stitch_threshold=0.4)
+    cellpose._cellpose_wrapper(img, do_3D=False, stitch_threshold=0.4)
 
     assert dummy.img.shape == (2, 4, 4, 1)
     assert dummy.kwargs["channel_axis"] == -1
@@ -206,7 +170,7 @@ def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatc
 
 def test_pipeline_3d_do3d_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellposeSAM, "_load_model", lambda **_: dummy)
+    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
 
     stack = [
         np.full((4, 4), fill_value=1, dtype=np.uint16),
@@ -215,7 +179,7 @@ def test_pipeline_3d_do3d_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
     for idx, plane in enumerate(stack):
         _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
 
-    img = cellposeSAM._load_image(
+    img = cellpose._load_image(
         tmp_path,
         image_ext=".tif",
         nuc_stain_name="DAPI",
@@ -223,7 +187,7 @@ def test_pipeline_3d_do3d_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
         downscale=None,
     )
 
-    cellposeSAM._cellpose_wrapper(img, do_3D=True)
+    cellpose._cellpose_wrapper(img, do_3D=True)
 
     assert dummy.img.shape == (2, 4, 4, 1)
     assert dummy.kwargs["channel_axis"] == -1
@@ -283,7 +247,7 @@ def test_cellpose_3d_vs_stitched_2d_on_synthetic_stack():
 
     img, centers_per_z = _synthetic_stack(z_slices=7, shape=(256, 256))
 
-    masks_3d, _, _ = cellposeSAM._cellpose_wrapper(
+    masks_3d, _, _ = cellpose._cellpose_wrapper(
         img,
         do_3D=True,
         flow_threshold=0.0,
@@ -291,7 +255,7 @@ def test_cellpose_3d_vs_stitched_2d_on_synthetic_stack():
         min_size=100,
     )
 
-    masks_2d, _, _ = cellposeSAM._cellpose_wrapper(
+    masks_2d, _, _ = cellpose._cellpose_wrapper(
         img,
         do_3D=False,
         flow_threshold=0.0,

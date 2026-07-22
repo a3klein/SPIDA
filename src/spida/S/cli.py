@@ -374,35 +374,70 @@ def run_segmentation(
     **kwargs,
 ):
     """
-    Run an implemented segmentation algorithm on a given region
+    DEPRECATED. Segmentation and its post-processing are now separate commands
+    (see the printed migration guidance).
     """
-    # logger.info(ctx.obj.get('_raw_extra_args'))
-    # logger.info(ctx.obj.get('extra_args'))
-    # kwargs = ctx.obj['extra_kwargs']
-    # for key, value in kwargs.items():
-    #     logger.info(f"Parsing extra argument {key}={value}")
+    from .segmentation.main import _deprecated_run_segmentation_message
 
-    extra_args = ctx.args
-    click.echo(extra_args)
-    kwargs = parse_click_kwargs(extra_args)
-    click.echo(kwargs)
-    for key, value in kwargs.items():
-        logger.info(f"Parsed {key} = {value};  {type(value)}")
-
-    
-
-    from .segmentation.main import run_segmentation as func
-    func(
-        type=seg_type,
-        exp_name=exp_name,
-        reg_name=reg_name,
-        input_dir=input_dir,
-        output_dir=output_dir,
-        root_path=root_path,
-        segmentation_store=segmentation_store,
-        vpt_bin_path=vpt_bin_path,
-        kwargs=kwargs,
+    raise click.ClickException(
+        _deprecated_run_segmentation_message(seg_type, exp_name, reg_name)
     )
+
+
+@cli.command(
+    name="segment-region",
+    aliases=["segment"],
+    cls=RichCommand,
+    help="Run the segmentation backend for METHOD on EXP_NAME/REG_NAME (raw output only). "
+         "Run in the backend's env (cellpose -> cellpose; proseg -> preprocessing; mesmer -> deepcell).",
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
+)
+@click.argument("method", type=str)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.option("--version", "version", default=None, type=str, help="Method version (proseg: 2 or 3)")
+@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
+@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
+@click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Rust/proseg binary path")
+@click.pass_context
+def segment_region(ctx, method, exp_name, reg_name, version, root_path,
+                   segmentation_store, rust_bin_path):
+    kwargs = parse_click_kwargs(ctx.args)
+    from .segmentation.main import segment_region as func
+    func(method=method, exp_name=exp_name, reg_name=reg_name, version=version,
+         root_path=root_path, segmentation_store=segmentation_store,
+         rust_bin_path=rust_bin_path, **kwargs)
+
+
+@cli.command(
+    name="process-segmentation-region",
+    aliases=["process-segmentation"],
+    cls=RichCommand,
+    help="Normalize + post-process a segmenter's raw output into the segmentation schema for "
+         "METHOD on EXP_NAME/REG_NAME. Run in the preprocessing env.",
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
+)
+@click.argument("method", type=str)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.option("--version", "version", default=None, type=str, help="Method version (proseg: 2 or 3)")
+@click.option("--backend", "backend", default="native", type=click.Choice(["native", "vpt"]), help="native (default) or vpt fallback")
+@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
+@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
+@click.option("--micron_per_z", "micron_per_z", default=1.5, type=float, help="Micron thickness per z-plane")
+@click.option("--n_z_planes", "n_z_planes", default=7, type=int, help="Number of z-planes for 2D->3D replication")
+@click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7; IO-bound step, more is slower + costs more SUs)")
+@click.option("--vpt_bin_path", "vpt_bin_path", default=None, type=click.Path(), help="VPT binary path (only for --backend vpt)")
+@click.pass_context
+def process_segmentation_region(ctx, method, exp_name, reg_name, version, backend,
+                                root_path, segmentation_store, micron_per_z,
+                                n_z_planes, n_jobs, vpt_bin_path):
+    kwargs = parse_click_kwargs(ctx.args)
+    from .segmentation.main import process_segmentation_region as func
+    func(method=method, exp_name=exp_name, reg_name=reg_name, version=version,
+         backend=backend, root_path=root_path, segmentation_store=segmentation_store,
+         micron_per_z=micron_per_z, n_z_planes=n_z_planes, n_jobs=n_jobs,
+         vpt_bin_path=vpt_bin_path, **kwargs)
 
 @cli.command(
     name="segment-experiment",
@@ -563,7 +598,7 @@ def filt_to_ids(
     Filter metadata and geometry to only include cells with IDs in the provided list.
     Additionally rename the index of the merged_cell_by_gene
     """
-    from .segmentation.proseg import filt_to_ids as func
+    from .segmentation.backends.proseg import filt_to_ids as func
     func(
         meta_path=meta_path,
         geom_path=geom_path,
