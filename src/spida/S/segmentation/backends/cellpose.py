@@ -359,15 +359,12 @@ def run_cellpose(
     tile_size = kwargs.pop("tile_size", 1000)
     overlap = kwargs.pop("overlap", 200)
 
-    # masks to geodataframe (already dissolved to one polygon per cell per z-plane)
+    # masks to geodataframe (already dissolved to one polygon per cell per z-plane).
+    # Emit RAW output only: ID (global cellpose label), z, Geometry. The
+    # segmentation-schema fields (ZIndex/ZLevel/EntityID) are derived downstream —
+    # by ingest_polygons (native backend) or _3d_convert_geometry (vpt backend) —
+    # so the conventions live in one place, not duplicated in the segmenter.
     gdf = masks_to_geodataframe(masks, tile_size=tile_size, overlap=overlap)
-    if is_3d:
-        logger.info("Adding ZIndex, ZLevel, and EntityID columns to GeoDataFrame for 3D data.")
-        gdf['ZIndex'] = gdf['z']
-        gdf['ZLevel'] = (gdf['z'] + 1) * micron_per_z
-        # one EntityID per cell, consistent across its z-planes (ID is the global
-        # cellpose label; fragments were already dissolved by (ID, z) upstream)
-        gdf['EntityID'] = pd.factorize(gdf['ID'])[0] + 1
 
     gdf.geometry = gdf.geometry.affine_transform(
         [scale, 0, 0, scale, 0, 0]
@@ -382,10 +379,11 @@ def run_cellpose(
         logger.info(f"Filtered out {n_pre - n_post} cells; remaining cells: {n_post}")
 
         logger.info(f"Filtering out cells that appear in fewer than {min_z} z layers")
-        eid_vc = gdf.groupby("EntityID")['z'].count()
-        keep_eids = eid_vc[eid_vc >= min_z].index
+        # filter on ID (the global cellpose label); one ID per cell across z-planes
+        id_vc = gdf.groupby("ID")['z'].count()
+        keep_ids = id_vc[id_vc >= min_z].index
         n_pre = len(gdf)
-        gdf = gdf[gdf["EntityID"].isin(keep_eids)].copy()
+        gdf = gdf[gdf["ID"].isin(keep_ids)].copy()
         n_post = len(gdf)
         logger.info(f"Filtered out {n_pre - n_post} cells; remaining cells: {n_post}")
     else: 
