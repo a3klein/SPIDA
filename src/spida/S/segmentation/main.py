@@ -61,7 +61,7 @@ def run_segmentation(
     logger.info(f"Output directory: {output_dir}")
 
     if type == "proseg":
-        from .proseg import run_proseg, add_signals_meta_to_proseg
+        from .backends.proseg import run_proseg, add_signals_meta_to_proseg
         
         run_proseg(input_dir, output_dir, reg_name, rust_bin_path=rust_bin_path, **kwargs["kwargs"])
         add_signals_meta_to_proseg(root_dir, output_dir, reg_name, vpt_bin_path=vpt_bin_path, **kwargs["kwargs"])
@@ -74,15 +74,15 @@ def run_segmentation(
         )
         run_vpt(input_dir, output_dir, reg_name, config_path=config_path, vpt_bin_path=vpt_bin_path, **kwargs["kwargs"])
     elif type == "cellpose":
-        from .cellposeSAM import run_cellposeSAM
+        from .backends.cellpose import run_cellpose
         from .vpt import seg_to_vpt
 
         # TODO: change other segmentation methods to take in the direct image dir
-        is_3d = run_cellposeSAM(input_dir, output_dir, reg_name, **kwargs["kwargs"])
+        is_3d = run_cellpose(input_dir, output_dir, reg_name, **kwargs["kwargs"])
         input_dir_vpt = Path(input_dir).parents[1]
         seg_to_vpt(input_dir_vpt, output_dir, reg_name, vpt_bin_path=vpt_bin_path, is_3d=is_3d, **kwargs["kwargs"])
     elif type == "mesmer":
-        from .mesmer import run_mesmer
+        from .backends.mesmer import run_mesmer
         from .vpt import seg_to_vpt
 
         run_mesmer(input_dir, output_dir, reg_name, **kwargs["kwargs"])
@@ -254,7 +254,7 @@ def align_proseg(
     Align Proseg transcripts to seed transcripts.
     """
 
-    from .proseg import align_proseg_transcripts
+    from .backends.proseg import align_proseg_transcripts
     from .vpt import generate_metadata  # , seg_to_vpt
     # from spida.S.io import load_segmentation_region
 
@@ -313,39 +313,158 @@ def align_proseg(
         vpt_bin_path=vpt_bin_path,
     )
 
+# ===========================================================================
+# Stage-2 orchestrators: segment (backend env) + process (preprocessing env).
+# These supersede the bundled `run_segmentation` above (kept only for the
+# legacy batch/align helpers). The CLI exposes `segment-region` and
+# `process-segmentation-region`; `run-segmentation-region` is deprecated.
+# ===========================================================================
+def segment_region(
+    method: str,
+    exp_name: str,
+    reg_name: str,
+    version: str | None = None,
+    *,
+    root_path: str | Path | None = None,
+    segmentation_store: str | Path | None = None,
+    rust_bin_path: str | Path | None = None,
+    **kwargs,
+):
+    """Run only the segmentation *backend* for a region (produces raw boundaries).
 
-    # generate_metadata(
-    #     root_dir=input_dir,
-    #     seg_out_dir=seg_dir,
-    #     region=reg_name,
-    #     input_boundaries=cell_polygons_fname,
-    #     output_boundaries="merged_converted_boundaries.parquet",
-    #     input_entity_by_gene=cell_by_gene_fname,
-    #     output_metadata=cell_metadata_fname,
-    #     output_signals="merged_sum_signals.csv"
-    # )
+    Runs in the backend's env (``spec.env``): cellpose/mesmer -> "cellpose",
+    proseg -> "preprocessing". Output goes to
+    ``{SEGMENTATION_OUT_PATH}/{exp}/{method}/{region}``.
+    """
+    from .backends import get_spec
 
-    # logging.info(f"Loading segmentation data for region {reg_name} in experiment {exp_name}.")
-    # # Loading the new segmentation data into the spatialdata object
-    # load_segmentation_region(
-    #     exp_name=exp_name,
-    #     reg_name=reg_name,
-    #     seg_dir=seg_dir,
-    #     type="vpt",
-    #     prefix_name=out_prefix_name,
-    #     plot=False,
-    #     cell_metadata_fname=cell_metadata_fname,
-    #     cell_by_gene_fname="cell_by_gene.csv",
-    #     detected_transcripts_fname="detected_transcripts.csv",
-    #     cellpose_micron_space_fname="merged_converted_boundaries.parquet",
-    #     )
+    spec = get_spec(method, version)
+    spec.require_env("segment")
+
+    processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")
+    seg_out = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
+    input_dir = f"{processed_root}/{exp_name}/out"
+    output_dir = f"{seg_out}/{exp_name}/{method}"
+    logger.info("segment_region: %s v%s on %s/%s", method, spec.version, exp_name, reg_name)
+
+    if method == "cellpose":
+        # cellpose/mesmer read mosaic stain tiffs from the region's images dir;
+        # proseg reads {out}/{region}/detected_transcripts.csv (so it takes {out}).
+        from .backends.cellpose import run_cellpose
+        run_cellpose(f"{input_dir}/{reg_name}/images", output_dir, reg_name, **kwargs)
+    elif method == "mesmer":
+        from .backends.mesmer import run_mesmer
+        run_mesmer(f"{input_dir}/{reg_name}/images", output_dir, reg_name, **kwargs)
+    elif method == "proseg":
+        from .backends.proseg import run_proseg
+        run_proseg(input_dir, output_dir, reg_name, rust_bin_path=rust_bin_path, **kwargs)
+    else:
+        raise ValueError(f"segment_region: unknown method {method!r}")
 
 
-# if __name__ == "__main__":
-#     fire.Fire(
-#         {
-#             "run_segmentation": run_segmentation,
-#             "segment_experiment": segment_experiment,
-#             "align_proseg": align_proseg,
-#         }
-#     )
+def process_segmentation_region(
+    method: str,
+    exp_name: str,
+    reg_name: str,
+    version: str | None = None,
+    *,
+    backend: str = "native",
+    root_path: str | Path | None = None,
+    segmentation_store: str | Path | None = None,
+    micron_per_z: float = 1.5,
+    n_z_planes: int = 7,
+    n_jobs: int = 7,
+    vpt_bin_path: str | Path | None = None,
+    **kwargs,
+):
+    """Normalize + post-process a segmenter's raw output into the segmentation schema.
+
+    Runs in the ``preprocessing`` env. ``backend="native"`` (default) uses the
+    pure-Python path (ingest + the steps in ``spec.needs``); ``backend="vpt"``
+    falls back to the VPT binary path (``seg_to_vpt``). Writes the standardized
+    segmentation schema files to ``{SEGMENTATION_OUT_PATH}/{exp}/{method}/{region}``.
+    """
+    import pandas as pd
+    from .backends import get_spec
+    from .backends.base import (
+        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA,
+        SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
+    )
+
+    spec = get_spec(method, version)
+    spec.require_env("process")
+
+    processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")
+    seg_out = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
+    raw_region = Path(processed_root) / exp_name / "out" / reg_name
+    images_dir = raw_region / "images"
+    m2m = images_dir / "micron_to_mosaic_pixel_transform.csv"
+    seg_region = Path(seg_out) / exp_name / method / reg_name
+
+    logger.info("process_segmentation_region: %s v%s (%s backend) needs=%s",
+                method, spec.version, backend, spec.needs)
+
+    if backend == "vpt":
+        from .vpt import seg_to_vpt
+        seg_to_vpt(str(raw_region.parents[0]), str(seg_region.parents[0]),
+                   reg_name, vpt_bin_path=vpt_bin_path, **kwargs)
+        return
+
+    from .ingest import ingest_polygons
+    from .segmentation_utils import (
+        partition_transcripts, derive_entity_metadata, sum_signals,
+    )
+
+    pixel = method in ("cellpose", "mesmer")
+    cir_boundaries = seg_region / SCHEMA_BOUNDARIES
+
+    # 1. raw boundaries -> segmentation schema boundaries (micron space)
+    ingest_polygons(
+        spec, seg_region / spec.boundaries_file, cir_boundaries,
+        micron_to_mosaic=str(m2m) if pixel else None,
+        micron_per_z=micron_per_z, n_z_planes=n_z_planes,
+    )
+
+    # 2. cell-by-gene (only if the method doesn't provide counts itself)
+    if "partition_transcripts" in spec.needs:
+        partition_transcripts(
+            cir_boundaries, raw_region / spec.raw_transcripts_file,
+            output_entity_by_gene=seg_region / SCHEMA_CELL_BY_GENE,
+            output_transcripts=seg_region / SCHEMA_TRANSCRIPTS,
+        )
+
+    # 3. per-cell geometric metadata (derived) or native (proseg)
+    if "derive_entity_metadata" in spec.needs:
+        meta = derive_entity_metadata(cir_boundaries, seg_region / SCHEMA_CELL_BY_GENE)
+    else:
+        native = pd.read_csv(seg_region / spec.metadata_file)
+        meta = native.set_index(spec.columns.cell_id)
+        meta.index.name = "EntityID"      # proseg cell id == segmentation schema EntityID
+
+    # 4. image intensity (always) and merge into cell_metadata
+    signals = sum_signals(cir_boundaries, images_dir, m2m,
+                          output_csv=seg_region / SCHEMA_SUM_SIGNALS, n_jobs=n_jobs)
+    merged = meta.join(signals)
+    merged.to_csv(seg_region / SCHEMA_CELL_METADATA)
+    logger.info("process_segmentation_region: wrote segmentation schema outputs to %s", seg_region)
+
+
+def _deprecated_run_segmentation_message(method: str = "cellpose",
+                                         exp_name: str = "EXP",
+                                         reg_name: str = "REGION") -> str:
+    """Migration guidance for the retired bundled `run-segmentation-region`."""
+    from .backends import get_spec
+    try:
+        env = get_spec(method).env
+    except Exception:
+        env = "cellpose"
+    return (
+        "`run-segmentation-region` is deprecated and no longer runs.\n"
+        "Segmentation and its post-processing are now two steps in two envs "
+        "(and output filenames changed, e.g. `boundaries_micron.parquet`):\n\n"
+        f"  pixi run -e {env} python -m spida.S.cli segment-region "
+        f"{method} {exp_name} {reg_name}\n"
+        f"  pixi run -e preprocessing python -m spida.S.cli process-segmentation-region "
+        f"{method} {exp_name} {reg_name}\n\n"
+        "Use `--backend vpt` on process-segmentation-region for the legacy VPT path."
+    )

@@ -2,9 +2,7 @@ from spida.utilities.sd_utils import _gen_keys
 from spida._constants import *
 from .ingest_exp import (
     read_merscope,
-    load_vpt_segmentation,
-    load_proseg_segmentation_v2,
-    load_proseg_segmentation_v3,
+    load_segmentation,
     load_decon_images,
 )
 from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
@@ -204,36 +202,29 @@ def load_segmentation_region(
         warnings.filterwarnings("ignore")
         sdata = sd.read_zarr(zarr_path)
 
-    if type == "vpt":
-        sdata = load_vpt_segmentation(
-            sdata,
-            exp_name,
-            reg_name,
-            vpt_path=seg_dir,
-            prefix_name=prefix_name,
-            **load_kwargs,
-        )
-    elif type == "proseg":
-        from spida.S.segmentation.proseg import _determine_proseg_version
-        proseg_version = _determine_proseg_version()
-        if proseg_version[0] == '2':
-            sdata = load_proseg_segmentation_v2(
-                sdata,
-                exp_name,
-                reg_name,
-                proseg_path=seg_dir,
-                prefix_name=prefix_name,
-                **load_kwargs,
-            )
-        elif proseg_version[0] == '3':
-            sdata = load_proseg_segmentation_v3(
-                sdata,
-                exp_name,
-                reg_name,
-                proseg_path=seg_dir,
-                prefix_name=prefix_name,
-                **load_kwargs,
-            )
+    # Map the legacy `type` to a segmentation method; the spec then drives the
+    # read path (boundary-only segmentation schema vs proseg-native) and legacy filename fallback.
+    from spida.S.segmentation.backends import get_spec
+
+    _TYPE_TO_METHOD = {
+        "vpt": "cellpose",        # legacy: VPT-format segmentation schema of a boundary-only segmenter
+        "cellpose": "cellpose",
+        "mesmer": "mesmer",
+        "proseg": "proseg",
+    }
+    method = _TYPE_TO_METHOD.get(type, type)
+    version = load_kwargs.pop("version", None)    # proseg v2/v3 (defaults to v3)
+    spec = get_spec(method, version)
+
+    sdata = load_segmentation(
+        sdata,
+        spec,
+        exp_name,
+        reg_name,
+        seg_dir,
+        prefix_name=prefix_name,
+        **load_kwargs,
+    )
 
     # TODO: add a function to filter the spatialdata object to something very permissive (like at least 5 transcripts per cell?)
 

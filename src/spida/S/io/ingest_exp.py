@@ -139,307 +139,190 @@ def _cast_multipolygons_to_polygons(
     return sdata
 
 
-# Loading VPT function
-def load_vpt_segmentation(
-    sdata: sd.SpatialData,
-    exp_name: str,
-    reg_name: str,
-    vpt_path: str,
-    prefix_name: str = "vpt",
-    cell_metadata_fname: str = "cell_metadata.csv",
-    cell_by_gene_fname: str = "cell_by_gene.csv",
-    detected_transcripts_fname: str = "detected_transcripts.csv",
-    cellpose_micron_space_fname: str = "cellpose_micron_space.parquet",
-    qc_regions=None,
-    qc_table_key: str | None = None,
-    qc_shapes_key: str | None = None,
-    qc_filter_col: str = "filtered",
-    qc_pass_value: bool | int | str = False,
-    table_cell_id_col: str | None = None,
-    points_cell_id_col: str | None = None,
-    **kwargs,
-):
+def _resolve_file(
+    seg_region: Path,
+    canonical: str,
+    legacy: str | None = None,
+) -> Path:
     """
-    Load the vpt segmentation into a spatialdata object.
+    Resolve a segmentation schema filename, preferring the canonical name and falling back to a
+    method's legacy name (for pre-redesign data).
 
     Parameters:
-    sdata (spatialdata.SpatialData): The spatialdata object to load the segmentation into.
-    exp_name (str): The name of the experiment.
-    reg_name (str): The name of the region.
-    vpt_path (str): The path to the vpt segmentation output directory.
-    cell_metadata_fname (str): The filename for the cell metadata (default is "cell_metadata.csv").
-    cell_by_gene_fname (str): The filename for the cell by gene data (default is "cell_by_gene.csv").
-    detected_transcripts_fname (str): The filename for the detected transcripts data (default is "detected_transcripts.csv").
-    cellpose_micron_space_fname (str): The filename for the cellpose micron space data (default is "cellpose_micron_space.parquet").
+    seg_region (Path): The region's segmentation-output directory.
+    canonical (str): The segmentation schema filename to look for first.
+    legacy (str | None): A legacy filename to fall back to if the canonical one is absent (default is None).
+
+    Returns:
+    Path: The resolved path (the canonical path if neither exists, so downstream errors point at the expected name).
     """
+    p = seg_region / canonical
+    if p.exists():
+        return p
+    if legacy is not None and (seg_region / legacy).exists():
+        logger.info("using legacy file %r (canonical %r absent)", legacy, canonical)
+        return seg_region / legacy
+    return p
 
-    logger.info(f"cell_metadata_fname={cell_metadata_fname}")
-    logger.info(f"cell_by_gene_fname={cell_by_gene_fname}")
-    logger.info(f"detected_transcripts_fname={detected_transcripts_fname}")
-    logger.info(f"cellpose_micron_space_fname={cellpose_micron_space_fname}")
-    for key, value in kwargs.items():
-        logger.info(f"{key}={value}")
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        from spatialdata_io.readers.merscope import _get_points, _get_table
-    from .read_vpt import _get_polygons
+def _finalize_and_write(
+    sdata: sd.SpatialData,
+    KEYS: dict,
+    identity,
+    qc_kwargs: dict,
+):
+    """
+    Shared loader tail: dedup multipolygons, optionally apply a transcript-QC
+    filter, set the pixel coordinate system, then idempotently write the three
+    elements and their transformations.
 
-    # KEYS
-    DEF_KEYS = _gen_keys("default", exp_name, reg_name)
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    Parameters:
+    sdata (spatialdata.SpatialData): The spatialdata object being populated.
+    KEYS (dict): The element-key mapping for this prefix/experiment/region.
+    identity (Identity): The identity transformation used for the pixel coordinate system.
+    qc_kwargs (dict): Transcript-QC filter arguments (applied only if any qc region/key is set).
 
-    identity = Identity()
-    affine = get_transformation(
-        sdata[DEF_KEYS[SHAPES_KEY]], to_coordinate_system="global"
-    )
-    transformations = {"global": affine}
+    Returns:
+    spatialdata.SpatialData: The finalized, on-disk-written spatialdata object.
+    """
+    from ._seg_readers import _CELL_KEY
 
-    # getting the shapes (but also the EntityID to regular ID mapping)
-    # boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
-    # pols = _get_polygons(boundaries_path, transformations)
-    # pols['ID'] = pols['ID'] + 1
-    # entity_to_id_dict = pols['ID'].to_dict()
-    # assert pols.shape[0] == len(entity_to_id_dict) == np.unique(pols['ID']).shape[0], \
-    #     "The number of polygons does not match the number of unique IDs. Please check the data."
-
-    # Getting the points
-    points = {}
-    transcripts_path = f"{vpt_path}/{reg_name}/{detected_transcripts_fname}"
-    tz = _get_points(transcripts_path, transformations)
-    # tz['cell_id'] = tz['cell_id'].astype(str).map(entity_to_id_dict).fillna(0).astype(int) # .compute()
-    points[KEYS[POINTS_KEY]] = tz
-
-    # Getting the shapes
-    # shapes = {}
-    # pols.set_index("ID", inplace=True)
-    # shapes[KEYS[SHAPES_KEY]] = pols
-
-    # # Getting the shapes
-    shapes = {}
-    boundaries_path = f"{vpt_path}/{reg_name}/{cellpose_micron_space_fname}"
-    shapes[KEYS[SHAPES_KEY]] = _get_polygons(boundaries_path, transformations)
-
-    # Getting the table
-    tables = {}
-    count_path = f"{vpt_path}/{reg_name}/{cell_by_gene_fname}"
-    obs_path = f"{vpt_path}/{reg_name}/{cell_metadata_fname}"
-    table = _get_table(
-        count_path,
-        obs_path,
-        reg_name,
-        exp_name,
-        f"{exp_name}_{reg_name}",
-        KEYS[SHAPES_KEY],
-    )
-    # table.obs.index = table.obs.index.map(entity_to_id_dict).astype(str)
-    table.obs.index.name = "index"
-    tables[KEYS[TABLE_KEY]] = table
-
-    # adding the data to the spatialdata object
-    sdata[KEYS[TABLE_KEY]] = tables[KEYS[TABLE_KEY]]
-    sdata[KEYS[POINTS_KEY]] = points[KEYS[POINTS_KEY]]
-    sdata[KEYS[SHAPES_KEY]] = shapes[KEYS[SHAPES_KEY]]
     sdata = _cast_multipolygons_to_polygons(
-        sdata, KEYS[SHAPES_KEY], subset_field=["EntityID"]
+        sdata, KEYS[SHAPES_KEY], subset_field=[_CELL_KEY]
     )
 
-    if (qc_regions is not None) or (qc_table_key is not None) or (qc_shapes_key is not None):
-        logger.info("Applying transcript QC filter to loaded VPT segmentation elements.")
+    if any(qc_kwargs.get(k) is not None for k in ("qc_regions", "qc_table_key", "qc_shapes_key")):
+        logger.info("Applying transcript QC filter to loaded segmentation elements.")
         sdata = apply_qc_filter_to_segmentation(
             sdata,
             table_key=KEYS[TABLE_KEY],
             shapes_key=KEYS[SHAPES_KEY],
             points_key=KEYS[POINTS_KEY],
-            qc_regions=qc_regions,
-            qc_table_key=qc_table_key,
-            qc_shapes_key=qc_shapes_key,
-            qc_filter_col=qc_filter_col,
-            qc_pass_value=qc_pass_value,
-            table_cell_id_col=table_cell_id_col,
-            points_cell_id_col=points_cell_id_col,
+            **qc_kwargs,
         )
 
-    # Doing the transformations:
-    # Setting the pixel space coordinate system
     set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
     set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
 
-    # saving data to disk
-    # saving points
-    if f"points/{KEYS[POINTS_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[POINTS_KEY])
-    else:
-        logger.warning(
-            f"Points {KEYS[POINTS_KEY]} already exists in the spatialdata object. Not overwriting it."
-        )
-
-    # saving shapes
-    if f"shapes/{KEYS[SHAPES_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[SHAPES_KEY])
-    else:
-        logger.warning(
-            f"Shapes {KEYS[SHAPES_KEY]} already exists in the spatialdata object. Not overwriting it."
-        )
-
-    # saving table
-    if f"tables/{KEYS[TABLE_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[TABLE_KEY])
-    else:
-        logger.warning(
-            f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
-        )
-
-    if sd.__version__ <= "0.6.0": 
-        sd.save_transformations(sdata)
-    else:
-        sdata.write_transformations()
-    # sd.save_transformations(sdata)
-
-    return sdata
-
-
-@DeprecationWarning
-def load_proseg_segmentation_v2(
-    sdata: sd.SpatialData,
-    exp_name: str,
-    reg_name: str,
-    proseg_path: str,
-    prefix_name: str = "proseg",
-    cell_metadata_fname: str = "cell-metadata.csv.gz",
-    cell_by_gene_fname: str = "expected-counts.csv.gz",
-    detected_transcripts_fname: str = "transcript-metadata.csv.gz",
-    cell_polygons_fname: str = "cell-polygons.geojson.gz",
-    qc_regions=None,
-    qc_table_key: str | None = None,
-    qc_shapes_key: str | None = None,
-    qc_filter_col: str = "filtered",
-    qc_pass_value: bool | int | str = False,
-    table_cell_id_col: str | None = None,
-    points_cell_id_col: str | None = None,
-    **kwargs,
-):
-    """
-    Load the ProSeg segmentation data.
-    This function is a placeholder for loading ProSeg segmentation data.
-
-    Parameters:
-    sdata (spatialdata.SpatialData): The spatialdata object to load the segmentation into.
-    exp_name (str): The name of the experiment.
-    reg_name (str): The name of the region.
-    proseg_path (str): The path to the ProSeg segmentation output directory.
-    cell_metadata_fname (str): The filename for the cell metadata (default is "cell_metadata.csv.gz").
-    cell_by_gene_fname (str): The filename for the cell by gene data (default is "expected-counts.csv.gz").
-    detected_transcripts_fname (str): The filename for the detected transcripts
-    cell_polygons_fname (str): The filename for the union polygons data (default is "cell-polygons.geojson.gz").
-    """
-
-    from spida.S.io.read_proseg import _get_polygons, _get_points, _get_table
-
-    # KEYS
-    DEF_KEYS = _gen_keys("default", exp_name, reg_name)
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
-
-    identity = Identity()
-    affine = get_transformation(
-        sdata[DEF_KEYS[SHAPES_KEY]], to_coordinate_system="global"
-    )
-    transformations = {"global": affine}
-
-    # Getting the points
-    points = {}
-    transcripts_path = f"{proseg_path}/{reg_name}/{detected_transcripts_fname}"
-    points[KEYS[POINTS_KEY]] = _get_points(transcripts_path, transformations)
-
-    # Getting the shapes
-    shapes = {}
-    boundaries_path = f"{proseg_path}/{reg_name}/{cell_polygons_fname}"
-    shapes[KEYS[SHAPES_KEY]] = _get_polygons(boundaries_path, transformations)
-
-    # Getting the table
-    tables = {}
-    count_path = f"{proseg_path}/{reg_name}/{cell_by_gene_fname}"
-    obs_path = f"{proseg_path}/{reg_name}/{cell_metadata_fname}"
-    tables[KEYS[TABLE_KEY]] = _get_table(
-        count_path,
-        obs_path,
-        reg_name,
-        exp_name,
-        f"{exp_name}_{reg_name}",
-        KEYS[SHAPES_KEY],
-    )
-    tables[KEYS[TABLE_KEY]].obs.index.name = "index"
-
-    # adding the data to the spatialdata object
-    sdata[KEYS[TABLE_KEY]] = tables[KEYS[TABLE_KEY]]
-    sdata[KEYS[POINTS_KEY]] = points[KEYS[POINTS_KEY]]
-    sdata[KEYS[SHAPES_KEY]] = shapes[KEYS[SHAPES_KEY]]
-    sdata = _cast_multipolygons_to_polygons(
-        sdata, KEYS[SHAPES_KEY], subset_field=["cell"]
-    )
-
-    if (qc_regions is not None) or (qc_table_key is not None) or (qc_shapes_key is not None):
-        logger.info("Applying transcript QC filter to loaded ProSeg (v2) segmentation elements.")
-        sdata = apply_qc_filter_to_segmentation(
-            sdata,
-            table_key=KEYS[TABLE_KEY],
-            shapes_key=KEYS[SHAPES_KEY],
-            points_key=KEYS[POINTS_KEY],
-            qc_regions=qc_regions,
-            qc_table_key=qc_table_key,
-            qc_shapes_key=qc_shapes_key,
-            qc_filter_col=qc_filter_col,
-            qc_pass_value=qc_pass_value,
-            table_cell_id_col=table_cell_id_col,
-            points_cell_id_col=points_cell_id_col,
-        )
-
-    # Doing the transformations:
-    # Setting the pixel space coordinate system
-    set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
-    set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
-
-    # saving data to disk
-    # saving data to disk
-    # saving points
-    if f"points/{KEYS[POINTS_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[POINTS_KEY])
-    else:
-        logger.warning(
-            f"Points {KEYS[POINTS_KEY]} already exists in the spatialdata object. Not overwriting it."
-        )
-
-    # saving shapes
-    if f"shapes/{KEYS[SHAPES_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[SHAPES_KEY])
-    else:
-        logger.warning(
-            f"Shapes {KEYS[SHAPES_KEY]} already exists in the spatialdata object. Not overwriting it."
-        )
-
-    # saving table
-    if f"tables/{KEYS[TABLE_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[TABLE_KEY])
-    else:
-        logger.warning(
-            f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
-        )
+    for key, kind in (
+        (KEYS[POINTS_KEY], "points"),
+        (KEYS[SHAPES_KEY], "shapes"),
+        (KEYS[TABLE_KEY], "tables"),
+    ):
+        if f"{kind}/{key}" not in sdata.elements_paths_on_disk():
+            sdata.write_element(key)
+        else:
+            logger.warning("%s %r already exists on disk; not overwriting.", kind, key)
 
     if sd.__version__ <= "0.6.0":
         sd.save_transformations(sdata)
     else:
         sdata.write_transformations()
-
     return sdata
 
-def load_proseg_segmentation_v3(
+
+def _load_proseg_native(
     sdata: sd.SpatialData,
+    spec,
+    seg_region: Path,
+    KEYS: dict,
+    affine,
+    reg_name: str,
+    exp_name: str,
+    dataset_id: str,
+    cell_metadata_fname: str,
+):
+    """
+    Load proseg output: counts + transcripts come from proseg's own output
+    (zarr for v3, CSVs for v2), and shapes are the native 2D union polygons
+    (kept for plotting). Everything is keyed on EntityID (== proseg ``cell``).
+
+    Parameters:
+    sdata (spatialdata.SpatialData): The spatialdata object to load the segmentation into.
+    spec (SegmentationClass): The proseg method spec (selects v2 CSVs vs v3 zarr).
+    seg_region (Path): The region's proseg-output directory.
+    KEYS (dict): The element-key mapping for this prefix/experiment/region.
+    affine: The global (micron) transformation taken from the default shapes element.
+    reg_name (str): The name of the region.
+    exp_name (str): The name of the experiment.
+    dataset_id (str): The dataset identifier ("{exp}_{region}") stored on the table.
+    cell_metadata_fname (str): The canonical obs (cell metadata) filename.
+
+    Returns:
+    spatialdata.SpatialData: The spatialdata object with proseg points/shapes/table added.
+    """
+    import dask.dataframe as dd
+    from ._seg_readers import (
+        get_table, get_table_from_adata, parse_points, _CELL_KEY,
+    )
+    from shapely.geometry import MultiPolygon
+
+    # obs: segmentation schema cell_metadata.csv (EntityID) else legacy signals file
+    obs_path = _resolve_file(seg_region, cell_metadata_fname, "cell_metadata_with_signals.csv")
+    cell_meta = pd.read_csv(obs_path, index_col=0) if obs_path.exists() else None
+    if cell_meta is not None:
+        cell_meta.index = cell_meta.index.astype(int)
+        cell_meta.index.name = _CELL_KEY
+
+    zarr_path = seg_region / (spec.spatialdata_file or "__none__")
+    if spec.spatialdata_file and zarr_path.exists():
+        # ---- v3: zarr bundles table (counts) + transcripts (points) + union shapes ----
+        proseg = sd.read_zarr(str(zarr_path))
+        pts = parse_points(proseg["transcripts"].copy(), None)
+        set_transformation(pts, affine, to_coordinate_system="global")
+        sdata[KEYS[POINTS_KEY]] = pts
+
+        shp = proseg["cell_boundaries"].set_crs(None, allow_override=True).copy()
+        shp[_CELL_KEY] = shp["cell"].astype(int)
+        shp.index = shp[_CELL_KEY].astype(str)
+        set_transformation(shp, affine, to_coordinate_system="global")
+        sdata[KEYS[SHAPES_KEY]] = shp
+
+        ztab = proseg["table"].copy()
+        if cell_meta is not None:                       # align obs to zarr's cell order
+            cell_meta = cell_meta.reindex(ztab.obs["cell"].astype(int).values)
+        table = get_table_from_adata(
+            ztab, cell_meta, reg_name, exp_name, dataset_id, KEYS[SHAPES_KEY],
+            cell_id_col=_CELL_KEY,
+        )
+    else:
+        # ---- v2: native CSVs (expected-counts / transcript-metadata) + union geojson ----
+        import gzip
+        from spatialdata.models import ShapesModel
+        transformations = {"global": affine}
+        tx = dd.read_csv(str(seg_region / spec.transcripts_file), compression="gzip")
+        sdata[KEYS[POINTS_KEY]] = parse_points(tx, transformations)
+
+        union = seg_region / "cell-polygons.geojson.gz"    # 2D union (native proseg)
+        with gzip.open(str(union), "rt") as f:
+            shp = gpd.read_file(f)
+        shp[_CELL_KEY] = shp["cell"].astype(int)
+        shp.index = shp[_CELL_KEY].astype(str)
+        shp.geometry = shp.geometry.map(
+            lambda g: MultiPolygon(g.geoms) if g.geom_type == "MultiPolygon" else MultiPolygon([g])
+        )
+        sdata[KEYS[SHAPES_KEY]] = ShapesModel.parse(shp, transformations=transformations)
+
+        table = get_table(
+            seg_region / spec.counts_file, obs_path,
+            reg_name, exp_name, dataset_id, KEYS[SHAPES_KEY], cell_id_col=_CELL_KEY,
+        )
+    table.obs.index.name = "index"
+    sdata[KEYS[TABLE_KEY]] = table
+    return sdata
+
+
+def load_segmentation(
+    sdata: sd.SpatialData,
+    spec,
     exp_name: str,
     reg_name: str,
-    proseg_path: str,
-    prefix_name: str = "proseg",
-    zarr_name: str = "proseg_outputs.zarr",
-    cell_meta_name : str = "cell_metadata_with_signals.csv",
+    seg_dir: str,
+    prefix_name: str = "default",
+    boundaries_fname: str | None = None,
+    cell_by_gene_fname: str = "cell_by_gene.csv",
+    detected_transcripts_fname: str = "detected_transcripts.csv",
+    cell_metadata_fname: str = "cell_metadata.csv",
     qc_regions=None,
     qc_table_key: str | None = None,
     qc_shapes_key: str | None = None,
@@ -450,114 +333,85 @@ def load_proseg_segmentation_v3(
     **kwargs,
 ):
     """
-    Load the ProSeg segmentation data.
-    This function is a placeholder for loading ProSeg segmentation data.
+    Load a segmenter's post-processed output into a spatialdata object (spec-driven).
+
+    Replaces the old per-method ``load_vpt_segmentation`` /
+    ``load_proseg_segmentation_v2`` / ``load_proseg_segmentation_v3``.
+    Boundary-only methods (cellpose/mesmer) read the segmentation schema files;
+    assignment-native methods (proseg) read counts/transcripts from their native
+    output and use the 2D union polygons for shapes. All elements are keyed on
+    EntityID; canonical filenames fall back to each method's legacy name.
 
     Parameters:
     sdata (spatialdata.SpatialData): The spatialdata object to load the segmentation into.
+    spec (SegmentationClass): The method spec (from ``get_spec``) driving file names and the read path.
     exp_name (str): The name of the experiment.
     reg_name (str): The name of the region.
-    proseg_path (str): The path to the ProSeg segmentation output directory.
-    zarr_name (str): The path to the zarr file to save the data.
-    """
-    from spida.S.io.read_proseg import _get_table_v3, parse_points
-    logger.info("Loading ProSeg segmentation v3")
+    seg_dir (str): The path to the segmentation-output directory (contains ``{reg_name}/``).
+    prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
+    boundaries_fname (str | None): Override for the boundaries filename; defaults to the segmentation schema name (default is None).
+    cell_by_gene_fname (str): The cell-by-gene filename for boundary-only methods (default is "cell_by_gene.csv").
+    detected_transcripts_fname (str): The detected-transcripts filename for boundary-only methods (default is "detected_transcripts.csv").
+    cell_metadata_fname (str): The obs (cell metadata) filename (default is "cell_metadata.csv").
+    qc_regions: Transcript-QC regions to filter by (default is None).
+    qc_table_key (str | None): Table key holding transcript-QC pass/fail info (default is None).
+    qc_shapes_key (str | None): Shapes key holding transcript-QC regions (default is None).
+    qc_filter_col (str): The QC column used to filter (default is "filtered").
+    qc_pass_value (bool | int | str): The value in ``qc_filter_col`` marking a passing cell (default is False).
+    table_cell_id_col (str | None): Override for the table's cell-id column during QC (default is None).
+    points_cell_id_col (str | None): Override for the points' cell-id column during QC (default is None).
 
-    # KEYS
+    Returns:
+    spatialdata.SpatialData: The spatialdata object with the loaded segmentation elements written to disk.
+    """
+    from spida.S.segmentation.backends.base import SCHEMA_BOUNDARIES
+    from ._seg_readers import get_polygons, get_table, _CELL_KEY
+
+    logger.info("load_segmentation: %s v%s -> region %s", spec.name, spec.version, reg_name)
+    for k, v in kwargs.items():
+        logger.info("  extra kwarg %s=%s", k, v)
+
     DEF_KEYS = _gen_keys("default", exp_name, reg_name)
     KEYS = _gen_keys(prefix_name, exp_name, reg_name)
-
     identity = Identity()
-    affine = get_transformation(
-        sdata[DEF_KEYS[SHAPES_KEY]], to_coordinate_system="global"
-    )
+    affine = get_transformation(sdata[DEF_KEYS[SHAPES_KEY]], to_coordinate_system="global")
     transformations = {"global": affine}
+    seg_region = Path(seg_dir) / reg_name
+    dataset_id = f"{exp_name}_{reg_name}"
 
-    cell_meta_path = f"{proseg_path}/{reg_name}/{cell_meta_name}"
-    if Path(cell_meta_path).exists():
-        cell_meta = pd.read_csv(cell_meta_path)
-        logger.info(f"Loaded cell metadata from {cell_meta_path} with shape {cell_meta.shape}")
-    else: 
-        logger.warning(f"Cell metadata file not found at {cell_meta_path}. Proceeding without loading cell metadata.")
-        cell_meta = None
-    sdata_proseg = sd.read_zarr(f"{proseg_path}/{reg_name}/{zarr_name}")
-
-    points = {}
-    points[KEYS[POINTS_KEY]] = parse_points(sdata_proseg["transcripts"].copy(), None)
-    sd.transformations.set_transformation(points[KEYS[POINTS_KEY]], transformation=affine, to_coordinate_system="global")
-
-    shapes = {}
-    shapes[KEYS[SHAPES_KEY]] = sdata_proseg["cell_boundaries"].set_crs(None, allow_override=True).copy() 
-    shapes[KEYS[SHAPES_KEY]]['cell'] = shapes[KEYS[SHAPES_KEY]]['cell'].astype(str)
-    sd.transformations.set_transformation(shapes[KEYS[SHAPES_KEY]], transformation=affine, to_coordinate_system="global")
-
-    tables = {}
-    tables[KEYS[TABLE_KEY]] = _get_table_v3(
-        sdata_proseg["table"].copy(),
-        cell_meta,
-        reg_name,
-        exp_name,
-        f"{exp_name}_{reg_name}",
-        KEYS[SHAPES_KEY],
-    )
-    tables[KEYS[TABLE_KEY]].obs.index.name = "index"
-
-    sdata[KEYS[TABLE_KEY]] = tables[KEYS[TABLE_KEY]]
-    sdata[KEYS[POINTS_KEY]] = points[KEYS[POINTS_KEY]]
-    sdata[KEYS[SHAPES_KEY]] = shapes[KEYS[SHAPES_KEY]]
-    sdata = _cast_multipolygons_to_polygons(
-        sdata, KEYS[SHAPES_KEY], subset_field=["cell"]
+    qc_kwargs = dict(
+        qc_regions=qc_regions, qc_table_key=qc_table_key, qc_shapes_key=qc_shapes_key,
+        qc_filter_col=qc_filter_col, qc_pass_value=qc_pass_value,
+        table_cell_id_col=table_cell_id_col, points_cell_id_col=points_cell_id_col,
     )
 
-    if (qc_regions is not None) or (qc_table_key is not None) or (qc_shapes_key is not None):
-        logger.info("Applying transcript QC filter to loaded ProSeg (v3) segmentation elements.")
-        sdata = apply_qc_filter_to_segmentation(
-            sdata,
-            table_key=KEYS[TABLE_KEY],
-            shapes_key=KEYS[SHAPES_KEY],
-            points_key=KEYS[POINTS_KEY],
-            qc_regions=qc_regions,
-            qc_table_key=qc_table_key,
-            qc_shapes_key=qc_shapes_key,
-            qc_filter_col=qc_filter_col,
-            qc_pass_value=qc_pass_value,
-            table_cell_id_col=table_cell_id_col,
-            points_cell_id_col=points_cell_id_col,
+    if spec.provides_assignment:
+        sdata = _load_proseg_native(
+            sdata, spec, seg_region, KEYS, affine, reg_name, exp_name,
+            dataset_id, cell_metadata_fname,
         )
+    else:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            from spatialdata_io.readers.merscope import _get_points
 
-    # Doing the transformations:
-    # Setting the pixel space coordinate system
-    set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
-    set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
-    
-    # saving points
-    if f"points/{KEYS[POINTS_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[POINTS_KEY])
-    else:
-        logger.warning(
-            f"Points {KEYS[POINTS_KEY]} already exists in the spatialdata object. Not overwriting it."
+        boundaries = _resolve_file(
+            seg_region, boundaries_fname or SCHEMA_BOUNDARIES, spec.legacy_boundaries_file
         )
-    # saving shapes
-    if f"shapes/{KEYS[SHAPES_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[SHAPES_KEY])
-    else:
-        logger.warning(
-            f"Shapes {KEYS[SHAPES_KEY]} already exists in the spatialdata object. Not overwriting it."
+        sdata[KEYS[POINTS_KEY]] = _get_points(
+            str(seg_region / detected_transcripts_fname), transformations
         )
-    # saving table
-    if f"tables/{KEYS[TABLE_KEY]}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(KEYS[TABLE_KEY])
-    else:
-        logger.warning(
-            f"Table {KEYS[TABLE_KEY]} already exists in the spatialdata object. Not overwriting it."
+        sdata[KEYS[SHAPES_KEY]] = get_polygons(
+            boundaries, transformations, cell_id_col=_CELL_KEY
         )
-    
-    if sd.__version__ <= "0.6.0":   
-        sd.save_transformations(sdata)
-    else:
-        sdata.write_transformations()
+        table = get_table(
+            seg_region / cell_by_gene_fname, seg_region / cell_metadata_fname,
+            reg_name, exp_name, dataset_id, KEYS[SHAPES_KEY], cell_id_col=_CELL_KEY,
+        )
+        table.obs.index.name = "index"
+        sdata[KEYS[TABLE_KEY]] = table
 
-    return sdata
+    return _finalize_and_write(sdata, KEYS, identity, qc_kwargs)
 
 
 def load_decon_images(
