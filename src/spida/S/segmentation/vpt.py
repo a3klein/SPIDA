@@ -20,23 +20,28 @@ def _add_vpt_binary(vpt_bin_path: str = None):
         "VPT_BIN_PATH", "/gale/netapp/home2/aklein/miniconda3/envs/vpt/bin"
     )
     logger.info(f"Using VPT binary path: {vpt_path}")
+    _native_hint = (
+        "The `vpt` (vizgen-postprocessing) binary is required only for the legacy "
+        "`--backend vpt` fallback. Install VPT and set VPT_BIN_PATH (or pass "
+        "vpt_bin_path), or use the default `--backend native` pure-Python path, "
+        "which needs no external binary."
+    )
     if not os.path.exists(vpt_path):
         raise FileNotFoundError(
-            f"VPT binary not found at {vpt_path}. Please check the installation."
+            f"VPT binary not found at {vpt_path}. {_native_hint}"
         )
 
     # Need to add the vpt path to the PATH variable
     os.environ["PATH"] += os.pathsep + vpt_path
 
     # Testing VPT works
-    segmentation_command = """
-        vpt --help
-        """
-    ret = subprocess.run(segmentation_command.split(), capture_output=True, check=True)
-    if ret.returncode != 0:
-        raise ValueError(
-            "VPT failed to run. Check the installation and the PATH variable."
-        )
+    try:
+        subprocess.run(["vpt", "--help"], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
+        raise RuntimeError(
+            f"Found the VPT path at {vpt_path} but `vpt --help` failed to run "
+            f"({e}). {_native_hint}"
+        ) from e
 
     logger.info("VPT binary added to PATH successfully.")
 
@@ -290,6 +295,7 @@ def seg_to_vpt(
     region: str,
     vpt_bin_path: str = None,
     is_3d : bool = False,
+    spacing_z: float = 1.5,
     **vpt_filepaths):
     """
     Convert other segmentation outputs to VPT format.
@@ -297,6 +303,8 @@ def seg_to_vpt(
     seg_out_dir (str): The directory containing the segmentation output files (gdf parquet file).
     region (str): The name of the region to process.
     is_3d (bool): Whether the data is 3D or not. Default is False (2D).
+    spacing_z (float): Micron spacing between adjacent z-planes; used for the 3D
+        ZLevel = (z + 1) * spacing_z (1-based) derivation. Only used when is_3d. Default 1.5.
     vpt_filepaths (dict): Additional file paths required for VPT processing, such as:
         - input_boundaries: Path to the input boundaries file (e.g., polygons.parquet).
         - output_boundaries: Path to save the converted boundaries file (e.g., cellpose_micron_space.parquet).
@@ -337,6 +345,7 @@ def seg_to_vpt(
             region=region,
             input_boundaries=input_boundaries,
             output_boundaries=output_boundaries,
+            spacing_z=spacing_z,
         )
         
 

@@ -407,7 +407,8 @@ def process_segmentation_region(
     if backend == "vpt":
         from .vpt import seg_to_vpt
         seg_to_vpt(str(raw_region.parents[0]), str(seg_region.parents[0]),
-                   reg_name, vpt_bin_path=vpt_bin_path, **kwargs)
+                   reg_name, vpt_bin_path=vpt_bin_path,
+                   is_3d=(n_z_planes > 1), spacing_z=micron_per_z, **kwargs)
         return
 
     from .ingest import ingest_polygons

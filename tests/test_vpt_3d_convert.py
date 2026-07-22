@@ -92,6 +92,45 @@ def test_min_z_filter_equivalence_adversarial_ids():
     assert set(_apply_min_z_on_ID(g, 3)["ID"].unique()) == {22, 3, 7, 4}
 
 
+def test_3d_convert_honors_nondefault_spacing(tmp_path):
+    # Stage 4B: spacing_z must flow through to the 1-based ZLevel derivation
+    # (ZLevel = (z+1)*spacing_z) for non-default z-spacings, not just 1.5.
+    _write(tmp_path, _raw_3d(n_cells=3, n_z=7))
+    _3d_convert_geometry(str(tmp_path), str(tmp_path), "region_T",
+                         convert_micron=False, spacing_z=2.7)
+    out = gpd.read_parquet(tmp_path / "region_T" / "cellpose_micron_space.parquet")
+    assert np.allclose(out["ZLevel"], (out["z"] + 1) * 2.7)
+    assert (out["ZIndex"] == out["z"]).all()
+
+
+def test_seg_to_vpt_forwards_spacing_z(tmp_path, monkeypatch):
+    # Stage 4B plumbing: seg_to_vpt(is_3d=True, spacing_z=X) must forward X into
+    # _3d_convert_geometry. Monkeypatch the binary + downstream cli steps so no
+    # VPT install is needed; just capture the spacing_z that reaches the convert.
+    import spida.S.segmentation.vpt as vpt_mod
+    import spida.S.segmentation.vpt_utils as vpt_utils
+
+    region = "region_T"
+    (tmp_path / region).mkdir(parents=True)
+    _raw_3d(n_cells=2, n_z=3).to_parquet(tmp_path / region / "polygons.parquet",
+                                         index=False)
+    (tmp_path / region / "detected_transcripts.csv").write_text("gene,x,y\n")
+
+    captured = {}
+
+    def fake_convert(*a, **k):
+        captured["spacing_z"] = k.get("spacing_z")
+
+    monkeypatch.setattr(vpt_mod, "_add_vpt_binary", lambda *a, **k: None)
+    monkeypatch.setattr(vpt_utils, "_3d_convert_geometry", fake_convert)
+    monkeypatch.setattr(vpt_mod, "_cli_partition_transcripts", lambda *a, **k: None)
+    monkeypatch.setattr(vpt_mod, "_cli_get_metadata", lambda *a, **k: None)
+
+    vpt_mod.seg_to_vpt(str(tmp_path), str(tmp_path), region,
+                       is_3d=True, spacing_z=3.14)
+    assert captured["spacing_z"] == 3.14
+
+
 def test_3d_convert_reproduces_release_zlevels(tmp_path):
     # Feed the OLD-style stamped input; the new derive-from-(ID,z) must reproduce
     # the release's ZIndex/ZLevel exactly (EntityID values are timestamp-based and
