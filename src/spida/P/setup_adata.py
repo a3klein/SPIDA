@@ -18,6 +18,7 @@ def run_setup(
     reg_name: str,
     seg_name: str,
     donor_name: str = None,
+    do_tsne: bool = False,
 ):
     """
     Setup the AnnData object for further analysis.
@@ -28,6 +29,7 @@ def run_setup(
     reg_name (str): Name of the region.
     seg_name (str): Name of the segmentation.
     donor_name (str, optional): Name of the donor. Defaults to None.
+    do_tsne (bool, optional): Whether to also compute the tSNE embedding (in addition to UMAP). Defaults to False.
 
     Returns:
     AnnData: The modified AnnData object.
@@ -52,7 +54,7 @@ def run_setup(
     adata.layers['volume_norm'] = scp.csr_matrix(adata.X / adata.obs['volume'].values[:, np.newaxis])
     adata.X = adata.layers['volume_norm'].copy()
     normalize_adata(adata, layer='volume_norm', log1p=True)
-    _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35, consensus_cluster=True)
+    _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35, consensus_cluster=True, do_tsne=do_tsne)
 
     try:
         from ..utilities.degs import call_degs_scran
