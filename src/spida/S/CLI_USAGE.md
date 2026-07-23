@@ -1,341 +1,292 @@
-# SPIDA S module CLI Usage Examples
+# SPIDA S module CLI Usage
 
-The `cli.py` script provides a command-line interface for the SPIDA spatial preprocessing pipeline.
+The `spida-S` command is the command-line interface for the SPIDA spatial-processing
+(`S`) module: it ingests raw MERSCOPE data into SpatialData, (optionally) deconvolves
+images, segments the tissue with a choice of algorithms, post-processes any segmentation
+into a standard on-disk **segmentation schema**, and loads that schema back into the
+SpatialData object.
 
-## Description
-
-Command line interface for SPIDA S (Spatial Processing) Module. This interface provides methods to ingest raw data, segment spatial data using a variety of algorithms, deconvolve large images for better segmentation, and align cell based segmentations to the nuclei segmentation they are rooted in to remove dubious artifacts.
-
-## Installation and Setup
-
-Make sure you have the required dependencies installed and your environment variables configured:
-- `PROCESSED_ROOT_PATH`
-- `SEGMENTATION_OUT_PATH` 
-- `ZARR_STORAGE_PATH`
-
-## Available Commands
-
-The CLI provides the following main command categories:
-
-### [Utilities]
-- `decon-image` - Deconvolve large image files in tiles using DeconWolf algorithm
-
-### [Segmentations] 
-- `run` / `run-segmentation-region` - Run segmentation on a single region using specified algorithm
-- `experiment` / `segment-experiment` - Run segmentation for all regions in an experiment using specified algorithm
-
-### [Alignment]    
-- `align` / `align-proseg` - Align cell-based segmentations to the nuclei segmentation
-
-### [I/O]
-- `ingest-region` - Ingest a specific region of an experiment into a spatialdata object
-- `ingest-all` - Ingest all regions of an experiment into spatialdata objects
-- `load-segmentation-region` - Load segmentation data for a specific region into a spatialdata object
-- `load-segmentation-all` - Load segmentation data for all regions of an experiment into spatialdata objects
-
-## Command Details
-
-### 1. Deconvolve Large Images
+Invoke it inside the appropriate pixi environment:
 
 ```bash
-python cli.py decon-image --image_path <path> --data_org_path <path> --channels <channels> [options]
+pixi run -e preprocessing spida-S --help
+pixi run -e cellpose     spida-S segment-region cellpose EXP REGION
+```
+
+---
+
+## Pipeline at a glance
+
+The commands follow the processing pipeline, in order:
+
+```
+ingest-region                 raw MERSCOPE  ->  SpatialData (.zarr)
+   │
+   ▼ (optional) decon-image   deconvolve stain images for better segmentation
+   │
+   ▼ segment-region           run a segmentation backend  ->  raw boundaries
+   │
+   ▼ process-segmentation-region   raw boundaries  ->  segmentation schema
+   │                               (native by default; VPT optional)
+   ▼ load-segmentation-region  segmentation schema  ->  back into SpatialData
+```
+
+Two things to know up front:
+
+- **Segmentation is two commands in two environments.** `segment-region` runs the backend
+  in its own env (cellpose → `cellpose`, mesmer → `deepcell`, proseg → `preprocessing`);
+  everything else runs in `preprocessing`. This split exists because no single env has both
+  the deep-learning segmenters and rasterio/spatialdata.
+- **Post-processing is native (pure-Python) by default; VPT is optional.** You do not need
+  the VPT binary for normal use. `--backend vpt` is kept only for backwards compatibility
+  and is slower (details under *Post-process*, below).
+
+There are also two side paths: **`process-custom-segmentation`** (bring your own
+segmentation files) and **`align-segmentation`** (reconcile two segmentations).
+
+## Setup
+
+Configure these via your project config (`.env` or `.json`):
+- `PROCESSED_ROOT_PATH` — raw MERSCOPE root (`{root}/{exp}/out/{region}`)
+- `SEGMENTATION_OUT_PATH` — segmentation output root (`{root}/{exp}/{method}/{region}`)
+- `ZARR_STORAGE_PATH` — SpatialData zarr store
+- `VPT_BIN_PATH` — **optional**, only for `--backend vpt`
+
+---
+
+## Commands (in pipeline order)
+
+### 1. Ingest raw data → SpatialData (`ingest-region` / `ingest-all`)
+
+Build a SpatialData object (`.zarr`) from raw MERSCOPE output.
+
+```bash
+pixi run -e preprocessing spida-S ingest-region <exp_name> <reg_name> [options]
+pixi run -e preprocessing spida-S ingest-all    <exp_name>            [options]
 ```
 
 **Examples:**
 
 ```bash
-# Basic deconvolution with DAPI channel
-python cli.py decon-image --image_path /path/to/image --data_org_path /path/to/data_org.txt --channels DAPI
-
-# Deconvolution with multiple channels and custom tile size
-python cli.py decon-image --image_path /path/to/image --data_org_path /path/to/data_org.txt --channels PolyT,DAPI --tile_size 2960 --overlap 100
-
-# Deconvolution with visualization and GPU acceleration
-python cli.py decon-image --image_path /path/to/image --data_org_path /path/to/data_org.txt --channels DAPI --visualize_grid --gpu true
+spida-S ingest-region experiment_1 region_001
+spida-S ingest-region experiment_1 region_001 --plot
+spida-S ingest-all    experiment_1 --prefix-name batch_001 --plot
 ```
 
-**Options:**
-- `--output_dir`: Output directory for tiles (default: tiles_output)
-- `--tile_size`: Tile size in pixels (default: 2960)
-- `--overlap`: Overlap between tiles in pixels (default: 100)
-- `--visualize_grid`: Visualize the tiling grid
-- `--z_step`: Axial(z) step size in micrometers (default: 1.5)
-- `--filter`: Filter to apply to the image before segmentation
-- `--filter_args`: Additional filter arguments
-- `--gpu`: Use GPU (default: false)
-- `--continue_stalled`: Continue processing if some tiles already processed (default: false)
-- `--plot_thr`: Plot thresholding histogram (default: false)
+**Options:** `--type` (default `merscope`), `--prefix-name` (default `default`),
+`--source` (default `machine`), `--plot`.
 
-### 2. Run Segmentation on a Single Region
+### 2. Deconvolve images (`decon-image`) — optional
+
+Deconvolve large stain images in tiles (DeconWolf) before segmentation. Optional but
+improves segmentation for low-boundary-signal tissue.
 
 ```bash
-python cli.py run <type> <exp_name> <reg_name> [options]
+pixi run -e preprocessing spida-S decon-image --image_path <path> --data_org_path <path> --channels <channels> [options]
 ```
 
 **Examples:**
 
 ```bash
-# Run Cellpose segmentation
-python cli.py run cellpose experiment_1 region_001
-
-# Run VPT segmentation with custom config
-python cli.py run vpt experiment_1 region_001 --config_path /path/to/config.json
-
-# Run Proseg with custom input/output directories
-python cli.py run proseg experiment_1 region_001 --input_dir /path/to/input --output_dir /path/to/output
-
-# Run Mesmer segmentation with additional kwargs
-python cli.py run mesmer experiment_1 region_001 --kwargs model_type=nuclear channels=1,2
+spida-S decon-image --image_path /path/to/image --data_org_path /path/to/data_org.txt --channels DAPI
+spida-S decon-image --image_path /path/to/image --data_org_path /path/to/data_org.txt --channels PolyT,DAPI --tile_size 2960 --overlap 100
 ```
 
-**Available segmentation types:**
-- `proseg`: ProSeg segmentation algorithm
-- `vpt`: VPT (Vizgen Postprocessing Tool) segmentation
-- `cellpose`: Cellpose segmentation algorithm
-- `mesmer`: Mesmer segmentation algorithm
+**Options:** `--output_dir` (default `tiles_output`), `--tile_size` (2960), `--overlap`
+(100), `--visualize_grid`, `--z_step` (1.5), `--filter`, `--filter_args`, `--gpu`
+(false), `--continue_stalled`, `--plot_thr`.
 
-**Options:**
-- `--input_dir`: Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)
-- `--output_dir`: Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)
-- `--config_path`: Configuration file path (for VPT segmentation)
-- `--kwargs`: Additional keyword arguments to segmentation algorithms in key=value format
+### 3. Segment a region (`segment-region`)
 
-### 3. Run Segmentation on All Regions in an Experiment
+Run a segmentation *backend* only (produces raw boundaries). Runs in the backend's env.
 
 ```bash
-python cli.py experiment <type> <exp_name> [options]
+pixi run -e <backend_env> spida-S segment-region <method> <exp_name> <reg_name> [options]
 ```
 
 **Examples:**
 
 ```bash
-# Run Cellpose on all regions in an experiment
-python cli.py experiment cellpose experiment_1
-
-# Run VPT on all regions with custom directories
-python cli.py experiment vpt experiment_1 --input_dir /path/to/input --output_dir /path/to/output
-
-# Run Cellpose on all regions with additional parameters
-python cli.py experiment cellpose experiment_1 --kwargs diameter=30 flow_threshold=0.4
+# cellpose -> cellpose env;  mesmer -> deepcell env;  proseg -> preprocessing env
+pixi run -e cellpose      spida-S segment-region cellpose experiment_1 region_001
+pixi run -e deepcell      spida-S segment-region mesmer   experiment_1 region_001
+pixi run -e preprocessing spida-S segment-region proseg   experiment_1 region_001
 ```
 
-**Options:**
-- `--input_dir`: Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)
-- `--output_dir`: Directory to save the output data (default: uses SEGMENTATION_OUT_PATH env var)
-- `--config_path`: Configuration file path (for VPT segmentation)
-- `--kwargs`: Additional keyword arguments in key=value format
+**Methods:** `cellpose`, `mesmer`, `proseg`.
 
-### 4. Align Proseg Transcripts
+**Options:** `--root_path` (default `PROCESSED_ROOT_PATH`), `--segmentation_store`
+(default `SEGMENTATION_OUT_PATH`), `--rust_bin_path`; extra `key=value` args are forwarded
+to the backend. (No `--version`: the proseg binary version is fixed at install time —
+`--version` applies only to `process-segmentation-region`.)
+
+### 4. Post-process into the segmentation schema (`process-segmentation-region`)
+
+Normalize + post-process the raw output into the segmentation schema. Always runs in
+`preprocessing`.
 
 ```bash
-python cli.py align <exp_name> <reg_name> [options]
+pixi run -e preprocessing spida-S process-segmentation-region <method> <exp_name> <reg_name> [options]
 ```
 
 **Examples:**
 
 ```bash
-# Basic alignment
-python cli.py align experiment_1 region_001
+# Native (default) — pure-Python, no VPT binary
+spida-S process-segmentation-region cellpose experiment_1 region_001
 
-# Alignment with custom parameters
-python cli.py align experiment_1 region_001 \
-    --seed-prefix-name custom_seed \
-    --prefix-name custom_proseg \
-    --min-jaccard 0.5 \
-    --min-prob 0.6 \
-    --filter-blank
-
-# Alignment with custom file names
-python cli.py align experiment_1 region_001 \
-    --cell-metadata-fname custom_metadata.csv \
-    --cell-by-gene-fname custom_cell_gene.csv \
-    --detected-transcripts-fname custom_transcripts.csv
-
-# Alignment with additional custom parameters
-python cli.py align experiment_1 region_001 \
-    --kwargs max_distance=50 use_gpu=true custom_param=test_value
+# Legacy VPT fallback (see note below)
+spida-S process-segmentation-region cellpose experiment_1 region_001 --backend vpt
 ```
 
-**Options:**
-- `--seed-prefix-name`: Seed prefix name (default: default)
-- `--prefix-name`: Prefix name (default: proseg)
-- `--out-prefix-name`: Output prefix name (default: proseg_aligned)
-- `--input-dir`: Directory containing the input data (default: uses PROCESSED_ROOT_PATH env var)
-- `--seg-dir`: Segmentation directory (default: uses SEGMENTATION_OUT_PATH env var)
-- `--x`: X coordinate column name (default: x)
-- `--y`: Y coordinate column name (default: y)
-- `--z`: Z coordinate column name (default: global_z)
-- `--cell-column`: Cell column name (default: cell_id)
-- `--barcode-column`: Barcode column name (default: barcode_id)
-- `--gene-column`: Gene column name (default: gene)
-- `--fov-column`: FOV column name (default: fov)
-- `--cell-missing`: Cell missing value (default: -1)
-- `--min-jaccard`: Minimum Jaccard index (default: 0.4)
-- `--min-prob`: Minimum probability (default: 0.5)
-- `--filter-blank`: Filter blank genes
-- `--cell-metadata-fname`: Cell metadata filename (default: merged_cell_metadata.csv)
-- `--cell-by-gene-fname`: Cell by gene filename (default: merged_cell_by_gene.csv)
-- `--detected-transcripts-fname`: Detected transcripts filename (default: merged_transcript_metadata.csv)
-- `--cell-polygons-fname`: Cell polygons filename (default: merged_cell_polygons.geojson)
-- `--kwargs`: Additional keyword arguments in key=value format
+Writes the schema to `{SEGMENTATION_OUT_PATH}/{exp}/{method}/{region}`:
+`boundaries_micron.parquet`, `cell_by_gene.csv`, `detected_transcripts.csv`,
+`cell_metadata.csv`, `sum_signals.csv`.
 
-### 5. Ingest Region Data
+**Options:** `--backend` (`native` default | `vpt`), `--version` (proseg 2/3),
+`--root_path`, `--segmentation_store`, `--micron_per_z` (1.5), `--n_z_planes` (7),
+`--n_jobs` (7; sum-signals is IO-bound, so 6–8 is the sweet spot — more workers are slower
+**and** cost more SUs), `--vpt_bin_path` (only for `--backend vpt`).
+
+> #### VPT backend (`--backend vpt`) — optional, backwards-compatibility only
+> The native path is the default and expected one; `--backend vpt` exists only for
+> pre-redesign workflows/data. It requires the external `vpt` binary (`VPT_BIN_PATH`) and
+> is **slower** than native. Outputs are equivalent up to small, library-version-driven
+> numeric differences (not bugs): `sum_signals` intensities differ by ~0.5–1% (GDAL
+> `rasterize(all_touched=True)` boundary pixels differ across GDAL versions), `anisotropy`
+> differs slightly (shapely `minimum_rotated_rectangle` version), and a tiny fraction
+> (~0.16%) of tile-seam boundary slivers may be resolved differently. Cell counts,
+> transcript assignments, and gene totals match.
+
+### 5. Process a user-provided segmentation (`process-custom-segmentation`)
+
+Bring your own boundaries (+ optional transcripts / stain images) with whatever column
+names you use, and produce the segmentation schema (native; no VPT). Steps are
+auto-selected by what you provide (transcripts → partition; images → sum-signals).
 
 ```bash
-python cli.py ingest-region <exp_name> <reg_name> [options]
+pixi run -e preprocessing spida-S process-custom-segmentation <boundaries_path> <output_dir> [options]
 ```
 
 **Examples:**
 
 ```bash
-# Basic ingestion
-python cli.py ingest-region experiment_1 region_001
+# 2D boundaries (micron space) + transcripts, columns named yourself
+spida-S process-custom-segmentation my_cells.parquet out/ \
+    --cell_id_col my_cell \
+    --transcripts_path my_transcripts.csv \
+    --transcript_z_col z --gene_col target --barcode_col code \
+    --transcript_x_col x_um --transcript_y_col y_um
 
-# Ingestion with custom type and prefix
-python cli.py ingest-region experiment_1 region_001 --type merscope --prefix-name custom_prefix
-
-# Ingestion with plotting
-python cli.py ingest-region experiment_1 region_001 --plot
+# 3D boundaries (pixel space) + a stain-image stack
+spida-S process-custom-segmentation cells.geojson out/ \
+    --boundaries_space pixel --micron_to_mosaic_path transform.csv \
+    --cell_id_col cell --boundary_z_col z_plane --n_z_planes 7 \
+    --images_dir images/ --z_spacing 1.5
 ```
 
-**Options:**
-- `--type`: Type of the data to ingest (default: merscope)
-- `--prefix-name`: Prefix for the keys in the spatialdata object (default: default)
-- `--source`: Source of the data (default: machine)
-- `--plot`: Plot results after ingestion
+**Key options:**
+- `--boundaries_space` — `micron` (default) or `pixel`
+- `--micron_to_mosaic_path` — path to `micron_to_mosaic_pixel_transform.csv` (required for
+  `pixel` space and/or when `--images_dir` is given)
+- `--z_spacing` (1.5); `--n_z_planes` — 1 ⇒ 2D (polygons expanded into cylinders across the
+  transcript/image planes for partitioning; sum-signals uses one plane), >1 ⇒ 3D (boundary
+  and transcript plane counts must match)
+- `--cell_id_col` — your cell-identifier column (grouping key; preserved in the output; a
+  fresh `EntityID` is always assigned). Required for 3D and for metadata merge.
+- `--boundary_z_col` — integer z-plane column for 3D input
+- `--transcripts_path`, `--transcript_z_col`, `--transcript_z_in_microns`, `--gene_col`,
+  `--barcode_col`, `--transcript_x_col`, `--transcript_y_col`
+- `--images_dir` — dir of `mosaic_{stain}_z{N}.tif` (enables sum-signals)
+- `--segmentation_z_index` — for 2D, the single image plane sum-signals uses (default: the
+  middle image plane)
+- `--metadata_path` / `--metadata_cell_id_col` — user cell-metadata merged onto the derived
+  metadata on your cell-id
+- `--n_jobs` (7)
 
-### 6. Ingest All Regions
+> **Z-indexing note:** transcripts are placed on a z-plane via `--transcript_z_col` (integer
+> plane, or micron `ZLevel` with `--transcript_z_in_microns` + `--z_spacing`), while images
+> are indexed by the integer `ZIndex` in their `mosaic_*_z{N}.tif` filenames — two
+> independent conventions, as in VPT.
+
+### 6. Align two segmentations (`align-segmentation`)
+
+Reconcile two segmentations (e.g. `cellpose_nuc` vs `cellpose_cell`) into one boundary set
+by spatial overlap.
 
 ```bash
-python cli.py ingest-all <exp_name> [options]
+pixi run -e preprocessing spida-S align-segmentation <exp_name> <reg_name> [options]
+```
+
+> ⚠️ **Caveat:** not yet migrated to the segmentation-schema redesign and effectively
+> **2D-only** (its geometry-conversion call does not thread the z-spacing / 3D flag). Treat
+> 3D results with caution.
+
+**Options:** `--prefix1` (default `cellpose_nuc`), `--prefix2` (default `cellpose_cell`),
+`--geometry_mode` (`larger`|`prefix1`|`prefix2`|`intersection`), `--cell_id` (default
+`EntityID`), `--min_intersection_area`, `--coordinate_system` (default `global`),
+`--out_dir_name` (default `align`), `--zarr_store`, `--segmentation_store`, `--root_path`,
+`--vpt_bin_path`.
+
+### 7. Load a segmentation into SpatialData (`load-segmentation-region` / `-all`)
+
+Load segmentation-schema output back into the SpatialData object.
+
+```bash
+pixi run -e preprocessing spida-S load-segmentation-region <exp_name> <reg_name> <seg_dir> [options]
+pixi run -e preprocessing spida-S load-segmentation-all    <exp_name> <seg_dir>            [options]
 ```
 
 **Examples:**
 
 ```bash
-# Basic ingestion of all regions
-python cli.py ingest-all experiment_1
-
-# Ingestion with custom settings
-python cli.py ingest-all experiment_1 --type merscope --prefix-name batch_001 --plot
+spida-S load-segmentation-region experiment_1 region_001 /path/to/segmentation --type cellpose --plot
+spida-S load-segmentation-region experiment_1 region_001 /path/to/segmentation --type proseg
 ```
 
-**Options:**
-- `--type`: Type of the data to ingest (default: merscope)
-- `--prefix-name`: Prefix for the keys in the spatialdata object (default: default)
-- `--source`: Source of the data (default: machine)
-- `--plot`: Plot results after ingestion
+The loader is backend-agnostic: it resolves the boundary file whether it was written under
+the canonical name (`boundaries_micron.parquet`, native) or a legacy name
+(`cellpose_micron_space.parquet` / `proseg_polygons.parquet`, e.g. from `--backend vpt` or
+older data).
 
-### 7. Load Segmentation Data for Region
+**Options:** `--type` (segmentation method `cellpose`/`proseg`; legacy `vpt` maps to
+cellpose), `--prefix-name` (default `default`), `--plot`, `--load_kwargs`.
+
+---
+
+## Reference
+
+### Additional keyword arguments
+
+Segmentation commands forward extra `key=value` arguments to the underlying functions:
 
 ```bash
-python cli.py load-segmentation-region <exp_name> <reg_name> <seg_dir> [options]
+spida-S segment-region cellpose exp1 reg1 diameter=25 flow_threshold=0.5
 ```
 
-**Examples:**
+### Help & version
 
 ```bash
-# Basic loading
-python cli.py load-segmentation-region experiment_1 region_001 /path/to/segmentation
-
-# Loading with custom type and plotting
-python cli.py load-segmentation-region experiment_1 region_001 /path/to/segmentation --type vpt --plot
+spida-S --help
+spida-S <command> --help
+spida-S --version
 ```
 
-**Options:**
-- `--type`: Type of the segmentation data to load (default: vpt)
-- `--prefix-name`: Prefix for the keys in the spatialdata object (default: default)
-- `--plot`: Plot results after loading segmentation
-- `--load_kwargs`: Additional keyword arguments for loading segmentation data
+### Command aliases
 
-### 8. Load Segmentation Data for All Regions
+- `segment-region` → `segment`
+- `process-segmentation-region` → `process-segmentation`
+- `process-custom-segmentation` → `process-custom`
+- `align-segmentation` → `align_segmentation`
+- `run-segmentation-region` → `run` *(deprecated — see below)*
 
-```bash
-python cli.py load-segmentation-all <exp_name> <seg_dir> [options]
-```
+### Deprecated / removed
 
-**Examples:**
-
-```bash
-# Basic loading for all regions
-python cli.py load-segmentation-all experiment_1 /path/to/segmentation
-
-# Loading with custom settings
-python cli.py load-segmentation-all experiment_1 /path/to/segmentation --type vpt --prefix-name batch_seg --plot
-```
-
-**Options:**
-- `--type`: Type of the segmentation data to load (default: vpt)
-- `--prefix-name`: Prefix for the keys in the spatialdata object (default: default)
-- `--plot`: Plot results after loading segmentation
-- `--load_kwargs`: Additional keyword arguments for loading segmentation data
-
-## Additional Keyword Arguments (--kwargs)
-
-All segmentation and alignment commands support the `--kwargs` parameter to pass additional keyword arguments to the downstream functions. This provides flexibility for algorithm-specific parameters without cluttering the main CLI interface.
-
-**Format:**
-
-```bash
---kwargs key1=value1 key2=value2 key3=value3
-```
-
-**Examples:**
-
-```bash
-# Cellpose with custom parameters
-python cli.py run cellpose exp1 reg1 --kwargs diameter=25 flow_threshold=0.5 cellprob_threshold=0.0
-
-# VPT with custom settings
-python cli.py run vpt exp1 reg1 --kwargs num_workers=8 batch_size=32
-
-# Proseg alignment with custom parameters
-python cli.py align exp1 reg1 --kwargs max_iterations=100 convergence_threshold=0.001
-```
-
-## Version Information
-
-```bash
-# Check version
-python cli.py -v
-# or
-python cli.py --version
-```
-
-## Help
-
-For detailed help on any command:
-
-```bash
-# General help
-python cli.py --help
-
-# Help for specific commands
-python cli.py run --help
-python cli.py experiment --help
-python cli.py align --help
-python cli.py decon-image --help
-python cli.py ingest-region --help
-python cli.py ingest-all --help
-python cli.py load-segmentation-region --help
-python cli.py load-segmentation-all --help
-```
-
-## Environment Variables
-
-The CLI uses the following environment variables as defaults:
-
-- `PROCESSED_ROOT_PATH`: Default input directory for processed data
-- `SEGMENTATION_OUT_PATH`: Default output directory for segmentation results
-- `ZARR_STORAGE_PATH`: Path for zarr storage
-
-## Command Aliases
-
-Several commands have aliases for convenience:
-
-- `run` can also be called as `run-segmentation-region`
-- `experiment` can also be called as `segment-experiment`
-- `align` can also be called as `align-proseg`
+- `run-segmentation-region` / `run` — the old bundled single-step command. **No longer
+  runs**; it prints migration guidance pointing at `segment-region` +
+  `process-segmentation-region`.
+- `segment-experiment` and `align-proseg` were **removed** (batch-over-regions is now done
+  per-region via SLURM; `align-proseg` was obsolete under proseg v3's native assignment).
 
 ## Author
 
@@ -343,4 +294,5 @@ Amit Klein
 
 ---
 
-*This documentation reflects the current implementation of the SPIDA S module CLI interface.*
+*This documentation reflects the post-VPT-removal S module: native pure-Python
+post-processing by default, with an optional VPT backend for backwards compatibility.*
