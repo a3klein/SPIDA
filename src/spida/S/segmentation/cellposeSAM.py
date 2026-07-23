@@ -520,6 +520,27 @@ def run_cellposeSAM(
         logger.info(f"Filtered out {n_pre - n_post} cells; remaining cells: {n_post}")
 
         logger.info(f"Filtering out cells that appear in fewer than {min_z} z layers")
+        # POTENTIAL BUG (flagged 2026-06-23, aklein test bench): EntityID is
+        # constructed at line 503 from `tile_id + ID`, making it tile-scoped.
+        # The dissolve at line 506 groups by gz_id (ID + z) and pandas' default
+        # aggfunc='first' picks an arbitrary EntityID from each group. A cell
+        # whose ID straddles multiple xy tiles will therefore have DIFFERENT
+        # EntityIDs across its z-slices after dissolve. The groupby below then
+        # fragments that single cell into multiple EntityID groups, each with
+        # an under-counted z-extent, and may filter the cell out even when its
+        # true z-extent >= min_z.
+        # PROPOSED FIX: group by the globally-unique cellpose label `ID`
+        # instead — that label is constant across all tiles a cell touches,
+        # so the count of distinct z values per ID correctly reflects the
+        # cell's true z-extent:
+        #     z_per_cell = gdf.groupby("ID")["z"].nunique()
+        #     keep_ids = z_per_cell[z_per_cell >= min_z].index
+        #     gdf = gdf[gdf["ID"].isin(keep_ids)].copy()
+        # NEEDS TESTING on real 3D data before changing — current behaviour
+        # may be inadvertently selecting against marginal-z cells in a way
+        # the team has tuned around. Validation: synthetic mask with a cell
+        # spanning multiple tiles confirms the under-counting; not yet
+        # validated against real MERSCOPE outputs.
         eid_vc = gdf.groupby("EntityID")['z'].count()
         keep_eids = eid_vc[eid_vc >= min_z].index
         n_pre = len(gdf)
