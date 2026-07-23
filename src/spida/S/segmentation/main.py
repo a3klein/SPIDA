@@ -103,7 +103,6 @@ def segment_region(
     method: str,
     exp_name: str,
     reg_name: str,
-    version: str | None = None,
     *,
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
@@ -112,13 +111,13 @@ def segment_region(
 ):
     """Run only the segmentation *backend* for a region (produces raw boundaries).
 
-    Runs in the backend's env (``spec.env``): cellpose/mesmer -> "cellpose",
-    proseg -> "preprocessing". Output goes to
+    Runs in the backend's env (``spec.env``): cellpose -> "cellpose", mesmer ->
+    "deepcell", proseg -> "preprocessing". Output goes to
     ``{SEGMENTATION_OUT_PATH}/{exp}/{method}/{region}``.
     """
     from .backends import get_spec
 
-    spec = get_spec(method, version)
+    spec = get_spec(method)
     spec.require_env("segment")
 
     processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")

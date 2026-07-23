@@ -395,16 +395,15 @@ def run_segmentation(
 @click.argument("method", type=str)
 @click.argument("exp_name", type=str)
 @click.argument("reg_name", type=str)
-@click.option("--version", "version", default=None, type=str, help="Method version (proseg: 2 or 3)")
 @click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
 @click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
 @click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Rust/proseg binary path")
 @click.pass_context
-def segment_region(ctx, method, exp_name, reg_name, version, root_path,
+def segment_region(ctx, method, exp_name, reg_name, root_path,
                    segmentation_store, rust_bin_path):
     kwargs = parse_click_kwargs(ctx.args)
     from .segmentation.main import segment_region as func
-    func(method=method, exp_name=exp_name, reg_name=reg_name, version=version,
+    func(method=method, exp_name=exp_name, reg_name=reg_name,
          root_path=root_path, segmentation_store=segmentation_store,
          rust_bin_path=rust_bin_path, **kwargs)
 
@@ -444,8 +443,7 @@ def process_segmentation_region(ctx, method, exp_name, reg_name, version, backen
     name="process-custom-segmentation",
     aliases=["process-custom"],
     cls=RichCommand,
-    help="Process a USER-PROVIDED segmentation (bring your own polygons + optional transcripts / "
-         "stain images) into the segmentation schema, loadable by load-segmentation. Native, no VPT.",
+    help="Process a USER-PROVIDED segmentation (polygons + optional transcripts / stain images) into the segmentation schema.",
     context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
 )
 @click.argument("boundaries_path", type=click.Path(exists=True, dir_okay=False))
