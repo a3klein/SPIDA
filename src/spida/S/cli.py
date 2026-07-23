@@ -439,6 +439,48 @@ def process_segmentation_region(ctx, method, exp_name, reg_name, version, backen
          micron_per_z=micron_per_z, n_z_planes=n_z_planes, n_jobs=n_jobs,
          vpt_bin_path=vpt_bin_path, **kwargs)
 
+
+@cli.command(
+    name="process-custom-segmentation",
+    aliases=["process-custom"],
+    cls=RichCommand,
+    help="Process a USER-PROVIDED segmentation (bring your own polygons + optional transcripts / "
+         "stain images) into the segmentation schema, loadable by load-segmentation. Native, no VPT.",
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
+)
+@click.argument("boundaries_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("output_dir", type=click.Path())
+@click.option("--boundaries_space", "boundaries_space", default="micron", type=click.Choice(["micron", "pixel"]), help="Coordinate space of the input polygons (default micron)")
+@click.option("--micron_to_mosaic_path", "micron_to_mosaic_path", default=None, type=click.Path(), help="Path to micron_to_mosaic_pixel_transform.csv (required for pixel space and/or images)")
+@click.option("--z_spacing", "z_spacing", default=1.5, type=float, help="Micron thickness per z-plane (default 1.5)")
+@click.option("--n_z_planes", "n_z_planes", default=1, type=int, help="Number of z-planes; 1 => 2D cylinder expansion (default 1)")
+@click.option("--cell_id_col", "cell_id_col", default=None, type=str, help="Caller's cell-id column in the boundaries (required for 3D / metadata merge)")
+@click.option("--boundary_z_col", "boundary_z_col", default=None, type=str, help="Integer z-plane column in the boundaries for 3D input")
+@click.option("--transcripts_path", "transcripts_path", default=None, type=click.Path(), help="Detected transcripts (.csv/.parquet); enables partition")
+@click.option("--transcript_z_col", "transcript_z_col", default="global_z", type=str, help="Transcript z column (default global_z)")
+@click.option("--transcript_z_in_microns", "transcript_z_in_microns", is_flag=True, default=False, help="Transcript z is micron ZLevel (convert to integer plane)")
+@click.option("--images_dir", "images_dir", default=None, type=click.Path(), help="Dir of mosaic_{stain}_z{N}.tif images; enables sum-signals")
+@click.option("--segmentation_z_index", "segmentation_z_index", default=None, type=int, help="For 2D, the single ZIndex plane for sum-signals (default middle image plane)")
+@click.option("--metadata_path", "metadata_path", default=None, type=click.Path(), help="Optional user cell-metadata CSV merged onto derived metadata")
+@click.option("--metadata_cell_id_col", "metadata_cell_id_col", default=None, type=str, help="Cell-id column in metadata_path if it differs from cell_id_col")
+@click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7)")
+@click.pass_context
+def process_custom_segmentation(ctx, boundaries_path, output_dir, boundaries_space,
+                                micron_to_mosaic_path, z_spacing, n_z_planes, cell_id_col,
+                                boundary_z_col, transcripts_path, transcript_z_col,
+                                transcript_z_in_microns, images_dir, segmentation_z_index,
+                                metadata_path, metadata_cell_id_col, n_jobs):
+    kwargs = parse_click_kwargs(ctx.args)
+    from .segmentation.main import process_custom_segmentation as func
+    func(boundaries_path, output_dir, boundaries_space=boundaries_space,
+         micron_to_mosaic_path=micron_to_mosaic_path, z_spacing=z_spacing,
+         n_z_planes=n_z_planes, cell_id_col=cell_id_col, boundary_z_col=boundary_z_col,
+         transcripts_path=transcripts_path, transcript_z_col=transcript_z_col,
+         transcript_z_in_microns=transcript_z_in_microns, images_dir=images_dir,
+         segmentation_z_index=segmentation_z_index, metadata_path=metadata_path,
+         metadata_cell_id_col=metadata_cell_id_col, n_jobs=n_jobs, **kwargs)
+
+
 @cli.command(
     name="filt-to-ids",
     aliases=["filt_to_ids", "filter_to_ids", "filter-to-ids"],
