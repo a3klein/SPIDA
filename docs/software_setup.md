@@ -8,11 +8,20 @@ Deconvolution is used to increase the accuracy / performance of the segmentation
 
 Refer to the [Decovolution](./deconvolution.md) page for instructions on how to set up the deconvolution pipeline. 
 
-## VPT (vizgen-Postprocessing-tool)
+## VPT (vizgen-Postprocessing-tool) — optional
 
-VPT is used for standard procedures like generating a cell-by-gene matrix and metadata for new segmentations. You can refer to the documentation here: [vizgen_postprocessing](https://vizgen.github.io/vizgen-postprocessing/index.html). 
+> **You do not need VPT for normal use.** The standard post-processing steps (cell-by-gene
+> matrix, metadata, image-intensity, geometry conversion) are reimplemented in pure Python
+> and run by default (`--backend native`). VPT is kept **only as a backwards-compatibility
+> fallback** (`--backend vpt`) for pre-redesign workflows/data, and it is **slower** than
+> native. Outputs are equivalent up to small library-version differences (e.g. GDAL
+> `rasterize` affects `sum_signals` by ~0.5–1%; shapely version affects `anisotropy`). You
+> can skip this whole section unless you specifically need the vpt backend.
 
-I recommend installing it using poetry into a fresh conda environment. You can follow the vpt instructions for installing it, but here is how tldr of how I do it: 
+VPT reference documentation: [vizgen_postprocessing](https://vizgen.github.io/vizgen-postprocessing/index.html).
+
+If you do want the optional vpt backend, install it using poetry into a fresh conda
+environment. You can follow the vpt instructions, but here is the tldr of how I do it: 
 ```
 micromamba create -n vpt python=3.10 poetry -y
 micromamba activate vpt
@@ -42,6 +51,6 @@ Your `RUST_BIN_PATH` should then be under `~/.cargo/bin`.
 
 ## Configuring .env file
 
-Typically, relative filepaths for projects can change, however these software dependencies stay the same. I will at the very list make sure that the .env file in the SPIDA root project folder is update with the `DECONWOLF_CONFIG`, `VPT_BIN_PATH`, and `RUST_BIN_PATH`, since these parameters are unlikely to change between projects on the same machine. 
+Typically, relative filepaths for projects can change, however these software dependencies stay the same. I will at the very least make sure that the .env file in the SPIDA root project folder is updated with the `DECONWOLF_CONFIG` and `RUST_BIN_PATH`, since these parameters are unlikely to change between projects on the same machine. (`VPT_BIN_PATH` is optional — only set it if you use the `--backend vpt` fallback.) 
 
 You can refer to the [Configuration](./configuration.md) page for more information.
