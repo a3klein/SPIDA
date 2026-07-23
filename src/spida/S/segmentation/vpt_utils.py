@@ -82,6 +82,7 @@ def _3d_convert_geometry(
     input_boundaries: str = "polygons.parquet",
     output_boundaries: str = "cellpose_micron_space.parquet",
     convert_micron: bool = True,
+    spacing_z: float = 1.5,
 ):
     """
     Convert geometry of cell boundaries from cellpose 3D segmentation into an output compatible with VPT. 
@@ -101,13 +102,19 @@ def _3d_convert_geometry(
 
     set_process_id()
 
+    # Derive the segmentation-schema fields from the raw (ID, z) cellpose output
+    # (run_cellpose no longer stamps them). Matches the native ingest conventions:
+    # ZIndex = z, ZLevel = (z+1)*spacing_z (1-based), one timestamp EntityID per
+    # cellpose ID (label consistent across a cell's z-planes).
     cell_id = 'EntityID'
+    gdf_inp['ZIndex'] = gdf_inp['z']
+    gdf_inp['ZLevel'] = (gdf_inp['z'] + 1) * spacing_z
     gdf_inp['ParentType'] = None
     gdf_inp['ParentID'] = None
     gdf_inp['Type'] = 'cell'
     gdf_inp['Name'] = None
 
-    entity_ids_map = {i: get_id() for i in gdf_inp[cell_id].unique()}
-    gdf_inp[cell_id] = gdf_inp[cell_id].map(entity_ids_map)
+    entity_ids_map = {i: get_id() for i in gdf_inp['ID'].unique()}
+    gdf_inp[cell_id] = gdf_inp['ID'].map(entity_ids_map)
 
     gdf_inp.to_parquet(output_path)

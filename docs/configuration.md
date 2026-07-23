@@ -18,7 +18,7 @@ Common keys:
 ## Configuration parameters
 
 - `RUST_BIN_PATH`: Path to the Rust binary used by SPIDA.
-- `VPT_BIN_PATH`: Path to the VPT binary used by SPIDA.
+- `VPT_BIN_PATH`: Path to the VPT binary. **Optional** — only needed for the legacy `--backend vpt` post-processing fallback; the default native (pure-Python) path needs no binary.
 - `DECONWOLF_CONFIG`: Path to the Deconwolf configuration file.
 - `ZARR_STORAGE_PATH`: Root directory for Zarr stores.
 - `PROCESSED_ROOT_PATH`: Root directory for processed outputs.

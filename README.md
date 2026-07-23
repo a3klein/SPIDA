@@ -22,21 +22,21 @@ The command is composed of multiple parts:
 python -m spida.{module}.cli {command} {args}
 ```
 
-## .env file
+## .env / config file
 
-This package writes data stores and intermediate files (like segmentation specific files) into your local filesystem. In order to control where those files are written to, we utilize the .env file. In the .env file you will need to specify where you want specific forms of data stored. For the most parts, data is going to be written in the following form: 
+This package writes data stores and intermediate files (like segmentation specific files) into your local filesystem. In order to control where those files are written to, we use a configuration of paths and binary locations. This can be supplied either as a `.env` file or as a per-project config file (`.json`) — SPIDA is increasingly moving toward the config-file approach, but `.env` is still supported. Either way you specify the same keys (shown below); see the [Configuration guide](./docs/configuration.md) for the config-file format. For the most part, data is going to be written in the following form: 
 
 ```
 {storage_location}/{experiment_name}/{region_name}/...
 ```
 
-Additionally, there are times when specific binaries are needed to run specific commands, i.e. proseg, vpt (vizgen-postprocessing-tool), and deconwolf. For this there is a section in .env file where binaries need to be stored if those functions are to be used. 
+Additionally, some commands need external binaries: proseg (segmentation) and deconwolf (deconvolution). Point your config (`.env` / `.json`) at them if you use those steps. The vpt (vizgen-postprocessing-tool) binary is **optional** — segmentation post-processing is reimplemented in pure Python and runs by default (`--backend native`); vpt is only kept as a backwards-compatibility fallback (`--backend vpt`) and is slower than native. Outputs match up to small library-version differences (e.g. GDAL rasterization affects `sum_signals` by ~0.5–1%). 
 
 Important environment variables to set: 
 ```
 # Program Binaries
 RUST_BIN_PATH={rust binary for running proseg / other rust packages}
-VPT_BIN_PATH={vpt binary for converting between geometries mapping segmentations to a common structure}
+VPT_BIN_PATH={OPTIONAL vpt binary; only needed for the legacy --backend vpt fallback}
 DECONWOLF_CONFIG={where the deconwolf .config.ini file lives (see below)}
 
 # Data Storage Path

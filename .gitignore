@@ -7,12 +7,14 @@
 CLAUDE.md
 .claude/
 .claude/settings.local.json
+design_decisions.md
 
 # pixi environments
 .pixi
 *.egg-info
 
 # pyhton files
+**/__pycache__/
 **/__pycache__
 .pytest_cache
 

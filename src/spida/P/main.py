@@ -190,6 +190,7 @@ def setup_adata_region(
     prefix_name: str,
     suffix: str = "",
     plot=False,
+    do_tsne: bool = False,
     image_path: Path = None,
     image_store: Path = None,
     zarr_store: str | Path | None = None,
@@ -203,6 +204,7 @@ def setup_adata_region(
     reg_name (str): Name of the region.
     prefix_name (str): Prefix for the keys in the spatialdata object.
     plot (bool, optional): Whether to plot the results. Defaults to False.
+    do_tsne (bool, optional): Also compute the tSNE embedding (needed by the setup plots). Defaults to False.
     """
     from spida.P.setup_adata import run_setup
 
@@ -220,7 +222,7 @@ def setup_adata_region(
         exp_name, reg_name, prefix_name, zarr_store=zarr_store
     )  # Use the filtered data if available
     # Run the setup
-    adata = run_setup(adata, exp_name, reg_name, prefix_name, donor_name)
+    adata = run_setup(adata, exp_name, reg_name, prefix_name, donor_name, do_tsne=do_tsne)
     # backup the adata object
     try:
         _assign_new_table(

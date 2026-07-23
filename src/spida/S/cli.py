@@ -374,172 +374,110 @@ def run_segmentation(
     **kwargs,
 ):
     """
-    Run an implemented segmentation algorithm on a given region
+    DEPRECATED. Segmentation and its post-processing are now separate commands
+    (see the printed migration guidance).
     """
-    # logger.info(ctx.obj.get('_raw_extra_args'))
-    # logger.info(ctx.obj.get('extra_args'))
-    # kwargs = ctx.obj['extra_kwargs']
-    # for key, value in kwargs.items():
-    #     logger.info(f"Parsing extra argument {key}={value}")
+    from .segmentation.main import _deprecated_run_segmentation_message
 
-    extra_args = ctx.args
-    click.echo(extra_args)
-    kwargs = parse_click_kwargs(extra_args)
-    click.echo(kwargs)
-    for key, value in kwargs.items():
-        logger.info(f"Parsed {key} = {value};  {type(value)}")
-
-    
-
-    from .segmentation.main import run_segmentation as func
-    func(
-        type=seg_type,
-        exp_name=exp_name,
-        reg_name=reg_name,
-        input_dir=input_dir,
-        output_dir=output_dir,
-        root_path=root_path,
-        segmentation_store=segmentation_store,
-        vpt_bin_path=vpt_bin_path,
-        kwargs=kwargs,
+    raise click.ClickException(
+        _deprecated_run_segmentation_message(seg_type, exp_name, reg_name)
     )
 
-@cli.command(
-    name="segment-experiment",
-    aliases=["experiment", "segment_experiment"],
-    cls=RichCommand,
-    help="['experiment', 'segment_experiment'], Run segmentation of kind TYPE for all regions in a given EXPERIMENT.",
-)
-@click.argument("type", type=str)
-@click.argument("exp_name", type=str)
-@click.option("input_dir", "--input_dir", default=None, type=click.Path(), help="Directory containing the input data (default: None, uses environment variable)")
-@click.option("output_dir", "--output_dir", default=None, type=click.Path(), help="Directory to save the output data (default: None, uses environment variable)")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
-@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Path to store the segmentation results (default: None, uses environment variable)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage (default: None, uses environment variable)")
-@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary (default: None, uses environment variable)")
-@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Path to the Rust binary (default: None, uses environment variable)")
-@click.option("kwargs", "--kwargs", default="{}", type=str, help="Additional keyword arguments as a JSON string (default: {})")
-@click.pass_context
-def segment_experiment(
-    ctx,
-    type: str,
-    exp_name: str,
-    input_dir: Path = None,
-    output_dir: Path = None,
-    root_path: str | Path | None = None,
-    segmentation_store: str | Path | None = None,
-    zarr_store: str | Path | None = None,
-    vpt_bin_path: str | Path | None = None,
-    rust_bin_path: str | Path | None = None,
-    **kwargs
-):
-    """
-    Run segmentation for all regions in an experiment.
-    """
-    from .segmentation.main import segment_experiment as func
-    func(
-        type=type,
-        exp_name=exp_name,
-        input_dir=input_dir,
-        output_dir=output_dir,
-        root_path=root_path,
-        segmentation_store=segmentation_store,
-        zarr_store=zarr_store,
-        vpt_bin_path=vpt_bin_path,
-        rust_bin_path=rust_bin_path,
-        **kwargs,
-    )
 
-    
 @cli.command(
-    name="align-proseg",
-    aliases=["align", "align_proseg"],
+    name="segment-region",
+    aliases=["segment"],
     cls=RichCommand,
-    help="['align', 'align_proseg'], Align Proseg transcripts to seed transcripts for a given EXP_NAME and REG_NAME.",
+    help="Run the segmentation backend for METHOD on EXP_NAME/REG_NAME (raw output only). "
+         "Run in the backend's env (cellpose -> cellpose; proseg -> preprocessing; mesmer -> deepcell).",
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
 )
+@click.argument("method", type=str)
 @click.argument("exp_name", type=str)
 @click.argument("reg_name", type=str)
-@click.option("seed_prefix_name", "--seed_prefix_name", default="default", type=str, help="Prefix for the seed transcripts (default: default)")
-@click.option("prefix_name", "--prefix_name", default="proseg", type=str, help="Prefix for the Proseg transcripts (default: proseg)")
-@click.option("out_prefix_name", "--out_prefix_name", default="proseg_aligned", type=str, help="Prefix for the output aligned transcripts (default: proseg_aligned)")   
-@click.option("input_dir", "--input_dir", default=None, type=click.Path(), help="Directory containing the input data (default: None, uses environment variable)")
-@click.option("seg_dir", "--seg_dir", default=None, type=click.Path(), help="Directory containing the segmentation data (default: None, uses environment variable)")
-@click.option("x", "--x", default="x", type=str, help="Column name for the x coordinates (default: x)")
-@click.option("y", "--y", default="y", type=str, help="Column name for the y coordinates (default: y)")
-@click.option("z", "--z", default="global_z", type=str, help="Column name for the z coordinates (default: global_z)")
-@click.option("cell_column", "--cell_column", default="cell_id", type=str, help="Column name for the cell IDs (default: cell_id)")
-@click.option("barcode_column", "--barcode_column", default="barcode_id", type=str, help="Column name for the barcode IDs (default: barcode_id)")
-@click.option("gene_column", "--gene_column", default="gene", type=str, help="Column name for the gene names (default: gene)")
-@click.option("fov_column", "--fov_column", default="fov", type=str, help="Column name for the field of view (default: fov)")
-@click.option("cell_missing", "--cell_missing", default="-1", type=int, help="Value indicating missing cell IDs (default: -1)")
-@click.option("min_jaccard", "--min_jaccard", default=0.4, type=float, help="Minimum Jaccard index for alignment (default: 0.4)")
-@click.option("min_prob", "--min_prob", default=0.5, type=float, help="Minimum probability for alignment (default: 0.5)")
-@click.option("filter_blank", "--filter_blank", is_flag=True, default=False, help="Whether to filter out blank cells (default: False)")
-@click.option("cell_metadata_fname", "--cell_metadata_fname", default="merged_cell_metadata.csv", type=str, help="Filename for the cell metadata (default: merged_cell_metadata.csv)")
-@click.option("cell_by_gene_fname", "--cell_by_gene_fname", default="merged_cell_by_gene.csv", type=str, help="Filename for the cell by gene data (default: merged_cell_by_gene.csv)")
-@click.option("detected_transcripts_fname", "--detected_transcripts_fname", default="merged_transcript_metadata.csv", type=str, help="Filename for the detected transcripts data (default: merged_transcript_metadata.csv)")
-@click.option("cell_polygons_fname", "--cell_polygons_fname", default="merged_cell_polygons.geojson", type=str, help="Filename for the cell polygons data (default: merged_cell_polygons.geojson)")
-@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary (default: None, uses environment variable)")
-@click.option("kwargs", "--kwargs", default="{}", type=str, help="Additional keyword arguments as a JSON string (default: {})")
+@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
+@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
+@click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Rust/proseg binary path")
 @click.pass_context
-def align_proseg(
-    ctx,
-    exp_name: str,
-    reg_name: str,
-    seed_prefix_name: str = "default",
-    prefix_name: str = "proseg",
-    out_prefix_name: str = "proseg_aligned",
-    input_dir: str | Path = None,
-    seg_dir: str | Path = None,
-    x: str = "x",
-    y: str = "y",
-    z: str = "global_z",
-    cell_column: str = "cell_id",
-    barcode_column: str = "barcode_id",
-    gene_column: str = "gene",
-    fov_column: str = "fov",
-    cell_missing: int = "-1",
-    min_jaccard: float = 0.4,
-    min_prob: float = 0.5,
-    filter_blank: bool = False,
-    cell_metadata_fname: str = "merged_cell_metadata.csv",
-    cell_by_gene_fname: str = "merged_cell_by_gene.csv",
-    detected_transcripts_fname: str = "merged_transcript_metadata.csv",
-    cell_polygons_fname: str = "merged_cell_polygons.geojson",
-    vpt_bin_path: str | Path | None = None,
-    **kwargs,
-):
-    """
-    Align Proseg transcripts to seed transcripts.
-    """
-    from .segmentation.main import align_proseg as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        seed_prefix_name=seed_prefix_name,
-        prefix_name=prefix_name,
-        out_prefix_name=out_prefix_name,
-        input_dir=input_dir,
-        seg_dir=seg_dir,
-        x=x,
-        y=y,
-        z=z,
-        cell_column=cell_column,
-        barcode_column=barcode_column,
-        gene_column=gene_column,
-        fov_column=fov_column,
-        cell_missing=cell_missing,
-        min_jaccard=min_jaccard,
-        min_prob=min_prob,
-        filter_blank=filter_blank,
-        cell_metadata_fname=cell_metadata_fname,
-        cell_by_gene_fname=cell_by_gene_fname,
-        detected_transcripts_fname=detected_transcripts_fname,
-        cell_polygons_fname=cell_polygons_fname,
-        vpt_bin_path=vpt_bin_path,
-        **kwargs,
-    )
+def segment_region(ctx, method, exp_name, reg_name, root_path,
+                   segmentation_store, rust_bin_path):
+    kwargs = parse_click_kwargs(ctx.args)
+    from .segmentation.main import segment_region as func
+    func(method=method, exp_name=exp_name, reg_name=reg_name,
+         root_path=root_path, segmentation_store=segmentation_store,
+         rust_bin_path=rust_bin_path, **kwargs)
+
+
+@cli.command(
+    name="process-segmentation-region",
+    aliases=["process-segmentation"],
+    cls=RichCommand,
+    help="Normalize + post-process a segmenter's raw output into the segmentation schema for "
+         "METHOD on EXP_NAME/REG_NAME. Run in the preprocessing env.",
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
+)
+@click.argument("method", type=str)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.option("--version", "version", default=None, type=str, help="Method version (proseg: 2 or 3)")
+@click.option("--backend", "backend", default="native", type=click.Choice(["native", "vpt"]), help="native (default) or vpt fallback")
+@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
+@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
+@click.option("--micron_per_z", "micron_per_z", default=1.5, type=float, help="Micron thickness per z-plane")
+@click.option("--n_z_planes", "n_z_planes", default=7, type=int, help="Number of z-planes for 2D->3D replication")
+@click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7; IO-bound step, more is slower + costs more SUs)")
+@click.option("--vpt_bin_path", "vpt_bin_path", default=None, type=click.Path(), help="VPT binary path (only for --backend vpt)")
+@click.pass_context
+def process_segmentation_region(ctx, method, exp_name, reg_name, version, backend,
+                                root_path, segmentation_store, micron_per_z,
+                                n_z_planes, n_jobs, vpt_bin_path):
+    kwargs = parse_click_kwargs(ctx.args)
+    from .segmentation.main import process_segmentation_region as func
+    func(method=method, exp_name=exp_name, reg_name=reg_name, version=version,
+         backend=backend, root_path=root_path, segmentation_store=segmentation_store,
+         micron_per_z=micron_per_z, n_z_planes=n_z_planes, n_jobs=n_jobs,
+         vpt_bin_path=vpt_bin_path, **kwargs)
+
+
+@cli.command(
+    name="process-custom-segmentation",
+    aliases=["process-custom"],
+    cls=RichCommand,
+    help="Process a USER-PROVIDED segmentation (polygons + optional transcripts / stain images) into the segmentation schema.",
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
+)
+@click.argument("boundaries_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("output_dir", type=click.Path())
+@click.option("--boundaries_space", "boundaries_space", default="micron", type=click.Choice(["micron", "pixel"]), help="Coordinate space of the input polygons (default micron)")
+@click.option("--micron_to_mosaic_path", "micron_to_mosaic_path", default=None, type=click.Path(), help="Path to micron_to_mosaic_pixel_transform.csv (required for pixel space and/or images)")
+@click.option("--z_spacing", "z_spacing", default=1.5, type=float, help="Micron thickness per z-plane (default 1.5)")
+@click.option("--n_z_planes", "n_z_planes", default=1, type=int, help="Number of z-planes; 1 => 2D cylinder expansion (default 1)")
+@click.option("--cell_id_col", "cell_id_col", default=None, type=str, help="Caller's cell-id column in the boundaries (required for 3D / metadata merge)")
+@click.option("--boundary_z_col", "boundary_z_col", default=None, type=str, help="Integer z-plane column in the boundaries for 3D input")
+@click.option("--transcripts_path", "transcripts_path", default=None, type=click.Path(), help="Detected transcripts (.csv/.parquet); enables partition")
+@click.option("--transcript_z_col", "transcript_z_col", default="global_z", type=str, help="Transcript z column (default global_z)")
+@click.option("--transcript_z_in_microns", "transcript_z_in_microns", is_flag=True, default=False, help="Transcript z is micron ZLevel (convert to integer plane)")
+@click.option("--images_dir", "images_dir", default=None, type=click.Path(), help="Dir of mosaic_{stain}_z{N}.tif images; enables sum-signals")
+@click.option("--segmentation_z_index", "segmentation_z_index", default=None, type=int, help="For 2D, the single ZIndex plane for sum-signals (default middle image plane)")
+@click.option("--metadata_path", "metadata_path", default=None, type=click.Path(), help="Optional user cell-metadata CSV merged onto derived metadata")
+@click.option("--metadata_cell_id_col", "metadata_cell_id_col", default=None, type=str, help="Cell-id column in metadata_path if it differs from cell_id_col")
+@click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7)")
+@click.pass_context
+def process_custom_segmentation(ctx, boundaries_path, output_dir, boundaries_space,
+                                micron_to_mosaic_path, z_spacing, n_z_planes, cell_id_col,
+                                boundary_z_col, transcripts_path, transcript_z_col,
+                                transcript_z_in_microns, images_dir, segmentation_z_index,
+                                metadata_path, metadata_cell_id_col, n_jobs):
+    kwargs = parse_click_kwargs(ctx.args)
+    from .segmentation.main import process_custom_segmentation as func
+    func(boundaries_path, output_dir, boundaries_space=boundaries_space,
+         micron_to_mosaic_path=micron_to_mosaic_path, z_spacing=z_spacing,
+         n_z_planes=n_z_planes, cell_id_col=cell_id_col, boundary_z_col=boundary_z_col,
+         transcripts_path=transcripts_path, transcript_z_col=transcript_z_col,
+         transcript_z_in_microns=transcript_z_in_microns, images_dir=images_dir,
+         segmentation_z_index=segmentation_z_index, metadata_path=metadata_path,
+         metadata_cell_id_col=metadata_cell_id_col, n_jobs=n_jobs, **kwargs)
+
 
 @cli.command(
     name="filt-to-ids",
@@ -563,7 +501,7 @@ def filt_to_ids(
     Filter metadata and geometry to only include cells with IDs in the provided list.
     Additionally rename the index of the merged_cell_by_gene
     """
-    from .segmentation.proseg import filt_to_ids as func
+    from .segmentation.backends.proseg import filt_to_ids as func
     func(
         meta_path=meta_path,
         geom_path=geom_path,
@@ -718,8 +656,6 @@ cli.add_command(load_segmentation_region)
 cli.add_command(load_segmentation_all)
 cli.add_command(load_deconvolution_region)
 cli.add_command(run_segmentation)
-cli.add_command(segment_experiment)
-cli.add_command(align_proseg)
 cli.add_command(filt_to_ids)
 cli.add_command(align_geometries)
 cli.add_command(decon_image)

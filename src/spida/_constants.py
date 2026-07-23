@@ -48,7 +48,8 @@ DEFAULT_PRESET = {
 PROSEG_PRESET = {
     "tz_cell_id": None,
     "meta_map": {
-        "cell": CELL_ID,
+        # (proseg EntityID == its native `cell` id), so map from EntityID here.
+        "EntityID": CELL_ID,
         "fov": CELL_FOV,
         "centroid_x": CELL_X,
         "centroid_y": CELL_Y,
