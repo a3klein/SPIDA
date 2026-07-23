@@ -4,6 +4,9 @@
 # Steps 1, 2a, and 2b are submitted immediately (no inter-dependencies).
 # Step 3a waits on 2a and 2b; step 3b waits on 1 and 3a; step 4 waits on 3b.
 
+# Fail fast: if any sbatch returns non-zero, abort before submitting downstream steps.
+set -euo pipefail
+
 cd /home/ubuntu/aklein/slurm_jobs/{BR}/{EXP_N}/{REG_N}
 echo "Starting processing chain for {EXP_N} / {REG_N}"
 

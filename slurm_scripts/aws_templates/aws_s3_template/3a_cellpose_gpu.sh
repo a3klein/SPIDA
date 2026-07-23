@@ -10,8 +10,13 @@
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/3a_cellpose_gpu_{EXP_N}_{REG_N}.out
 #SBATCH --exclusive
 
-nvidia-smi
-nvcc --version
+nvidia-smi || true
+nvcc --version || true
+
+# Fail fast: any non-zero exit (incl. inside pipelines) aborts the script and the
+# SLURM job, so --dependency=afterok in chain.sh stops cascading broken state.
+# Diagnostic commands above are non-fatal (|| true) so a missing nvcc doesn't kill the job.
+set -euo pipefail
 
 # Use EC2 instance role — bypass any SSO credentials inherited via shared /home
 unset AWS_PROFILE
@@ -21,6 +26,16 @@ unset AWS_SECRET_ACCESS_KEY
 unset AWS_SESSION_TOKEN
 export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE=/dev/null
+
+# Clean state left by previous jobs on this reused instance. Remove ALL
+# experiment data + SPIDA outputs (not just our own — a prior job may have
+# been a different experiment that filled /scratch with its own data).
+# Preserve /scratch/SPIDA (the pixi env, ~13 GB) so we don't pay the rsync
+# + pixi-install cost on every job.
+find /scratch -mindepth 1 -maxdepth 1 \
+    -not -name 'SPIDA' \
+    -not -name 'lost+found' \
+    -exec rm -rf {} + 2>/dev/null || true
 
 # --- Sync from S3 ---
 echo -e "\nSyncing deconvoluted images from S3...\n"
@@ -39,7 +54,7 @@ if ! pixi env list 2>/dev/null | grep -q "cellpose"; then
     pixi install -e cellpose
 fi
 cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
-mkdir /scratch/images
+mkdir -p /scratch/images
 
 # --- Compute ---
 # IMAGE_EXT is set by script_aws.py (--force_2d_segmentation flag).
