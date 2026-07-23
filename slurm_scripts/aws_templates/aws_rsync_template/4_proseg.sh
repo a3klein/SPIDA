@@ -8,6 +8,20 @@
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/4_proseg_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/4_proseg_{EXP_N}_{REG_N}.out
 
+# Fail fast: any non-zero exit (incl. inside pipelines) aborts the script and the
+# SLURM job, so --dependency=afterok in chain.sh stops cascading broken state.
+set -euo pipefail
+
+# Clean state left by previous jobs on this reused instance. Remove ALL
+# experiment data + SPIDA outputs (not just our own — a prior job may have
+# been a different experiment that filled /scratch with its own data).
+# Preserve /scratch/SPIDA (the pixi env, ~13 GB) so we don't pay the rsync
+# + pixi-install cost on every job.
+find /scratch -mindepth 1 -maxdepth 1 \
+    -not -name 'SPIDA' \
+    -not -name 'lost+found' \
+    -exec rm -rf {} + 2>/dev/null || true
+
 # --- Sync from S3 ---
 echo -e "\nSyncing zarr store and cellpose segmentation from S3...\n"
 mkdir -p {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}
