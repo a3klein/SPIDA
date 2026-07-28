@@ -5,11 +5,12 @@
 
 #SBATCH -A mcb130189
 #SBATCH -J cellpose_cpu_{EXP_N}_{REG_N}
-#SBATCH -p wholenode
-#SBATCH --time=2:00:00
+#SBATCH -p shared
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=128
-#SBATCH --mem=128gb
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=96gb
 #SBATCH -o /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/3b_cellpose_cpu_{EXP_N}_{REG_N}.out
 #SBATCH -e /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/3b_cellpose_cpu_{EXP_N}_{REG_N}.out
 
