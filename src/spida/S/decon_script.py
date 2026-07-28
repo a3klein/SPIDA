@@ -133,8 +133,9 @@ def continue_stalled_run(_file, **filter_args):
         project_down_2D(decon_file, projected_file)
         logger.info(f"Saved 2D projected tile to {projected_file}")
 
-    if is_3d and _zstackexpand: 
+    if is_3d and _zstackexpand:
         project_to_3D(decon_file, projected_file)
+        decon_file.unlink()  # Padded decon tile no longer needed — free disk space immediately.
         logger.info(f"Saved 3D projected tile to {projected_file}")
 
     return projected_file
@@ -154,9 +155,10 @@ def fresh_run(_file, **filter_args):
         project_down_2D(decon_file, projected_file)
         logger.info(f"Saved 2D projected tile to {projected_file}")
 
-    if is_3d and _zstackexpand: 
+    if is_3d and _zstackexpand:
         projected_file = _file.with_suffix(".decon.3d.tif")
         project_to_3D(decon_file, projected_file)
+        decon_file.unlink()  # Padded decon tile no longer needed — free disk space immediately.
         logger.info(f"Saved 3D projected tile to {projected_file}")
 
     return projected_file
@@ -225,13 +227,16 @@ def decon_image(
             z_stack_size = len(channel_image_path)
             _zstackexpand = z_stack_expand
             channel_image_path = sorted(channel_image_path)
-            stack_3d = []
-            for _fn in channel_image_path:
+            # Pre-allocate the full 3D volume and read each z-slice directly into it.
+            # This avoids the 2× peak that np.stack creates (list-of-slices + new array simultaneously).
+            logger.info(f"..{channel_image_path[0]}")
+            first_slice = iio.imread(channel_image_path[0])
+            large_img = np.empty((z_stack_size, *first_slice.shape), dtype=first_slice.dtype)
+            large_img[0] = first_slice
+            del first_slice
+            for i, _fn in enumerate(channel_image_path[1:], 1):
                 logger.info(f"..{_fn}")
-                large_img = iio.imread(_fn)
-                stack_3d.append(large_img)
-            large_img = np.stack(stack_3d, axis=0)
-            del stack_3d  # Free per-z-slice arrays; large_img now holds the sole copy of the 3D volume.
+                large_img[i] = iio.imread(_fn)
             channel_image_path = channel_image_path[0].parent / f"{channel_image_path[0].stem[:-1]}_stack.tif"
         else:
             channel_image_path = channel_image_path[0]
@@ -307,11 +312,23 @@ def decon_image(
                     else: 
                         exp_x.append(x[z])
                 return np.asarray(exp_x)
+            # expand_z_stack: prepend z_stack_expand_slices copies of the first slice and
+            # append z_stack_expand_slices copies of the last slice, then include ALL original
+            # slices in between.  For 7 slices + expand=3 the output is 13 slices:
+            #   [z0,z0,z0, z0,z1,z2,z3,z4,z5,z6, z6,z6,z6]
+            # project_to_3D then extracts the middle 7: start=(13-7)//2=3 → [z0..z6].
+            # Previous code was buggy: it produced 11 slices, dropped z0 and z6 as data,
+            # and used x[0] (not x[-1]) for end padding, corrupting the last two output slices.
+            def expand_z_stack(x):
+                front = [x[0]] * z_stack_expand_slices
+                data  = [x[z] for z in range(len(x))]
+                back  = [x[-1]] * z_stack_expand_slices
+                return np.stack(front + data + back)
             if z_stack_expand:
                 saved_files = save_tiles(tiles, sub_tile_info, output_dir, func=expand_z_stack)
-            else: 
+            else:
                 saved_files = save_tiles(tiles, sub_tile_info, output_dir)
-        else: 
+        else:
             logger.info("Saving 2D tiles")
             # applying 7 slice expansion
             def to_3D(x):
