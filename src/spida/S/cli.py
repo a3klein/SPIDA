@@ -154,20 +154,22 @@ def ingest_all(
 @click.command(cls=RichCommand, help="Load segmentation data for a given EXP_NAME and REG_NAME.")
 @click.argument("exp_name", type=str)
 @click.argument("reg_name", type=str)
-@click.argument("seg_dir", type=click.Path(exists=True, dir_okay=True))
+@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Segmentation output root; region dir derived as {store}/{exp}/{reg}/{prefix_name} (default: env SEGMENTATION_OUT_PATH)")
+@click.option("seg_dir", "--seg_dir", default=None, type=click.Path(), help="Explicit {store}/{exp}/{prefix_name} override (default: derive from segmentation_store + prefix_name)")
 @click.option("type", "--type", default="vpt", type=str, help="Type of the segmentation data (default: vpt)")
-@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
+@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name: storage label + spatialdata key prefix (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
 @click.option("qc_shapes_key", "--qc_shapes_key", default="transcript_qc_shapes", type=str,help="Shapes key containing transcript QC pass/fail regions. (default: transcript_qc_shapes)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
-@click.pass_context 
+@click.pass_context
 def load_segmentation_region(
     ctx,
     exp_name: str,
     reg_name: str,
-    seg_dir: str,
+    segmentation_store: str | Path | None = None,
+    seg_dir: str | None = None,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
@@ -200,6 +202,7 @@ def load_segmentation_region(
         type=type,
         prefix_name=prefix_name,
         plot=plot,
+        segmentation_store=segmentation_store,
         zarr_store=zarr_store,
         image_store=image_store,
         **load_kwargs,
@@ -207,19 +210,21 @@ def load_segmentation_region(
 
 @click.command(cls=RichCommand, help="Load segmentation data for all regions in a given EXPERIMENT.")
 @click.argument("exp_name", type=str)
-@click.argument("seg_dir", type=click.Path(exists=True, dir_okay=True))
+@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Segmentation output root; region dirs derived as {store}/{exp}/{reg}/{prefix_name} (default: env SEGMENTATION_OUT_PATH)")
+@click.option("seg_dir", "--seg_dir", default=None, type=click.Path(), help="Explicit {store}/{exp}/{prefix_name} override (default: derive from segmentation_store + prefix_name)")
 @click.option("type", "--type", default="vpt", type=str, help="Type of the segmentation data (default: vpt)")
-@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
+@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name: storage label + spatialdata key prefix (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
 @click.option("qc_shapes_key", "--qc_shapes_key", default="transcript_qc_shapes", type=str,help="Shapes key containing transcript QC pass/fail regions. (default: transcript_qc_shapes)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
-@click.pass_context 
+@click.pass_context
 def load_segmentation_all(
     ctx,
     exp_name: str,
-    seg_dir: str,
+    segmentation_store: str | Path | None = None,
+    seg_dir: str | None = None,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
@@ -251,6 +256,7 @@ def load_segmentation_all(
         type=type,
         prefix_name=prefix_name,
         plot=plot,
+        segmentation_store=segmentation_store,
         zarr_store=zarr_store,
         image_store=image_store,
         **load_kwargs,
@@ -395,15 +401,16 @@ def run_segmentation(
 @click.argument("method", type=str)
 @click.argument("exp_name", type=str)
 @click.argument("reg_name", type=str)
+@click.option("--prefix_name", "prefix_name", default=None, type=str, help="Segmentation name / output-dir leaf (default: method; e.g. cellpose_nuc / cellpose_cell). Must match process/load.")
 @click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
 @click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
 @click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Rust/proseg binary path")
 @click.pass_context
-def segment_region(ctx, method, exp_name, reg_name, root_path,
+def segment_region(ctx, method, exp_name, reg_name, prefix_name, root_path,
                    segmentation_store, rust_bin_path):
     kwargs = parse_click_kwargs(ctx.args)
     from .segmentation.main import segment_region as func
-    func(method=method, exp_name=exp_name, reg_name=reg_name,
+    func(method=method, exp_name=exp_name, reg_name=reg_name, prefix_name=prefix_name,
          root_path=root_path, segmentation_store=segmentation_store,
          rust_bin_path=rust_bin_path, **kwargs)
 
@@ -420,6 +427,7 @@ def segment_region(ctx, method, exp_name, reg_name, root_path,
 @click.argument("exp_name", type=str)
 @click.argument("reg_name", type=str)
 @click.option("--version", "version", default=None, type=str, help="Method version (proseg: 2 or 3)")
+@click.option("--prefix_name", "prefix_name", default=None, type=str, help="Segmentation name / output-dir leaf (default: method). Must match segment-region.")
 @click.option("--backend", "backend", default="native", type=click.Choice(["native", "vpt"]), help="native (default) or vpt fallback")
 @click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
 @click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
@@ -428,15 +436,15 @@ def segment_region(ctx, method, exp_name, reg_name, root_path,
 @click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7; IO-bound step, more is slower + costs more SUs)")
 @click.option("--vpt_bin_path", "vpt_bin_path", default=None, type=click.Path(), help="VPT binary path (only for --backend vpt)")
 @click.pass_context
-def process_segmentation_region(ctx, method, exp_name, reg_name, version, backend,
+def process_segmentation_region(ctx, method, exp_name, reg_name, version, prefix_name, backend,
                                 root_path, segmentation_store, micron_per_z,
                                 n_z_planes, n_jobs, vpt_bin_path):
     kwargs = parse_click_kwargs(ctx.args)
     from .segmentation.main import process_segmentation_region as func
     func(method=method, exp_name=exp_name, reg_name=reg_name, version=version,
-         backend=backend, root_path=root_path, segmentation_store=segmentation_store,
-         micron_per_z=micron_per_z, n_z_planes=n_z_planes, n_jobs=n_jobs,
-         vpt_bin_path=vpt_bin_path, **kwargs)
+         prefix_name=prefix_name, backend=backend, root_path=root_path,
+         segmentation_store=segmentation_store, micron_per_z=micron_per_z,
+         n_z_planes=n_z_planes, n_jobs=n_jobs, vpt_bin_path=vpt_bin_path, **kwargs)
 
 
 @cli.command(

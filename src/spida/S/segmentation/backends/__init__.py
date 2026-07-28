@@ -3,6 +3,7 @@
 from .base import (
     ColumnMap,
     SegmentationClass,
+    resolve_region_dir,
     SCHEMA_BOUNDARIES,
     SCHEMA_CELL_BY_GENE,
     SCHEMA_CELL_METADATA,
@@ -21,6 +22,7 @@ from .registry import (
 __all__ = [
     "ColumnMap",
     "SegmentationClass",
+    "resolve_region_dir",
     "SCHEMA_BOUNDARIES",
     "SCHEMA_CELL_BY_GENE",
     "SCHEMA_CELL_METADATA",
