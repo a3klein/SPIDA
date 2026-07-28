@@ -4,12 +4,12 @@
 #SBATCH -A mcb130189
 #SBATCH -J mmc_annot_{EXP_N}_{REG_N}
 #SBATCH -p wholenode
-#SBATCH --time=0:30:00
+#SBATCH --time=0:15:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mem=32gb
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/5_mmc_annot_{EXP_N}_{REG_N}.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/5_mmc_annot_{EXP_N}_{REG_N}.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/5_mmc_annot_{EXP_N}_{REG_N}.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/5_mmc_annot_{EXP_N}_{REG_N}.out
 
 module purge
 module load modtree/cpu
@@ -36,6 +36,7 @@ sleep 10
 pixi --version
 
 pixi install --frozen -e mmc
+
 
 PREFIX=cellpose_cell
 echo -e "\n\tRunning MapMyCells Annotations - Region {REG_N} of Experiment {EXP_N} - ${{PREFIX}}\n"
@@ -87,4 +88,3 @@ pixi run --frozen -e mmc \
     --l1_count_thr=20 \
     --l2_count_thr=20 \
     --l3_count_thr=20
-    
