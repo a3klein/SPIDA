@@ -92,7 +92,7 @@ def run_mesmer(root_dir: Path, output_dir: Path, region: str, **kwargs):
     """
 
     # Ensure the output directory exists
-    Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
+    Path(f"{output_dir}").mkdir(parents=True, exist_ok=True)
 
     # Load the image
     data_path = f"{root_dir}/{region}/images/"
@@ -117,4 +117,4 @@ def run_mesmer(root_dir: Path, output_dir: Path, region: str, **kwargs):
         tile_size=kwargs.get("tile_size", 1000),
         overlap=kwargs.get("overlap", 200),
     )
-    gdf.to_parquet(f"{output_dir}/{region}/polygons.parquet", index=False)
+    gdf.to_parquet(f"{output_dir}/polygons.parquet", index=False)
