@@ -749,6 +749,7 @@ def reconstruct_image_from_tile_files(
     # Initialize output array and weight map
     reconstructed = None
     weight_map = None
+    output_dtype = None  # Captured from the first tile before any histogram matching.
 
     # Load and place tiles back into the reconstructed image one at a time
     for info in tile_info:
@@ -791,6 +792,10 @@ def reconstruct_image_from_tile_files(
             z_in_tile = int(z_index - d)
             tile = _read_tiff_plane(filepath, z_in_tile)
 
+        # Capture the raw tile dtype before histogram matching may change it.
+        if output_dtype is None:
+            output_dtype = tile.dtype
+
         # If adjusting the tile color histogram
         if match_pre:
             if z_index is None:
@@ -808,15 +813,16 @@ def reconstruct_image_from_tile_files(
                 tile = ski.exposure.match_histograms(tile, input_tile, channel_axis=None)
                 del input_tile
 
-        # Initialize arrays on first tile to get dtype
+        # float32 accumulator avoids uint16 overflow in overlap regions.
+        # uint8 weight map is sufficient (max overlap count per pixel is small).
         if reconstructed is None:
             if z_index is None:
-                reconstructed = np.zeros(original_shape, dtype=tile.dtype)
-                weight_map = np.zeros(original_shape, dtype=np.float32)
+                reconstructed = np.zeros(original_shape, dtype=np.float32)
+                weight_map = np.zeros(original_shape, dtype=np.uint8)
             else:
                 _, height, width = original_shape
-                reconstructed = np.zeros((height, width), dtype=tile.dtype)
-                weight_map = np.zeros((height, width), dtype=np.float32)
+                reconstructed = np.zeros((height, width), dtype=np.float32)
+                weight_map = np.zeros((height, width), dtype=np.uint8)
 
         # Place tile in reconstructed image
         pos = info["position"]
@@ -845,15 +851,20 @@ def reconstruct_image_from_tile_files(
 
     # Handle overlapping regions
     if overlap_strategy == "average":
-        # Avoid division by zero
         weight_map[weight_map == 0] = 1
-        reconstructed = reconstructed / weight_map
+        # In-place divide keeps peak memory at one float32 array + the final uint conversion.
+        # (The old `reconstructed / weight_map` created a float32/float64 temporary AND
+        # `astype(reconstructed.dtype)` was a no-op copy that together spiked to ~38 GB.)
+        np.divide(reconstructed, weight_map, out=reconstructed)
+        del weight_map
     elif overlap_strategy == "max":
         # TODO: For max strategy, we need to reconstruct differently
         pass  # Implementation would be more complex
 
-    reconstructed[reconstructed < 0] = 0  # Making sure no negative values!
-    return reconstructed.astype(reconstructed.dtype)
+    reconstructed[reconstructed < 0] = 0
+    # Convert float32 accumulator back to the original tile dtype (e.g. uint16).
+    # This halves the output TIFF size compared to the previous float32 output.
+    return reconstructed.astype(output_dtype)
 
 
 def reconstruct_image_from_tiles(
