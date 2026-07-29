@@ -30,6 +30,7 @@ from spida.utilities.tiling import (
 # from spida.utilities.script_utils import parse_path, parse_list, parse_dict
 from spida.utilities.read_raw import read_info
 from spida.S.filters import deconwolf
+from spida.S.filters.mask import select_tiles
 
 load_dotenv()
 logger = logging.getLogger(__package__)
@@ -182,7 +183,9 @@ def decon_image(
     plot_thr: bool = False,
     match_pre: bool = False,
     image_store: str | Path | None = None,
-    clear_tiles : bool = True, 
+    clear_tiles : bool = True,
+    image_filter: str | None = None,
+    mask_path: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -256,33 +259,17 @@ def decon_image(
             f"Tiled image into {len(tiles)} tiles with tile_size: {tile_size}, overlap: {overlap}"
         )
 
-        ### Filtering the Tiles to remove empty tiles
-        if thr_tiles:
-            for _t, _ti in zip(tiles, tile_info):  # calculating maximum intensity in tile
-                _ti["max_intensity"] = np.max(_t)
-            tile_maxes = [
-                tile["max_intensity"] for tile in tile_info
-            ]  # aggregating max intensities
-            thr = (
-                ski.filters.threshold_otsu(np.asarray(tile_maxes)) / 2
-            )  # calculating liberal threshold
-            for _ti in tile_info:  # applying threshold to tile info
-                _ti["thresholded"] = _ti["max_intensity"] > thr
-            logger.info(f"Applied Minimum threshold: {thr} to tile max intensities")
-            # Getting the subsetted list of tiles
-            ret = [(t, ti) for t, ti in zip(tiles, tile_info) if ti["thresholded"]]
-            tiles = [t for t, _ in ret]
-            sub_tile_info = [ti for _, ti in ret]
-            logger.info(
-                f"Filtered tiles to {len(tiles)} with max intensity above threshold: {thr}"
-            )
-        else: 
-            sub_tile_info = tile_info
-            for _t, _ti in zip(tiles, tile_info):  # calculating maximum intensity in tile
-                _ti["max_intensity"] = np.max(_t)
-            # aggregating max intensities
-            tile_maxes = [tile["max_intensity"] for tile in tile_info] 
-            thr = 0
+        ### Filtering the Tiles to remove empty tiles (strategy dispatch; see S.filters.mask)
+        # image_filter overrides thr_tiles (kept for backwards compatibility: True->otsu, False->none)
+        method = image_filter or ("otsu" if thr_tiles else "none")
+        select_kw = {}
+        if method == "tissue_mask":
+            mask_tif = Path(mask_path) if mask_path else Path(image_path) / "tissue_mask.tif"
+            select_kw["mask_tif"] = mask_tif
+            logger.info(f"tissue_mask tile filter using mask: {mask_tif}")
+        tiles, sub_tile_info, tile_maxes, thr = select_tiles(
+            tiles, tile_info, method=method, **select_kw,
+        )
 
         # plotting threshold decision
         if plot_thr:

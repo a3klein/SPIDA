@@ -896,6 +896,87 @@ def transcript_qc_region(
         fig = plot_hex_qc(grid)
         fig.savefig(image_path, bbox_inches="tight")
 
+def tissue_mask_region(
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str = "default",
+    gene_col: str = "gene",
+    x_col: str = "x",
+    y_col: str = "y",
+    rho_min: float = 5.0,
+    ref_um: float = 25.0,
+    erode_sigma: float = 1.0,
+    a_min_um2: float = 50000.0,
+    gb: float = 5.0,
+    write_raster: bool = True,
+    shapes_key: str = "qc_mask",
+    labels_key: str = "tissue_mask",
+    plot: bool = False,
+    image_path: Path | None = None,
+    image_store: Path | None = None,
+    zarr_store: str | Path | None = None,
+    root_path: str | Path | None = None,
+):
+    """Compute the KDE tissue mask for a region and persist polygon + labels + images-dir tif."""
+    import spatialdata as sd
+    from spida.P.tissue_mask import run_tissue_mask
+
+    if zarr_store is None:
+        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    if root_path is None:
+        root_path = os.getenv("PROCESSED_ROOT_PATH")
+    zarr_path = Path(f"{zarr_store}/{exp_name}/{reg_name}")
+    images_dir = Path(f"{root_path}/{exp_name}/out/{reg_name}/images")
+
+    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    sdata = sd.read_zarr(zarr_path)
+
+    stages, grid, x0, y0 = run_tissue_mask(
+        sdata,
+        points_key=KEYS[POINTS_KEY],
+        images_dir=images_dir,
+        gene_col=gene_col,
+        x_col=x_col,
+        y_col=y_col,
+        gb=gb,
+        rho_min=rho_min,
+        ref_um=ref_um,
+        a_min_um2=a_min_um2,
+        erode_sigma=erode_sigma,
+        shapes_key=shapes_key,
+        labels_key=labels_key,
+        write_raster=write_raster,
+    )
+
+    if plot:
+        logger.info("PLOTTING TISSUE MASK")
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+        if image_path is None:
+            if image_store is None:
+                image_store = os.getenv("IMAGE_STORE_PATH")
+            image_path = Path(f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/tissue_mask.png")
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+        ax[0].imshow(np.log1p(stages["dens100"]), origin="lower", cmap="magma", aspect="equal")
+        ax[0].set_title(f"log transcript density\n{exp_name}\n{reg_name}", fontsize=9)
+        ax[1].imshow(stages["final"], origin="lower", cmap="gray_r", aspect="equal")
+        ax[1].set_title(f"tissue mask (rho>={rho_min:g} erode={erode_sigma:g}sig)\n"
+                        f"{int(stages['final'].sum())} px ({100*stages['final'].mean():.1f}%)", fontsize=9)
+        ax[2].imshow(np.log1p(stages["dens100"]), origin="lower", cmap="magma", aspect="equal")
+        for geom in grid.geometry:
+            for poly in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom]):
+                xs, ys = poly.exterior.xy
+                ax[2].plot((np.asarray(xs) - x0) / gb, (np.asarray(ys) - y0) / gb, color="lime", lw=0.6)
+        ax[2].set_title("qc_mask polygon over density", fontsize=9)
+        for a in ax:
+            a.set_xticks([]); a.set_yticks([])
+        fig.tight_layout()
+        fig.savefig(image_path, dpi=120, bbox_inches="tight")
+        logger.info("Saved tissue mask figure to %s", image_path)
+
 def cluster_hexes_region(
     exp_name: str,
     reg_name: str,
