@@ -160,7 +160,7 @@ def ingest_all(
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name: storage label + spatialdata key prefix (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
-@click.option("qc_shapes_key", "--qc_shapes_key", default="transcript_qc_shapes", type=str,help="Shapes key containing transcript QC pass/fail regions. (default: transcript_qc_shapes)")
+@click.option("qc_shapes_key", "--qc_shapes_key", default="qc_mask", type=str,help="Shapes key holding the QC pass-region mask to apply (default: qc_mask; e.g. transcript_qc_shapes for the legacy hex mask)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
 @click.pass_context
@@ -174,7 +174,7 @@ def load_segmentation_region(
     prefix_name: str = "default",
     plot: bool = False,
     use_transcript_qc: bool = False,
-    qc_shapes_key: str = "transcript_qc_shapes",
+    qc_shapes_key: str = "qc_mask",
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
     **load_kwargs,
@@ -216,7 +216,7 @@ def load_segmentation_region(
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name: storage label + spatialdata key prefix (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
-@click.option("qc_shapes_key", "--qc_shapes_key", default="transcript_qc_shapes", type=str,help="Shapes key containing transcript QC pass/fail regions. (default: transcript_qc_shapes)")
+@click.option("qc_shapes_key", "--qc_shapes_key", default="qc_mask", type=str,help="Shapes key holding the QC pass-region mask to apply (default: qc_mask; e.g. transcript_qc_shapes for the legacy hex mask)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
 @click.pass_context
@@ -229,7 +229,7 @@ def load_segmentation_all(
     prefix_name: str = "default",
     plot: bool = False,
     use_transcript_qc: bool = False,
-    qc_shapes_key: str = "transcript_qc_shapes",
+    qc_shapes_key: str = "qc_mask",
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
     **load_kwargs,
@@ -599,6 +599,8 @@ def align_geometries(
 @click.option("continue_stalled", "--continue_stalled", is_flag=True, default=False, help="Whether to continue stalled processes (default: False)")
 @click.option("thr_tiles", "--thr_tiles/--no_thr_tiles", is_flag=True, default=True, help="Whether to threshold tiles after deconvolution (default: True)")
 @click.option("plot_thr", "--plot_thr/--no_plot_thr", is_flag=True, default=False, help="Whether to plot the thresholding intermediary (default: False)")
+@click.option("image_filter", "--image-filter", "--image_filter", default=None, type=click.Choice(["otsu", "tissue_mask", "none"]), help="Tile-filter strategy; overrides --thr_tiles (default: None -> otsu if thr_tiles else none)")
+@click.option("mask_path", "--mask_path", default=None, type=click.Path(), help="Path to tissue_mask.tif for --image-filter tissue_mask (default: <image_path>/tissue_mask.tif)")
 @click.option("match_pre", "--match_pre", is_flag=True, default=False, help="Whether to match pre-existing tiles histogram distribution (default: False)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
 @click.pass_context
@@ -619,6 +621,8 @@ def decon_image(
     continue_stalled: bool = False,
     thr_tiles: bool = True,
     plot_thr: bool = False,
+    image_filter: str | None = None,
+    mask_path: str | Path | None = None,
     match_pre: bool = False,
     image_store: str | Path | None = None,
     **kwargs,
@@ -652,10 +656,12 @@ def decon_image(
         continue_stalled=continue_stalled,
         thr_tiles=thr_tiles,
         plot_thr=plot_thr,
+        image_filter=image_filter,
+        mask_path=mask_path,
         match_pre=match_pre,
         image_store=image_store,
         **kwargs,
-    ) 
+    )
 
 # cli.add_command(test_command)
 cli.add_command(ingest_region)

@@ -13,6 +13,11 @@ class _FakeSData(dict):
         super().__init__()
         self.tables = {}
 
+    @property
+    def shapes(self):
+        # shapes elements are stored as top-level dict items in this fake
+        return self
+
 
 def _square(x0: float, y0: float, size: float = 1.0) -> Polygon:
     return Polygon(
@@ -20,8 +25,7 @@ def _square(x0: float, y0: float, size: float = 1.0) -> Polygon:
     )
 
 
-@pytest.fixture
-def base_sdata():
+def _make_base_sdata():
     sdata = _FakeSData()
 
     shapes = gpd.GeoDataFrame(
@@ -60,6 +64,11 @@ def base_sdata():
     sdata["seg_table"] = table
     sdata["seg_points"] = points
     return sdata
+
+
+@pytest.fixture
+def base_sdata():
+    return _make_base_sdata()
 
 
 def test_apply_qc_filter_to_segmentation_with_qc_regions(base_sdata):
@@ -179,3 +188,43 @@ def test_apply_qc_filter_raises_for_missing_points_cell_column(base_sdata):
             points_key="seg_points",
             qc_regions=qc_regions,
         )
+
+
+def test_apply_qc_filter_with_qc_mask_shapes_key(base_sdata):
+    # qc_mask pass-region polygon (filtered=False) stored as a shapes element; covers c1 only
+    base_sdata["qc_mask"] = gpd.GeoDataFrame(
+        {"filtered": [False], "geometry": [_square(-0.5, -0.5, 3.0)]},
+        geometry="geometry",
+    )
+    out = apply_qc_filter_to_segmentation(
+        base_sdata,
+        table_key="seg_table",
+        shapes_key="seg_shapes",
+        points_key="seg_points",
+        qc_shapes_key="qc_mask",
+    )
+    assert list(out["seg_shapes"].index) == ["c1"]
+    assert list(out["seg_table"].obs_names) == ["c1"]
+    assert out["seg_points"].loc[1, "cell_id"] == "-1"   # c2 points unassigned
+
+
+def test_qc_mask_key_selection():
+    # two masks present: qc_mask covers c1, transcript_qc_shapes covers c2.
+    # the qc_shapes_key argument selects which one is applied.
+    def _sdata_with_masks():
+        s = _make_base_sdata()
+        s["qc_mask"] = gpd.GeoDataFrame(
+            {"filtered": [False], "geometry": [_square(-0.5, -0.5, 3.0)]}, geometry="geometry")
+        s["transcript_qc_shapes"] = gpd.GeoDataFrame(
+            {"filtered": [False], "geometry": [_square(9.5, 9.5, 3.0)]}, geometry="geometry")
+        return s
+
+    out_new = apply_qc_filter_to_segmentation(
+        _sdata_with_masks(), table_key="seg_table", shapes_key="seg_shapes",
+        points_key="seg_points", qc_shapes_key="qc_mask")
+    assert list(out_new["seg_shapes"].index) == ["c1"]
+
+    out_legacy = apply_qc_filter_to_segmentation(
+        _sdata_with_masks(), table_key="seg_table", shapes_key="seg_shapes",
+        points_key="seg_points", qc_shapes_key="transcript_qc_shapes")
+    assert list(out_legacy["seg_shapes"].index) == ["c2"]

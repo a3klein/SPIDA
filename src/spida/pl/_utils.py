@@ -62,7 +62,7 @@ def _extract_coords(
                 },
                 index=adata.obs_names,
             )
-		elif f"X_{coord_base}" in adata.obsm: 
+		elif f"X_{coord_base}" in adata.obsm:
 			_data = pd.DataFrame(
                 {
                     "x": adata.obsm[f"X_{coord_base}"][:, 0],
@@ -70,6 +70,11 @@ def _extract_coords(
                 },
                 index=adata.obs_names,
             )
+		else:
+			raise KeyError(
+				f"Embedding '{coord_base}' (or 'X_{coord_base}') not found in adata.obsm; "
+				f"available: {list(adata.obsm.keys())}"
+			)
 	# Don't need xarray stuff for spatialdata objects right now
 	# elif isinstance(data, xr.Dataset):
 	# 	ds = data
