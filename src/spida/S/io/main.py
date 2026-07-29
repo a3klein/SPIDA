@@ -169,10 +169,11 @@ def ingest_all(
 def load_segmentation_region(
     exp_name: str,
     reg_name: str,
-    seg_dir: str,
+    seg_dir: str | None = None,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
+    segmentation_store: str | Path | None = None,
     zarr_store: str | Path | None = None,
     image_store: str | Path | None = None,
     **load_kwargs,
@@ -180,11 +181,21 @@ def load_segmentation_region(
     """
     Load segmentation data into spatialdata objects.
 
+    The region's segmentation directory is derived from ``segmentation_store`` (root) +
+    ``prefix_name`` under the ``{exp}/{reg}/{prefix_name}`` layout (legacy
+    ``{exp}/{prefix_name}/{reg}`` is resolved as a fallback). Pass ``seg_dir`` only to
+    override with an explicit ``{store}/{exp}/{prefix_name}`` directory.
+
     Parameters:
     exp_name (str): Name of the experiment.
     reg_name (str): Name of the region.
+    seg_dir (str | None): Optional explicit ``{store}/{exp}/{prefix_name}`` override; if None,
+        derived from ``segmentation_store`` + ``prefix_name`` (default is None).
     type (str): Type of the segmentation data to load (default is "vpt").
-    prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
+    prefix_name (str): Segmentation name; used both as the storage label and the spatialdata
+        key prefix (default is "default").
+    segmentation_store (str | Path | None): Segmentation output root (default is None, uses
+        env SEGMENTATION_OUT_PATH).
     """
 
     load_kwargs = load_kwargs.get("load_kwargs", load_kwargs)
@@ -216,12 +227,22 @@ def load_segmentation_region(
     version = load_kwargs.pop("version", None)    # proseg v2/v3 (defaults to v3)
     spec = get_spec(method, version)
 
+    # Resolve the region's segmentation leaf. Label = prefix_name (falls back to the method
+    # for the "default" sentinel). Current layout {exp}/{reg}/{label}, legacy {exp}/{label}/{reg}.
+    from spida.S.segmentation.backends import resolve_region_dir
+    label = prefix_name if prefix_name and prefix_name != "default" else method
+    if seg_dir is not None:                       # explicit {store}/{exp}/{label} override
+        store, label = Path(seg_dir).parent.parent, Path(seg_dir).name
+    else:
+        store = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
+    seg_region = resolve_region_dir(store, exp_name, reg_name, label, must_exist=True)
+
     sdata = load_segmentation(
         sdata,
         spec,
         exp_name,
         reg_name,
-        seg_dir,
+        str(seg_region),
         prefix_name=prefix_name,
         **load_kwargs,
     )
@@ -270,32 +291,49 @@ def load_segmentation_region(
 
 def load_segmentation_all(
     exp_name: str,
-    seg_dir: str,
+    seg_dir: str | None = None,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
+    segmentation_store: str | Path | None = None,
     **load_kwargs,
 ):
     """
     Load segmentation data for all regions of an experiment into spatialdata objects.
 
+    Region dirs are derived from ``segmentation_store`` + ``prefix_name`` under the
+    ``{exp}/{reg}/{prefix_name}`` layout (legacy ``{exp}/{prefix_name}/{reg}`` is resolved
+    as a fallback). Pass ``seg_dir`` only to override with an explicit
+    ``{store}/{exp}/{prefix_name}`` directory.
+
     Parameters:
     exp_name (str): Name of the experiment.
-    seg_dir (str): Directory containing the segmentation data.
+    seg_dir (str | None): Optional explicit ``{store}/{exp}/{prefix_name}`` override (default None).
     type (str): Type of the segmentation data to load (default is "vpt").
-    prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
+    prefix_name (str): Segmentation name (storage label + key prefix) (default is "default").
+    segmentation_store (str | Path | None): Segmentation output root (default None -> env).
     """
+    _METHOD = {"vpt": "cellpose", "cellpose": "cellpose", "mesmer": "mesmer", "proseg": "proseg"}
+    label = prefix_name if prefix_name and prefix_name != "default" else _METHOD.get(type, type)
+    if seg_dir is not None:                       # explicit {store}/{exp}/{label} override
+        store, label = Path(seg_dir).parent.parent, Path(seg_dir).name
+    else:
+        store = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
+    exp_dir = Path(store) / exp_name
 
-    regions = glob.glob(f"{seg_dir}/region_*")
-    for reg_dir in regions:
-        reg_name = reg_dir.split("/")[-1]
+    # current layout: regions at {exp}/region_* each with a {label} subdir; legacy: {exp}/{label}/{reg}
+    reg_names = [Path(p).name for p in glob.glob(f"{exp_dir}/region_*")
+                 if (Path(p) / label).is_dir()]
+    if not reg_names:
+        reg_names = [Path(p).name for p in glob.glob(f"{exp_dir}/{label}/region_*")]
+    for reg_name in reg_names:
         load_segmentation_region(
             exp_name,
             reg_name,
-            reg_dir,
             type=type,
             prefix_name=prefix_name,
             plot=plot,
+            segmentation_store=str(store),
             **load_kwargs,
         )
 

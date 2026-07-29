@@ -98,7 +98,7 @@ def _execute_cli_proseg_v2(root_dir: str, output_dir: str, region: str, **proseg
     proseg_run_cmd = f"""
         proseg --merscope \
         {root_dir}/{region}/detected_transcripts.csv \n
-        --output-path {output_dir}/{region} \n
+        --output-path {output_dir} \n
         --output-expected-counts expected-counts.csv.gz \n
         --output-cell-metadata cell-metadata.csv.gz \n
         --output-transcript-metadata transcript-metadata.csv.gz \n
@@ -134,7 +134,7 @@ def _execute_cli_proseg_v3(root_dir: str, output_dir: str, region: str, **proseg
     proseg_run_cmd = f"""
         proseg --merscope \
         {root_dir}/{region}/detected_transcripts.csv \n
-        --output-path {output_dir}/{region} \n
+        --output-path {output_dir} \n
         --output-spatialdata proseg_outputs.zarr \n
         --output-cell-polygons cell-polygons.geojson.gz \n
         --output-cell-polygon-layers cell-polygons-layers.geojson.gz \n
@@ -175,7 +175,7 @@ def run_proseg(root_dir: str, output_dir: str, region: str, rust_bin_path=None, 
         logger.info(f"Proseg parameter: {key} = {value}")
 
     # Ensure the output directory exists
-    pathlib.Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
+    pathlib.Path(f"{output_dir}").mkdir(parents=True, exist_ok=True)
 
     # Add proseg path to environment
     v3_flag = _add_proseg_binary(rust_bin_path=rust_bin_path)

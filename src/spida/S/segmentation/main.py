@@ -104,6 +104,7 @@ def segment_region(
     exp_name: str,
     reg_name: str,
     *,
+    prefix_name: str | None = None,
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
     rust_bin_path: str | Path | None = None,
@@ -113,18 +114,26 @@ def segment_region(
 
     Runs in the backend's env (``spec.env``): cellpose -> "cellpose", mesmer ->
     "deepcell", proseg -> "preprocessing". Output goes to
-    ``{SEGMENTATION_OUT_PATH}/{exp}/{method}/{region}``.
+    ``{SEGMENTATION_OUT_PATH}/{exp}/{region}/{prefix_name}`` (``prefix_name`` defaults
+    to the method; set it to e.g. ``cellpose_nuc``/``cellpose_cell`` to name the run).
+
+    Parameters:
+    prefix_name (str | None): Segmentation name / output-directory leaf; defaults to the
+        method name. This is the same label used as the ``prefix_name`` at load time
+        (default is None).
     """
-    from .backends import get_spec
+    from .backends import get_spec, resolve_region_dir
 
     spec = get_spec(method)
     spec.require_env("segment")
 
+    label = prefix_name or method
     processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")
     seg_out = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
     input_dir = f"{processed_root}/{exp_name}/out"
-    output_dir = f"{seg_out}/{exp_name}/{method}"
-    logger.info("segment_region: %s v%s on %s/%s", method, spec.version, exp_name, reg_name)
+    output_dir = str(resolve_region_dir(seg_out, exp_name, reg_name, label))
+    logger.info("segment_region: %s v%s on %s/%s -> %s",
+                method, spec.version, exp_name, reg_name, output_dir)
 
     if method == "cellpose":
         # cellpose/mesmer read mosaic stain tiffs from the region's images dir;
@@ -147,6 +156,7 @@ def process_segmentation_region(
     reg_name: str,
     version: str | None = None,
     *,
+    prefix_name: str | None = None,
     backend: str = "native",
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
@@ -161,10 +171,14 @@ def process_segmentation_region(
     Runs in the ``preprocessing`` env. ``backend="native"`` (default) uses the
     pure-Python path (ingest + the steps in ``spec.needs``); ``backend="vpt"``
     falls back to the VPT binary path (``seg_to_vpt``). Writes the standardized
-    segmentation schema files to ``{SEGMENTATION_OUT_PATH}/{exp}/{method}/{region}``.
+    segmentation schema files to ``{SEGMENTATION_OUT_PATH}/{exp}/{region}/{prefix_name}``.
+
+    Parameters:
+    prefix_name (str | None): Segmentation name / directory leaf; must match what was
+        passed to ``segment-region``. Defaults to the method name (default is None).
     """
     import pandas as pd
-    from .backends import get_spec
+    from .backends import get_spec, resolve_region_dir
     from .backends.base import (
         SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA,
         SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
@@ -173,19 +187,23 @@ def process_segmentation_region(
     spec = get_spec(method, version)
     spec.require_env("process")
 
+    label = prefix_name or method
     processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")
     seg_out = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
     raw_region = Path(processed_root) / exp_name / "out" / reg_name
     images_dir = raw_region / "images"
     m2m = images_dir / "micron_to_mosaic_pixel_transform.csv"
-    seg_region = Path(seg_out) / exp_name / method / reg_name
+    # resolve where segment-region wrote the raw output (current layout, legacy fallback)
+    seg_region = resolve_region_dir(seg_out, exp_name, reg_name, label, must_exist=True)
 
-    logger.info("process_segmentation_region: %s v%s (%s backend) needs=%s",
-                method, spec.version, backend, spec.needs)
+    logger.info("process_segmentation_region: %s v%s (%s backend) needs=%s -> %s",
+                method, spec.version, backend, spec.needs, seg_region)
 
     if backend == "vpt":
+        # Legacy fallback: seg_to_vpt reconstructs {dir}/{region}, so it operates on the
+        # legacy {exp}/{label}/{reg} layout only (the loader resolves that via fallback).
         from .vpt import seg_to_vpt
-        seg_to_vpt(str(raw_region.parents[0]), str(seg_region.parents[0]),
+        seg_to_vpt(str(raw_region.parents[0]), f"{seg_out}/{exp_name}/{label}",
                    reg_name, vpt_bin_path=vpt_bin_path,
                    is_3d=(n_z_planes > 1), spacing_z=micron_per_z, **kwargs)
         return

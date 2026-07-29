@@ -286,7 +286,7 @@ def run_cellpose(
         logger.info(f"Cellpose parameter: {key} = {value}")
 
     # Ensure the output directory exists
-    Path(f"{output_dir}/{region}").mkdir(parents=True, exist_ok=True)
+    Path(f"{output_dir}").mkdir(parents=True, exist_ok=True)
 
     # data_path =f"{root_dir}/{region}/images/"
     data_path = root_dir
@@ -343,7 +343,7 @@ def run_cellpose(
             **kwargs,
         )
     logger.info("SEGMENTATION COMPLETED")
-    # ski.io.imsave(f"{output_dir}/{region}/masks.tif", masks.astype(np.uint16))
+    # ski.io.imsave(f"{output_dir}/masks.tif", masks.astype(np.uint16))
 
     logger.info(f"Cellpose segmentation completed for region {region}.")
     logger.info(
@@ -396,6 +396,6 @@ def run_cellpose(
     # Save masks and flows
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        gdf.to_parquet(f"{output_dir}/{region}/polygons.parquet", index=False)
+        gdf.to_parquet(f"{output_dir}/polygons.parquet", index=False)
 
     return is_3d

@@ -14,9 +14,39 @@ from __future__ import annotations
 
 import os
 import logging
+from pathlib import Path
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__package__)
+
+
+def resolve_region_dir(store, exp_name, reg_name, label, *, must_exist: bool = False) -> Path:
+    """Resolve the on-disk directory for one region's segmentation output.
+
+    Layout (consistent with the zarr store's ``{exp}/{reg}`` hierarchy):
+        ``{store}/{exp}/{reg}/{label}``           (current)
+    with a single legacy fallback for older data:
+        ``{store}/{exp}/{label}/{reg}``           (pre-reorder)
+
+    ``label`` is the segmentation's name (== the loader's ``prefix_name``), which
+    defaults to the method (``cellpose``/``mesmer``/``proseg``) but can be set to
+    e.g. ``cellpose_nuc`` / ``cellpose_cell`` to distinguish runs.
+
+    Parameters:
+    store (str | Path): Segmentation output root (``SEGMENTATION_OUT_PATH``).
+    exp_name (str): The experiment name.
+    reg_name (str): The region name.
+    label (str): The segmentation name / prefix (directory leaf).
+    must_exist (bool): If True (reads), return the legacy path when only it exists;
+        otherwise (writes) always return the current-layout path (default False).
+    """
+    current = Path(store) / exp_name / reg_name / label
+    if must_exist and not current.exists():
+        legacy = Path(store) / exp_name / label / reg_name
+        if legacy.exists():
+            logger.info("resolve_region_dir: using legacy layout %s", legacy)
+            return legacy
+    return current
 
 # segmentation schema output filenames (identical across methods; written by the
 # process-segmentation steps). The loader resolves these first, then falls back

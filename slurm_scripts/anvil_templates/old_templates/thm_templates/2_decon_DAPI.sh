@@ -4,14 +4,14 @@
 #SBATCH -A mcb130189-gpu
 #SBATCH -J decon_{EXP_N}_{REG_N}_D
 #SBATCH -p gpu
-#SBATCH --time=4:00:00
+#SBATCH --time=5:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=256gb
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_D.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_D.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_D.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_D.out
 
 module purge
 module load modtree/gpu
