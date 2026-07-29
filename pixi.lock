@@ -497,7 +497,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/d3/01/a10fe54b653061585e655f5286c2662ebddb68831ed3eaebfb0eb08c0a16/ruff-0.15.5-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/75/77/8e0c16abf151a1dd076b562febc0da2ecf1132b0b41826087af96f101f42/segment_anything-1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/ae/30/a3a2120621bf9c17779b169fc17e3dc29b230c29d0f8222f499f5e159aa8/torch-2.10.0-cp311-cp311-manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/36/ab/7b562f1808d3f65414cd80a4f7d4bb00979d9355616c034c171249e1a303/torch-2.10.0-3-cp311-cp311-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/43/ae/ad5d6165797de234c9658752acb4fce65b78a6a18d82efdf8367c940d8da/torchvision-0.25.0-cp311-cp311-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/e0/12/b05ba554d2c623bffa59922b94b0775673de251f468a9609bc9e45de95e9/triton-3.6.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: ./
@@ -1556,7 +1556,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/3e/38/7859ff46355f76f8d19459005ca000b6e7012f2f1ca597746cbcd1fbfe5e/antlr4-python3-runtime-4.9.3.tar.gz
       - pypi: https://files.pythonhosted.org/packages/e9/43/91c96e0b69f86c7076989ef97bc1687ed427ddacd1dd1c7010b5c330d611/argschema-3.0.4.tar.gz
       - pypi: https://files.pythonhosted.org/packages/4c/34/88ac3a3c9ba17110192b48c88bf87e3db04c98a870e5c3e6d6051a86d518/bioregistry-0.13.22-py3-none-any.whl
-      - pypi: git+https://github.com/danielsf/bkbit?rev=mmc.gene.mapper.v0.1.2#7081742464fc2a678a77795f667fd3f945b0bca8
+      - pypi: git+https://github.com/danielsf/bkbit#7081742464fc2a678a77795f667fd3f945b0bca8
       - pypi: https://files.pythonhosted.org/packages/4c/87/2f02a6db0828f4579aedef7e34ec15262e4aa402d31f31bdbc64ae8e471b/boto3-1.42.64-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/33/0f/a0feb9a93da8f583217432dce71ce1940d6d8aa5884bad340872a504ba3f/botocore-1.42.64-py3-none-any.whl
       - pypi: git+https://github.com/AllenInstitute/cell_type_mapper#7ac483013f449e7ba66ffd85108337d1754430de
@@ -1594,7 +1594,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/91/54/5bb8f9fd0fbdd076a631bcae7c5aa3f8c1447e04650b79e45f77fab661e4/linkml-1.9.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1c/2d/6ab4127bb9aa6e3b54ad5d81fd0c0c12e4d1a80300f2bfdac8f2e18f9d17/linkml_runtime-1.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c2/65/7cd7a1da0f52de85d3ad5b440bcc33b052fb53876b20cce8cad629a58bc6/marshmallow-3.12.2-py2.py3-none-any.whl
-      - pypi: git+https://github.com/AllenInstitute/mmc_gene_mapper?rev=v0.2.1#e37a15194b1c7101d4a9df1f506eacd7dae5a4ef
+      - pypi: git+https://github.com/AllenInstitute/mmc_gene_mapper#e37a15194b1c7101d4a9df1f506eacd7dae5a4ef
       - pypi: https://files.pythonhosted.org/packages/21/c8/62a253fdb3f66529ed0d7f0e4703fdb44cc8745610f199e173550d8f85eb/more_click-0.1.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/59/01/05e5387b53e0f549212d5eff58845886f3827617b5c9409c966ddc07cb6d/notebook-7.5.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/be/9c/92789c596b8df838baa98fa71844d84283302f7604ed565dafe5a6b5041a/oauthlib-3.3.1-py3-none-any.whl
@@ -4554,7 +4554,7 @@ packages:
   - a2wsgi ; extra == 'web'
   - api-analytics[fastapi] ; extra == 'web'
   requires_python: '>=3.10'
-- pypi: git+https://github.com/danielsf/bkbit?rev=mmc.gene.mapper.v0.1.2#7081742464fc2a678a77795f667fd3f945b0bca8
+- pypi: git+https://github.com/danielsf/bkbit#7081742464fc2a678a77795f667fd3f945b0bca8
   name: bkbit
   version: 0.0.0
   requires_dist:
@@ -12364,7 +12364,7 @@ packages:
   - pkg:pypi/ml-dtypes?source=hash-mapping
   size: 344784
   timestamp: 1771362527782
-- pypi: git+https://github.com/AllenInstitute/mmc_gene_mapper?rev=v0.2.1#e37a15194b1c7101d4a9df1f506eacd7dae5a4ef
+- pypi: git+https://github.com/AllenInstitute/mmc_gene_mapper#e37a15194b1c7101d4a9df1f506eacd7dae5a4ef
   name: mmc-gene-mapper
   version: 0.2.1
   requires_dist:
@@ -21005,8 +21005,9 @@ packages:
   timestamp: 1733750596111
 - pypi: ./
   name: spida
-  version: 0.0.0
-  sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  version: 0.1.0
+  sha256: 2f5ebdd2c3b3a025e73fc4a67c745d4849d062aafbc3455f547e730ac4113cc5
+  requires_python: '>=3.10'
 - conda: https://conda.anaconda.org/conda-forge/noarch/spint-1.0.7-pyhd8ed1ab_2.conda
   sha256: 02e9cca6239914545df7f81d0fa06b9a0dd79ec13d561c9a23fa3b69542e82b7
   md5: 075030d6d8ac48cd257be4edabb4c4f3
@@ -21564,10 +21565,10 @@ packages:
   - pkg:pypi/toposort?source=hash-mapping
   size: 14231
   timestamp: 1734343818024
-- pypi: https://files.pythonhosted.org/packages/ae/30/a3a2120621bf9c17779b169fc17e3dc29b230c29d0f8222f499f5e159aa8/torch-2.10.0-cp311-cp311-manylinux_2_28_x86_64.whl
+- pypi: https://files.pythonhosted.org/packages/36/ab/7b562f1808d3f65414cd80a4f7d4bb00979d9355616c034c171249e1a303/torch-2.10.0-3-cp311-cp311-manylinux_2_28_x86_64.whl
   name: torch
   version: 2.10.0
-  sha256: a2f9edd8dbc99f62bc4dfb78af7bf89499bca3d753423ac1b4e06592e467b763
+  sha256: ac5bdcbb074384c66fa160c15b1ead77839e3fe7ed117d667249afce0acabfac
   requires_dist:
   - filelock
   - typing-extensions>=4.10.0
