@@ -39,7 +39,7 @@ pytest = ">=9.0.2,<10"
 
 [pypi-dependencies]
 ruff = "*"
-spida = { path = "." }
+spida = { path = ".", editable = true }
 
 [feature.gpu.system-requirements]
 cuda = "12.0"
