@@ -20,7 +20,7 @@ set -euo pipefail
 find /scratch -mindepth 1 -maxdepth 1 \
     -not -name 'SPIDA' \
     -not -name 'lost+found' \
-    -exec rm -rf {} + 2>/dev/null || true
+    -exec rm -rf {{}} + 2>/dev/null || true
 
 # --- Sync from S3 ---
 echo -e "\nSyncing zarr store and cellpose segmentation from S3...\n"
