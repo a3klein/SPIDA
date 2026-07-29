@@ -376,7 +376,8 @@ def load_segmentation(
     identity = Identity()
     affine = get_transformation(sdata[DEF_KEYS[SHAPES_KEY]], to_coordinate_system="global")
     transformations = {"global": affine}
-    seg_region = Path(seg_dir) / reg_name
+
+    seg_region = Path(seg_dir)
     dataset_id = f"{exp_name}_{reg_name}"
 
     qc_kwargs = dict(

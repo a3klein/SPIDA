@@ -891,6 +891,74 @@ def transcript_qc(
     )
 
 @cli.command(
+    name="tissue-mask",
+    cls=RichCommand,
+    aliases=["tissue_mask"],
+    help="Compute the KDE tissue mask for a region (polygon + labels + images-dir tif).",
+)
+@click.argument("exp_name", type=str)
+@click.argument("reg_name", type=str)
+@click.option("--prefix_name", type=str, default="default")
+@click.option("--gene_col", type=str, default="gene", help="Gene column name (default: 'gene')")
+@click.option("--x_col", type=str, default="x", help="X coordinate column (default: 'x')")
+@click.option("--y_col", type=str, default="y", help="Y coordinate column (default: 'y')")
+@click.option("--rho_min", type=float, default=5.0, help="Min transcript density tx/100µm² for tissue (default: 5)")
+@click.option("--ref_um", type=float, default=25.0, help="Fixed reference scale (µm) for the density estimate (default: 25)")
+@click.option("--erode_sigma", type=float, default=1.0, help="Boundary erosion in reference-sigma units (default: 1)")
+@click.option("--a_min_um2", type=float, default=50000.0, help="Drop connected components smaller than this µm² (default: 50000)")
+@click.option("--gb", type=float, default=5.0, help="Micron grid spacing (default: 5)")
+@click.option("--shapes_key", type=str, default="qc_mask", help="Key for the pass-region polygon shapes (default: 'qc_mask')")
+@click.option("--labels_key", type=str, default="tissue_mask", help="Key for the boolean labels layer (default: 'tissue_mask')")
+@click.option("--no_raster", is_flag=True, default=False, help="Skip writing the pixel tissue_mask.tif into the images dir")
+@click.option("--plot", is_flag=True, help="Whether to plot the mask overview (default: False)")
+@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Processed root path (holds out/<reg>/images)")
+@click.pass_context
+def tissue_mask(
+    ctx,
+    exp_name: str,
+    reg_name: str,
+    prefix_name: str = "default",
+    gene_col: str = "gene",
+    x_col: str = "x",
+    y_col: str = "y",
+    rho_min: float = 5.0,
+    ref_um: float = 25.0,
+    erode_sigma: float = 1.0,
+    a_min_um2: float = 50000.0,
+    gb: float = 5.0,
+    shapes_key: str = "qc_mask",
+    labels_key: str = "tissue_mask",
+    no_raster: bool = False,
+    plot: bool = False,
+    image_store: Path = None,
+    zarr_store: Path = None,
+    root_path: Path = None,
+):
+    from spida.P.main import tissue_mask_region as func
+    func(
+        exp_name=exp_name,
+        reg_name=reg_name,
+        prefix_name=prefix_name,
+        gene_col=gene_col,
+        x_col=x_col,
+        y_col=y_col,
+        rho_min=rho_min,
+        ref_um=ref_um,
+        erode_sigma=erode_sigma,
+        a_min_um2=a_min_um2,
+        gb=gb,
+        shapes_key=shapes_key,
+        labels_key=labels_key,
+        write_raster=not no_raster,
+        plot=plot,
+        image_store=image_store,
+        zarr_store=zarr_store,
+        root_path=root_path,
+    )
+
+@cli.command(
     name="cluster-hexes",
     cls=RichCommand,
     aliases=["cluster_hexes"],

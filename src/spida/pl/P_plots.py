@@ -157,10 +157,16 @@ def plot_setup(
     plot_categorical(adata, coord_base="base_umap", cluster_col="base_leiden", text_anno=False, coding=True, show=False, ax=axes[0][2])
     axes[0][2].set_title(f"umap - Leiden Clusters")    
 
-    plot_continuous(adata, coord_base="base_tsne", color_by="volume", ax=axes[1][0], show=False, title="tsne - Cell Volume")
-    plot_continuous(adata, coord_base="base_tsne", color_by="nCount_RNA", ax=axes[1][1], show=False, title="tsne - Number of Transcripts")
-    plot_categorical(adata, coord_base="base_tsne", cluster_col="base_leiden", text_anno=False, coding=True, show=False, ax=axes[1][2])
-    axes[1][2].set_title(f"tsne - Leiden Clusters")
+    # tSNE row is optional (only present when setup ran with do_tsne=True); skip it gracefully otherwise
+    if ("base_tsne" in adata.obsm) or ("X_base_tsne" in adata.obsm):
+        plot_continuous(adata, coord_base="base_tsne", color_by="volume", ax=axes[1][0], show=False, title="tsne - Cell Volume")
+        plot_continuous(adata, coord_base="base_tsne", color_by="nCount_RNA", ax=axes[1][1], show=False, title="tsne - Number of Transcripts")
+        plot_categorical(adata, coord_base="base_tsne", cluster_col="base_leiden", text_anno=False, coding=True, show=False, ax=axes[1][2])
+        axes[1][2].set_title(f"tsne - Leiden Clusters")
+    else:
+        for _j in range(3):
+            axes[1][_j].text(0.5, 0.5, "tSNE not computed\n(do_tsne=False)", ha="center", va="center", fontsize=12)
+            axes[1][_j].axis("off")
 
     plot_continuous(adata, coord_base="spatial", color_by="volume", ax=axes[2][0], show=False, title="spatial - Cell Volume")
     plot_continuous(adata, coord_base="spatial", color_by="nCount_RNA", ax=axes[2][1], show=False, title="spatial - Number of Transcripts")

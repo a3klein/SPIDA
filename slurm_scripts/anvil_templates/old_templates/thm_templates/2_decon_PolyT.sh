@@ -2,16 +2,16 @@
 # FILENAME: whole_image_dw.sh
 
 #SBATCH -A mcb130189-gpu
-#SBATCH -J decon_{EXP_N}_{REG_N}_D
+#SBATCH -J decon_{EXP_N}_{REG_N}_P
 #SBATCH -p gpu
-#SBATCH --time=4:00:00
+#SBATCH --time=5:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=256gb
-#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_D.out
-#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/HIPP/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_D.out
+#SBATCH -o /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_P.out
+#SBATCH -e /home/x-aklein2/projects/aklein/BICAN/THM/logs/{EXP_N}/2_decon_{EXP_N}_{REG_N}_P.out
 
 module purge
 module load modtree/gpu
@@ -44,7 +44,7 @@ echo -e ${{RATTLER_CACHE_DIR}}
 cd "$WORKDIR"
 
 sleep 10
-echo -e "\n\tRunning whole image deconvolution - DAPI - {REG_N} - {EXP_N}\n"
+echo -e "\n\tRunning whole image deconvolution - PolyT - {REG_N} - {EXP_N}\n"
 
 pixi install --frozen -e preprocessing-gpu
 pixi run --frozen -e preprocessing-gpu \
@@ -53,7 +53,7 @@ pixi run --frozen -e preprocessing-gpu \
     -i {ROOT_PATH}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {ROOT_PATH}/{EXPERIMENT}/raw/dataorganization.csv \
     -o {ROOT_PATH}/{EXPERIMENT}/analysis/{REGION}/tile_images \
-    --channels DAPI \
+    --channels PolyT \
     --tile_size 2960 \
     --overlap 400 \
     --z_step 1.5 \
