@@ -34,6 +34,26 @@ DEFAULT_CONFIG = {
     "IMAGE_STORE_PATH": "/path/to/image/store",
     "CUTOFFS_PATH": "/path/to/cutoffs.json",
     "SPIDA_SITE_DIR": "/path/to/spida/site",
+    # Optional. Unlike the keys above, this default is a real usable location
+    # rather than a placeholder: cellpose caches its weights there by default,
+    # so leaving the key unset is a valid configuration.
+    "CELLPOSE_MODEL_PATH": "~/.cellpose/models",
+}
+
+#: Config keys that are consumed via ``os.getenv`` at the call site rather than
+#: as a Click option, and therefore have to be exported to the process
+#: environment for a ``--config`` file to have any effect. Keep this list
+#: minimal: every entry becomes a process-global (and subprocess-inherited)
+#: variable. Keys that map to a Click option through ``RENAME_CONFIG_KEYS``
+#: must NOT be listed here — they already reach their command as an argument,
+#: and exporting them would additionally override the ``.env`` values that the
+#: 100+ ``os.getenv`` fallbacks currently read.
+ENV_ONLY_CONFIG_KEYS = ("CELLPOSE_MODEL_PATH",)
+
+#: SPIDA config key -> environment variables a third-party library reads for the
+#: same setting. Populated only if not already set, so an explicit user value wins.
+THIRD_PARTY_ENV_ALIASES = {
+    "CELLPOSE_MODEL_PATH": ("CELLPOSE_LOCAL_MODELS_PATH",),
 }
 
 CONFIG_DESCRIPTIONS = {
@@ -48,6 +68,11 @@ CONFIG_DESCRIPTIONS = {
     "IMAGE_STORE_PATH": "Directory for image outputs/exports.",
     "CUTOFFS_PATH": "Path to QC/cutoffs configuration file.",
     "SPIDA_SITE_DIR": "Path to the SPIDA website directory.",
+    "CELLPOSE_MODEL_PATH": (
+        "Optional. Directory holding cellpose model weights. Defaults to "
+        "cellpose's own cache (~/.cellpose/models). Override per-run with "
+        "`segment-region cellpose ... --model_dir=<path>`."
+    ),
 }
 
 def _normalize_config_keys(config: dict) -> dict:
@@ -329,9 +354,51 @@ def load_config(
         raise ValueError("Unsupported configuration file format. Use '.env' or '.json'.")
     return config
 
-def load_config_into_env(config): 
+def load_config_into_env(config):
     for key, value in config.items():
         os.environ[key] = value
+
+
+def export_env_only_config(resolved: dict) -> dict:
+    """Export the few config keys that are read via ``os.getenv``, not Click.
+
+    Most config keys reach their command as an argument, because
+    ``RENAME_CONFIG_KEYS`` maps them onto a declared Click option and
+    ``ConfigDefaultGroup`` installs them as that option's default. A key with no
+    such option (currently only ``CELLPOSE_MODEL_PATH``) would otherwise be
+    silently dropped, which is exactly what used to happen.
+
+    This is deliberately narrow rather than exporting the whole resolved config:
+    a blanket export would also overwrite the ``.env`` values behind the 100+
+    ``os.getenv`` fallbacks elsewhere in SPIDA — and ``.env`` and the per-region
+    JSONs intentionally disagree (persistent ``/home`` paths vs ephemeral
+    ``/scratch`` ones) — as well as leak unresolved ``/path/to/...`` placeholders
+    into the environment of every subprocess SPIDA launches.
+
+    Returns the mapping that was exported, for logging/testing.
+    """
+    exported = {}
+    for key in ENV_ONLY_CONFIG_KEYS:
+        value = resolved.get(key)
+        if value is None:
+            continue
+        value = str(value)
+        os.environ[key] = value
+        exported[key] = value
+        for alias in THIRD_PARTY_ENV_ALIASES.get(key, ()):
+            existing = os.environ.get(alias)
+            if existing is None:
+                os.environ[alias] = value
+                exported[alias] = value
+            elif existing != value:
+                # An explicit user setting wins, but a silent disagreement about
+                # where models live is worth surfacing.
+                rich_echo(
+                    f"[warning] {alias}={existing} differs from {key}={value}; "
+                    f"keeping {alias}. Cellpose may download weights to a "
+                    f"different directory than SPIDA reads from."
+                )
+    return exported
 
 @click.command(cls=RichCommand, help="Display the current configuration settings.")
 @click.argument(
@@ -363,6 +430,13 @@ class ConfigDefaultGroup(RichGroup):
                 config_path = args[i + 1]; break
 
         resolved = resolve_config(config_path=config_path, defaults=DEFAULT_CONFIG)
+
+        # Keys with no Click option of their own reach their consumer only via
+        # the environment; export them before any backend module is imported
+        # (third-party libraries such as cellpose read their cache location at
+        # import time).
+        export_env_only_config(resolved)
+
         defaults = {}
         for key, value in resolved.items():
             defaults[RENAME_CONFIG_KEYS.get(key, key.lower())] = value
