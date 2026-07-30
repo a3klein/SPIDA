@@ -42,15 +42,19 @@ fi
 cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 
 # --- Compute ---
-echo -e "\nRunning Cellpose segmentation on region {REGION} of experiment {EXPERIMENT}\n"
+echo -e "\nRunning Cellpose segmentation (backend only) on region {REGION} of experiment {EXPERIMENT}\n"
+# Raw boundaries land at the region-scoped segmentation dir —
+# resolved from --segmentation_store + --prefix_name (no --input_dir/--output_dir).
+# Post-processing into the segmentation schema happens in 3b.
 pixi run --frozen -e cellpose \
     python -m spida.S.cli --config {CONFIG_PATH} \
-    run-segmentation-region \
+    segment-region \
     cellpose \
     {EXPERIMENT} \
     {REGION} \
-    --input_dir {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
-    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
+    --prefix_name cellpose_cell \
+    --root_path {ROOT_DIR} \
+    --segmentation_store {SEGMENTATION_DIR} \
     --scale=4 \
     --image_ext=.decon.tif \
     --nuc_stain_name=DAPI \
@@ -61,4 +65,4 @@ pixi run --frozen -e cellpose \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing cellpose segmentation to S3...\n"
-rsync -av {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ /s3-data/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/
+rsync -av {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/cellpose_cell/ /s3-data/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/cellpose_cell/

@@ -26,10 +26,10 @@ find /scratch -mindepth 1 -maxdepth 1 \
 echo -e "\nSyncing zarr store, segmentation, and images from S3...\n"
 mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
 mkdir -p {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}
-mkdir -p {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell
+mkdir -p {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/cellpose_cell
 rsync -av /s3-data/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/
 rsync -av /s3-data/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/
-rsync -av /s3-data/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/
+rsync -av /s3-data/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/cellpose_cell/ {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/cellpose_cell/
 
 # --- SPIDA Setup ---
 if [ ! -d /scratch/SPIDA ]; then
@@ -50,14 +50,27 @@ pixi run --frozen -e preprocessing \
     {REGION} \
     {ROOT_DIR}
 
+echo -e "\nPost-processing cellpose output into the segmentation schema (native) - {REG_N} - {EXP_N}\n"
+pixi run --frozen -e preprocessing \
+    python -m spida.S.cli --config {CONFIG_PATH} \
+    process-segmentation-region \
+    cellpose \
+    {EXPERIMENT} \
+    {REGION} \
+    --prefix_name cellpose_cell \
+    --root_path {ROOT_DIR} \
+    --segmentation_store {SEGMENTATION_DIR}
+
 echo -e "\nLoading cellpose segmentation - {REG_N} - {EXP_N}\n"
+# seg_dir is no longer positional: the region dir is derived from
+# --segmentation_store + --prefix_name under the experiment/region/label layout.
 pixi run --frozen -e preprocessing \
     python -m spida.S.cli --config {CONFIG_PATH} \
     load-segmentation-region \
     {EXPERIMENT} \
     {REGION} \
-    {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
-    --type vpt \
+    --segmentation_store {SEGMENTATION_DIR} \
+    --type cellpose \
     --prefix_name cellpose_cell \
     --transcript-qc
 

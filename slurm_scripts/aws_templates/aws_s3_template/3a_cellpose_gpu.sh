@@ -1,6 +1,8 @@
 #!/bin/bash
 # FILENAME: 3a_cellpose_gpu.sh
-# DESCRIPTION: Run Cellpose segmentation on deconvoluted images.
+# DESCRIPTION: GPU step: run ONLY the cellpose segmentation backend (raw output).
+#              Post-processing into the segmentation schema is CPU/IO-bound and
+#              lives in 3b, so the GPU isn't held during it.
 
 #SBATCH -J cellpose_gpu_{EXP_N}_{REG_N}
 #SBATCH --partition=gpu-l40s-ondemand
@@ -61,15 +63,19 @@ mkdir -p /scratch/images
 # .decon.tif = standard; _z3.decon.tif = middle z-slice for 3D experiments.
 IMAGE_EXT="{IMAGE_EXT}"
 
-echo -e "\nRunning Cellpose segmentation on region {REGION} of experiment {EXPERIMENT}\n"
+echo -e "\nRunning Cellpose segmentation (backend only) on region {REGION} of experiment {EXPERIMENT}\n"
+# Raw boundaries land at the region-scoped segmentation dir —
+# the backend resolves that layout from --segmentation_store + --prefix_name, so
+# no --input_dir/--output_dir are passed (they no longer exist).
 pixi run --frozen -e cellpose \
     python -m spida.S.cli --config {CONFIG_PATH} \
-    run-segmentation-region \
+    segment-region \
     cellpose \
     {EXPERIMENT} \
     {REGION} \
-    --input_dir {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
-    --output_dir {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell \
+    --prefix_name cellpose_cell \
+    --root_path {ROOT_DIR} \
+    --segmentation_store {SEGMENTATION_DIR} \
     --scale=4 \
     --image_ext=$IMAGE_EXT \
     --nuc_stain_name=DAPI \
@@ -79,5 +85,6 @@ pixi run --frozen -e cellpose \
     --tile_norm_blocksize=2960
 
 # --- Sync to S3 ---
+# Region-scoped prefix, matching the experiment/region/label layout.
 echo -e "\nSyncing cellpose segmentation to S3...\n"
-aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/cellpose_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/cellpose_cell/ --only-show-errors
+aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/cellpose_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/cellpose_cell/ --only-show-errors
