@@ -399,15 +399,28 @@ def run_segmentation(
     context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
 )
 @click.argument("method", type=str)
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+@click.argument("exp_name", type=str, required=False)
+@click.argument("reg_name", type=str, required=False)
+@click.option("--list-params", "--list_params", "list_params", is_flag=True, default=False, help="Print every run parameter METHOD accepts (with types, defaults and deprecated aliases) and exit. EXP_NAME/REG_NAME are not required.")
 @click.option("--prefix_name", "prefix_name", default=None, type=str, help="Segmentation name / output-dir leaf (default: method; e.g. cellpose_nuc / cellpose_cell). Must match process/load.")
 @click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
 @click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
 @click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Rust/proseg binary path")
 @click.pass_context
-def segment_region(ctx, method, exp_name, reg_name, prefix_name, root_path,
-                   segmentation_store, rust_bin_path):
+def segment_region(ctx, method, exp_name, reg_name, list_params, prefix_name,
+                   root_path, segmentation_store, rust_bin_path):
+    # Method-specific run parameters are NOT exposed as Click options: with three
+    # backends the shared command would become unusable. `--list-params` makes
+    # them discoverable instead, from the method's own config class.
+    if list_params:
+        from .segmentation.backends import describe_method_params
+        click.echo(describe_method_params(method))
+        return
+    if exp_name is None or reg_name is None:
+        raise click.UsageError(
+            "EXP_NAME and REG_NAME are required (omit them only with --list-params)."
+        )
+
     kwargs = parse_click_kwargs(ctx.args)
     from .segmentation.main import segment_region as func
     func(method=method, exp_name=exp_name, reg_name=reg_name, prefix_name=prefix_name,

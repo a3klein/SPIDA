@@ -1,19 +1,17 @@
-"""Shared scaffolding for per-method backend run configurations.
+"""Shared across segmentation method backends. Contains run configurations
 
 Every segmentation method owns a ``{Method}Config`` dataclass describing the
-parameters its backend accepts. The classes deliberately do **not** share
+parameters its backend accepts. The classes deliberately do not share
 fields — cellpose and proseg have almost nothing in common — but they share
-this base so the *mechanics* are identical across methods:
+this base so the mechanics are identical across methods:
 
 * :meth:`BackendConfig.from_kwargs` builds a config from loose CLI kwargs,
   applying deprecated aliases and **rejecting unknown keys**. A typo must fail
-  loudly rather than be silently ignored: these runs are driven by SLURM
-  scripts whose only feedback is a log file, so a swallowed ``--anisotrpy``
-  would mean hours of compute producing quietly wrong results.
-* :meth:`BackendConfig.validate` holds cross-field consistency rules.
+  loudly rather than be ignored.
+* :meth:`BackendConfig.validate` holds consistency rules.
 * :meth:`BackendConfig.describe` renders the parameter table shown by
   ``segment-region <method> --list-params``, so the CLI stays small while the
-  full parameter surface remains discoverable.
+  full parameter surface is discoverable.
 * :meth:`BackendConfig.to_meta` produces a JSON-safe dict for run provenance.
 
 To add a method: subclass :class:`BackendConfig`, set ``METHOD``, declare the
@@ -134,6 +132,64 @@ class BackendConfig:
         return value
 
     @classmethod
+    def _check_type(cls, name: str, value: Any, annotation: Any) -> None:
+        """Reject a value whose type cannot match the declared field type.
+
+        Needed because ``parse_click_kwargs`` requires ``--key value`` form: a
+        bare boolean flag such as ``--apply_clahe`` swallows the *next* token as
+        its value, so without this check ``apply_clahe`` could end up holding the
+        string ``'--foo'`` and evaluate as truthy.
+
+        Fields listed in ``CHOICES`` are skipped so ``validate`` can report them
+        with its more specific message.
+        """
+        if name in cls.CHOICES:
+            return
+        concrete, literals = _type_options(annotation)
+        if not concrete and not literals:
+            return                                   # unannotated / Any
+        if literals and value in literals:
+            return
+
+        allowed = tuple(t for t in concrete if t is not type(None))
+        if value is None:
+            if type(None) in concrete:
+                return
+            raise ConfigError(f"{cls.__name__}: {name} may not be None.")
+        if not allowed:
+            raise ConfigError(
+                f"{cls.__name__}: {name}={value!r} is not one of "
+                f"{', '.join(repr(literal) for literal in literals)}."
+            )
+
+        # bool is a subclass of int, so handle it explicitly in both directions:
+        # a bool must not satisfy an int/float field, nor an int a bool field.
+        if bool in allowed:
+            if isinstance(value, bool):
+                return
+        elif isinstance(value, bool):
+            raise ConfigError(
+                f"{cls.__name__}: {name}={value!r} is a bool but "
+                f"{' | '.join(t.__name__ for t in allowed)} was expected."
+            )
+        if float in allowed and isinstance(value, int):
+            return                                   # ints widen to float
+        if isinstance(value, allowed):
+            return
+
+        expected = " | ".join(t.__name__ for t in allowed)
+        if literals:
+            expected += " | " + " | ".join(repr(literal) for literal in literals)
+        hint = ""
+        if bool in allowed:
+            hint = (f" Booleans must be passed as --{name}=true / --{name}=false; "
+                    f"a bare --{name} consumes the next argument as its value.")
+        raise ConfigError(
+            f"{cls.__name__}: {name}={value!r} has type "
+            f"{type(value).__name__}; expected {expected}.{hint}"
+        )
+
+    @classmethod
     def from_kwargs(cls, **kwargs: Any) -> "BackendConfig":
         """Build a config from loose kwargs, rejecting anything unrecognised.
 
@@ -172,6 +228,8 @@ class BackendConfig:
 
         hints = cls._hints()
         coerced = {k: cls._coerce(k, v, hints.get(k, Any)) for k, v in resolved.items()}
+        for key, value in coerced.items():
+            cls._check_type(key, value, hints.get(key, Any))
 
         cfg = cls(**coerced)
         cfg.validate()
@@ -202,6 +260,9 @@ class BackendConfig:
             "",
             "Pass any of these as `--name=value` after the positional arguments.",
             "Unknown names are rejected rather than ignored.",
+            "",
+            "Booleans need an explicit value: `--apply_clahe=true`. A bare",
+            "`--apply_clahe` consumes the NEXT argument as its value.",
             "",
         ]
         width = max((len(n) for n in cls.field_names()), default=0)
