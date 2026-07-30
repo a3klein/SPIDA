@@ -60,4 +60,5 @@ pixi run --frozen -e preprocessing-gpu \
     --filter deconwolf \
     --filter_args tilesize 1500 \
     --gpu \
+    --image-filter tissue_mask \
     --plot_thr
