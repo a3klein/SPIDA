@@ -116,17 +116,13 @@ gprofiler-official = ">=1.0.0, <2"
 python = "3.11.*"
 shapely = "*"
 geopandas = "*"
-supervision = "*"
 pyarrow = "*"
 scikit-image = "*"
+opencv = "*"
+torchvision = "*"
 [feature.cellpose.pypi-dependencies]
-cellpose = ">=4.0.4" # Local install for bug fix?
-
-#[feature.mapmycells.dependencies]
-#python="3.10.*"
-#zarr = "*"
-#[feature.mapmycells.pypi-dependencies]
-#cell_type_mapper = { git = "https://github.com/AllenInstitute/cell_type_mapper" }
+cellpose = ">=4.2.1.1"
+dinov3 = { git = "https://github.com/facebookresearch/dinov3", rev = "6876159a11b4df116f30f667f8c9888617df0751" }
 
 [feature.mmc.dependencies]
 anndata = "*"
@@ -179,29 +175,14 @@ r-nloptr = ">=2.2.1,<3"
 libsodium = ">=1.0.20,<2"
 openssl = ">=3.6.0,<4"
 
-# Align feature going to need GPU to be feasible to run
-#[feature.align.dependencies]
-#anndata = ">=0.12"
-#numpy = "*"
-#pandas = "*"
-#scanpy = "*"
-#matplotlib = "*"
-#plotly = ">=6.6.0,<7"
-
-#[feature.align.pypi-dependencies]
-# stalign = { git = "https://github.com/JEFworks-Lab/STalign.git" }
-#stalign = { path = "../programs/STalign" }
-
 # Setting environment names for all the features 
 [environments]
 preprocessing-gpu = ['preprocessing', 'gpu']
 preprocessing = ['preprocessing', 'cpu']
-cellpose = ["cellpose"]
+cellpose = ["cellpose", "gpu"]
 mmc = ['mmc']
 dist = ["distribution"]
-#align = ["align"]
 # deepcell = ["deepcell"]
-#mapmycells = ["mapmycells"]
 
 # Preprocssing Tasks 
 [feature.preprocessing.tasks]
