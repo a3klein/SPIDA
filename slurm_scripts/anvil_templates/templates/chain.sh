@@ -22,8 +22,14 @@ fi
 
 if [[ $DO_2 == "true" ]]; then
     echo "Step 2: Starting deconvolution..."
-    jid2=$(sbatch 2_decon_DAPI.sh | awk '{{print $4}}')
-    jid3=$(sbatch 2_decon_PolyT.sh | awk '{{print $4}}')
+    # decon uses --image-filter tissue_mask, which needs tissue_mask.tif from 1_start
+    if [[ -v jid1 ]]; then
+        jid2=$(sbatch --dependency=afterok:$jid1 2_decon_DAPI.sh | awk '{{print $4}}')
+        jid3=$(sbatch --dependency=afterok:$jid1 2_decon_PolyT.sh | awk '{{print $4}}')
+    else
+        jid2=$(sbatch 2_decon_DAPI.sh | awk '{{print $4}}')
+        jid3=$(sbatch 2_decon_PolyT.sh | awk '{{print $4}}')
+    fi
     echo "Submitted DAPI deconvolution script with job ID: $jid2"
     echo "Submitted PolyT deconvolution script with job ID: $jid3"
 else
