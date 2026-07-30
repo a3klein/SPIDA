@@ -1,10 +1,5 @@
 """Cellpose run configuration + model resolution.
 
-Two concerns, both cellpose-specific and both deliberately free of any
-``cellpose`` import at module scope so this file stays importable from *any*
-pixi env (``segment-region cellpose --list-params`` must work from
-``preprocessing``, and the tests must run without a GPU):
-
 * :class:`CellposeConfig` — the full parameter surface of the cellpose backend.
 * :func:`resolve_model` — turn a model *name* into something safe to hand to
   ``CellposeModel(pretrained_model=...)``, never silently substituting a
@@ -27,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar, Literal
@@ -45,12 +41,9 @@ SPIDA_ENV_VAR = "CELLPOSE_MODEL_PATH"
 #: Models SPIDA knows about, with the notes that should inform picking one.
 KNOWN_MODELS: dict[str, str] = {
     "cpsam": "Cellpose-SAM (ViT-L). SPIDA production default.",
-    "cpsam_v2": "Improved SAM, better on low contrast. Costless drop-in for "
-                "cpsam (same VRAM and runtime, ~95% agreement).",
+    "cpsam_v2": "Improved SAM, better on low contrast.",
     "cpdino": "DINOv3 ViT-L backbone. Needs the `dinov3` package.",
-    "cpdino-vitb": "DINOv3 ViT-B backbone. ~2.2x faster and lowest VRAM, but "
-                   "finds ~21% more cells than cpsam and over-segments faint "
-                   "regions — not biologically validated. Needs `dinov3`.",
+    "cpdino-vitb": "DINOv3 ViT-B backbone. ~2.2x faster and lowest VRAM. Needs `dinov3`.",
 }
 
 #: Models whose weights cannot be loaded without the DINOv3 package.
@@ -144,15 +137,26 @@ def resolve_model(model: str, model_dir: str | Path | None = None) -> ModelResol
     )
 
 
-def read_native_xy_um(images_dir: str | Path) -> float:
-    """Micron size of one full-resolution mosaic pixel, from the region's
-    ``micron_to_mosaic_pixel_transform.csv`` (a 3x3 micron->pixel matrix, so
-    element [0][0] is pixels per micron in x)."""
-    path = Path(images_dir) / "micron_to_mosaic_pixel_transform.csv"
+#: Conventional filename of the micron->mosaic transform inside a region's images dir.
+M2M_FILENAME = "micron_to_mosaic_pixel_transform.csv"
+
+
+def read_native_xy_um(path: str | Path) -> float:
+    """Micron size of one full-resolution mosaic pixel.
+
+    Reads the 3x3 micron->pixel transform, whose element ``[0][0]`` is pixels per
+    micron in x. ``path`` may be either the CSV file itself or a directory
+    containing it (the region's images dir), so callers can supply an explicit
+    location or rely on the conventional one.
+    """
+    path = Path(path).expanduser()
+    if path.is_dir():
+        path = path / M2M_FILENAME
     if not path.is_file():
         raise ConfigError(
-            f"cannot derive anisotropy: {path} not found. Pass an explicit "
-            f"--anisotropy=<float> instead."
+            f"cannot derive anisotropy: {path} not found. Pass "
+            f"--micron_to_mosaic_path=<file> to point at it explicitly, or give "
+            f"an explicit --anisotropy=<float> to skip the derivation."
         )
     rows = [list(map(float, line.split())) for line in
             path.read_text().strip().splitlines() if line.strip()]
@@ -200,6 +204,7 @@ class CellposeConfig(BackendConfig):
     # --- geometry ---------------------------------------------------------
     scale: int = 4
     anisotropy: float | Literal["auto"] = "auto"
+    micron_to_mosaic_path: str | None = None
     micron_per_z: float = 1.5
     n_z_planes: int = 7
 
@@ -245,7 +250,9 @@ class CellposeConfig(BackendConfig):
     }
 
     HELP: ClassVar[dict[str, str]] = {
-        "seg_mode": "2d = single z-slice broadcast across z; 3d_stitched = 2D "
+        "seg_mode": "2d = one z-slice, emitted as a single-plane mask (the 2D->3D "
+                    "replication happens downstream in ingest_polygons); "
+                    "3d_stitched = 2D "
                     "per slice linked by stitch_threshold (SPIDA production "
                     "default); 3d_true = joint 3D flows using anisotropy.",
         "z_reduce": "For seg_mode=2d only: take the middle z-slice, or a "
@@ -264,6 +271,12 @@ class CellposeConfig(BackendConfig):
                       "micron_to_mosaic transform, which is the physically "
                       "correct value. Lowering it is measurably all cost and "
                       "no benefit.",
+        "micron_to_mosaic_path": (
+            f"Explicit path to the micron->mosaic transform used to derive "
+            f"anisotropy. Default None auto-discovers "
+            f"<images_dir>/{M2M_FILENAME}; set this only when the transform "
+            f"lives elsewhere. Accepts a file or a containing directory."
+        ),
         "micron_per_z": "Micron thickness of one z-step.",
         "n_z_planes": "Number of z-planes in the input stack.",
         "tile_norm_blocksize": "Cellpose normalisation block size (0 = global).",
@@ -318,9 +331,17 @@ class CellposeConfig(BackendConfig):
                 kwargs["seg_mode"] = "3d_true"
             else:
                 kwargs["seg_mode"] = "3d_stitched"
+            names = ", ".join(sorted(legacy))
+            # Same signalling as ALIASES so every deprecated name behaves alike.
+            warnings.warn(
+                f"CellposeConfig: {names} is deprecated; use "
+                f"seg_mode={kwargs['seg_mode']!r}.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             logger.warning(
                 "CellposeConfig: %s is deprecated; interpreted as seg_mode=%r",
-                ", ".join(sorted(legacy)), kwargs["seg_mode"],
+                names, kwargs["seg_mode"],
             )
 
         return super().from_kwargs(**kwargs)  # type: ignore[return-value]
@@ -353,20 +374,36 @@ class CellposeConfig(BackendConfig):
                 f"anisotropy is only used when seg_mode='3d_true' "
                 f"(got seg_mode={self.seg_mode!r}); leave it as 'auto'."
             )
+        if self.micron_to_mosaic_path and (
+            self.seg_mode != "3d_true" or self.anisotropy != "auto"
+        ):
+            # Warn rather than raise: unlike `anisotropy` — a numeric knob that
+            # would silently change results if ignored — this is an inert path.
+            logger.warning(
+                "micron_to_mosaic_path=%s is set but unused: it only feeds the "
+                "anisotropy='auto' derivation under seg_mode='3d_true'.",
+                self.micron_to_mosaic_path,
+            )
         if self.seg_mode == "2d" and self.min_z > 1:
             logger.info(
-                "seg_mode=2d: the mask is broadcast across all %d z-planes, so "
-                "min_z=%d filters nothing.", self.n_z_planes, self.min_z,
+                "seg_mode=2d produces a single-plane mask, so the min_z=%d filter "
+                "does not apply; 2D->3D replication across %d planes happens "
+                "downstream in ingest_polygons.", self.min_z, self.n_z_planes,
             )
 
     # ------------------------------------------------------------------
     def resolved_anisotropy(self, images_dir: str | Path) -> float | None:
-        """The anisotropy to hand cellpose, or None when the mode ignores it."""
+        """The anisotropy to hand cellpose, or None when the mode ignores it.
+
+        ``images_dir`` is the region's images directory, used to auto-discover the
+        transform; ``micron_to_mosaic_path`` overrides it when set.
+        """
         if self.seg_mode != "3d_true":
             return None
         if self.anisotropy != "auto":
             return float(self.anisotropy)
-        native_xy = read_native_xy_um(images_dir)
+        source = self.micron_to_mosaic_path or images_dir
+        native_xy = read_native_xy_um(source)
         value = derive_anisotropy(self.micron_per_z, native_xy, self.scale)
         logger.info(
             "anisotropy='auto' -> %.3f (z=%.3f um / (native_xy=%.4f um x scale=%d))",

@@ -101,17 +101,20 @@ def test_alias_and_canonical_together_raises():
 # ---------------------------------------------------------------------------
 
 def test_do_3d_true_maps_to_3d_true():
-    cfg = CellposeConfig.from_kwargs(do_3D=True)
+    with pytest.warns(DeprecationWarning, match="do_3D"):
+        cfg = CellposeConfig.from_kwargs(do_3D=True)
     assert cfg.seg_mode == "3d_true"
 
 
 def test_do_3d_false_maps_to_stitched():
-    cfg = CellposeConfig.from_kwargs(do_3D=False)
+    with pytest.warns(DeprecationWarning, match="do_3D"):
+        cfg = CellposeConfig.from_kwargs(do_3D=False)
     assert cfg.seg_mode == "3d_stitched"
 
 
 def test_project_3d_to_2d_maps_to_2d_mip():
-    cfg = CellposeConfig.from_kwargs(project_3d_to_2d=True)
+    with pytest.warns(DeprecationWarning, match="project_3d_to_2d"):
+        cfg = CellposeConfig.from_kwargs(project_3d_to_2d=True)
     assert cfg.seg_mode == "2d"
     assert cfg.z_reduce == "mip"        # legacy flag did a max projection
 
@@ -316,3 +319,62 @@ def test_resolved_anisotropy_explicit_skips_transform(tmp_path):
     """No transform file present: an explicit value must not need one."""
     cfg = CellposeConfig.from_kwargs(seg_mode="3d_true", anisotropy=3.5)
     assert cfg.resolved_anisotropy(tmp_path) == 3.5
+
+
+# ---------------------------------------------------------------------------
+# micron_to_mosaic_path override
+# ---------------------------------------------------------------------------
+
+def test_read_native_xy_um_accepts_an_explicit_file(tmp_path):
+    _write_transform(tmp_path, 1 / 0.106)
+    explicit = tmp_path / "micron_to_mosaic_pixel_transform.csv"
+    assert read_native_xy_um(explicit) == pytest.approx(0.106, rel=1e-6)
+
+
+def test_micron_to_mosaic_path_overrides_auto_discovery(tmp_path):
+    """The transform lives somewhere other than the images dir."""
+    images = tmp_path / "images"
+    images.mkdir()                                  # deliberately has NO transform
+    elsewhere = tmp_path / "elsewhere"
+    _write_transform(elsewhere, 1 / 0.212)          # 2x coarser pixels
+
+    cfg = CellposeConfig.from_kwargs(
+        seg_mode="3d_true",
+        micron_to_mosaic_path=str(elsewhere / "micron_to_mosaic_pixel_transform.csv"),
+    )
+    # 1.5 / (0.212 * 4) ~= 1.77
+    assert cfg.resolved_anisotropy(images) == pytest.approx(1.769, abs=0.01)
+
+
+def test_micron_to_mosaic_path_accepts_a_directory(tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    _write_transform(elsewhere, 1 / 0.106)
+    cfg = CellposeConfig.from_kwargs(seg_mode="3d_true",
+                                     micron_to_mosaic_path=str(elsewhere))
+    assert cfg.resolved_anisotropy(tmp_path) == pytest.approx(3.538, abs=0.01)
+
+
+def test_auto_discovery_is_still_the_default(tmp_path):
+    """Default None must keep finding <images_dir>/micron_to_mosaic...csv."""
+    _write_transform(tmp_path, 1 / 0.106)
+    cfg = CellposeConfig.from_kwargs(seg_mode="3d_true")
+    assert cfg.micron_to_mosaic_path is None
+    assert cfg.resolved_anisotropy(tmp_path) == pytest.approx(3.538, abs=0.01)
+
+
+def test_missing_transform_error_mentions_both_escape_hatches(tmp_path):
+    cfg = CellposeConfig.from_kwargs(seg_mode="3d_true")
+    with pytest.raises(ConfigError) as exc:
+        cfg.resolved_anisotropy(tmp_path)
+    msg = str(exc.value)
+    assert "--micron_to_mosaic_path" in msg
+    assert "--anisotropy" in msg
+
+
+def test_unused_micron_to_mosaic_path_warns_but_does_not_raise(tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        cfg = CellposeConfig.from_kwargs(
+            seg_mode="3d_stitched", micron_to_mosaic_path=str(tmp_path),
+        )
+    assert cfg.micron_to_mosaic_path == str(tmp_path)
+    assert "unused" in caplog.text

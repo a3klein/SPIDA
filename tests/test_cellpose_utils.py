@@ -11,6 +11,7 @@ from cellpose import core
 pytest.importorskip("cellpose")
 
 from spida.S.segmentation.backends import cellpose
+from spida.S.segmentation.backends.cellpose_config import CellposeConfig
 
 
 def _write_tif(path: Path, array: np.ndarray) -> None:
@@ -94,12 +95,36 @@ class _DummyModel:
         return "masks", "flows", "styles"
 
 
+class _DummyResolution:
+    """Stand-in for the ModelResolution that _load_model now returns."""
+
+    name = "cpsam"
+    pretrained_model = "/models/cpsam"
+    model_dir = Path("/models")
+    exists_locally = True
+    will_download = False
+    size_bytes = 1
+
+    def log(self):
+        pass
+
+
+def _patch_load_model(monkeypatch, dummy):
+    monkeypatch.setattr(cellpose, "_load_model",
+                        lambda cfg: (dummy, _DummyResolution()))
+
+
+def _cfg(**kwargs):
+    """Build a CellposeConfig; seg_mode replaces the old do_3D/stitch flags."""
+    return CellposeConfig.from_kwargs(**kwargs)
+
+
 def test_cellpose_wrapper_3d_reorders_channels(monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
+    _patch_load_model(monkeypatch, dummy)
 
     img = np.zeros((2, 3, 5, 7), dtype=np.float32)
-    cellpose._cellpose_wrapper(img, do_3D=True)
+    cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_true"))
 
     assert dummy.img.shape == (7, 3, 5, 2)
     assert dummy.kwargs["channel_axis"] == -1
@@ -108,10 +133,10 @@ def test_cellpose_wrapper_3d_reorders_channels(monkeypatch):
 
 def test_cellpose_wrapper_2d_stack_reorders_channels(monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
+    _patch_load_model(monkeypatch, dummy)
 
     img = np.zeros((2, 3, 5, 7), dtype=np.float32)
-    cellpose._cellpose_wrapper(img, do_3D=False)
+    cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_stitched"))
 
     assert dummy.img.shape == (7, 3, 5, 2)
     assert dummy.kwargs["channel_axis"] == -1
@@ -120,7 +145,7 @@ def test_cellpose_wrapper_2d_stack_reorders_channels(monkeypatch):
 
 def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
+    _patch_load_model(monkeypatch, dummy)
 
     nuc = np.arange(16, dtype=np.uint16).reshape(4, 4)
     cyto = np.arange(16, dtype=np.uint16).reshape(4, 4) * 2
@@ -135,7 +160,7 @@ def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch
         downscale=None,
     )
 
-    cellpose._cellpose_wrapper(img, do_3D=False)
+    cellpose._cellpose_wrapper(img, _cfg(seg_mode="2d"))
 
     assert dummy.img.shape == (4, 4, 2)
     assert dummy.kwargs["channel_axis"] == -1
@@ -144,7 +169,7 @@ def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch
 
 def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
+    _patch_load_model(monkeypatch, dummy)
 
     stack = [
         np.full((4, 4), fill_value=1, dtype=np.uint16),
@@ -161,16 +186,17 @@ def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatc
         downscale=None,
     )
 
-    cellpose._cellpose_wrapper(img, do_3D=False, stitch_threshold=0.4)
+    cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_stitched", stitch_threshold=0.4))
 
     assert dummy.img.shape == (2, 4, 4, 1)
     assert dummy.kwargs["channel_axis"] == -1
     assert dummy.kwargs["z_axis"] == 0
+    assert dummy.kwargs["stitch_threshold"] == 0.4
 
 
 def test_pipeline_3d_do3d_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
     dummy = _DummyModel()
-    monkeypatch.setattr(cellpose, "_load_model", lambda **_: dummy)
+    _patch_load_model(monkeypatch, dummy)
 
     stack = [
         np.full((4, 4), fill_value=1, dtype=np.uint16),
@@ -187,11 +213,12 @@ def test_pipeline_3d_do3d_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
         downscale=None,
     )
 
-    cellpose._cellpose_wrapper(img, do_3D=True)
+    cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_true"))
 
     assert dummy.img.shape == (2, 4, 4, 1)
     assert dummy.kwargs["channel_axis"] == -1
     assert dummy.kwargs["z_axis"] == 0
+    assert dummy.kwargs["do_3D"] is True
 
 
 def _gaussian_2d(shape, center, sigma, amplitude=1.0):
