@@ -78,4 +78,12 @@ pixi run --frozen -e preprocessing \
     --min_transcripts 100 \
     --plot
 
+echo -e "\n Computing tissue mask (qc_mask polygon + tissue_mask labels + images-dir tissue_mask.tif) \n"
+pixi run --frozen -e preprocessing \
+    spida-P {CONFIG} \
+    tissue-mask \
+    {EXPERIMENT} \
+    {REGION} \
+    --plot
+
 # pixi run python slurm_scripts/script.py   202601301037_BICAN-4x1-THM1-E-01_VMSC31810     --lab salk     --data_path /anvil/scratch/x-aklein2/BICAN/202601301037_BICAN-4x1-THM1-E-01_VMSC31810/out/     --output_dir ../BICAN/THM/image_processing/     --template_dir slurm_scripts/thm_templates/     --config_path /anvil/projects/x-mcb130189/aklein/BICAN/THM/config/config.json
