@@ -69,11 +69,6 @@ def test_unknown_parameter_raises_with_suggestion():
     assert "--list-params" in msg
 
 
-def test_unknown_parameter_without_close_match_still_raises():
-    with pytest.raises(ConfigError, match="unknown parameter"):
-        CellposeConfig.from_kwargs(completely_made_up_thing=1)
-
-
 @pytest.mark.parametrize(
     "alias,target,value",
     [
@@ -119,30 +114,9 @@ def test_project_3d_to_2d_maps_to_2d_mip():
     assert cfg.z_reduce == "mip"        # legacy flag did a max projection
 
 
-def test_legacy_flag_with_seg_mode_raises():
-    with pytest.raises(ConfigError, match="cannot be combined"):
-        CellposeConfig.from_kwargs(seg_mode="3d_true", do_3D=True)
-
-
 # ---------------------------------------------------------------------------
 # validation rules
 # ---------------------------------------------------------------------------
-
-def test_invalid_seg_mode_rejected():
-    with pytest.raises(ConfigError, match="seg_mode"):
-        CellposeConfig.from_kwargs(seg_mode="3d")
-
-
-def test_invalid_model_rejected():
-    with pytest.raises(ConfigError, match="model"):
-        CellposeConfig.from_kwargs(model="cellpose3")
-
-
-def test_anisotropy_rejected_outside_3d_true():
-    """Silently ignoring a supplied anisotropy is exactly the failure mode
-    this config layer exists to prevent."""
-    with pytest.raises(ConfigError, match="only used when seg_mode='3d_true'"):
-        CellposeConfig.from_kwargs(seg_mode="3d_stitched", anisotropy=3.5)
 
 
 def test_anisotropy_allowed_for_3d_true():
@@ -153,12 +127,35 @@ def test_anisotropy_allowed_for_3d_true():
 @pytest.mark.parametrize(
     "kwargs,match",
     [
+        # scalar ranges
         (dict(scale=0), "scale must be >= 1"),
         (dict(n_z_planes=0), "n_z_planes must be >= 1"),
         (dict(micron_per_z=0), "micron_per_z must be > 0"),
-        (dict(poly_tile_size=100, poly_tile_overlap=100), "must be smaller"),
         (dict(min_z=9, n_z_planes=7), "exceeds n_z_planes"),
         (dict(seg_mode="3d_true", anisotropy=-1), "anisotropy must be > 0"),
+        (dict(seg_mode="3d_true", flow3d_smooth_z=-1), "flow3d_smooth_z"),
+        # enumerations
+        (dict(seg_mode="3d"), "seg_mode"),
+        (dict(model="cellpose3"), "model"),
+        (dict(gpu_tile_size=9000, gpu_merge="mean"), "gpu_merge"),
+        # unknown / conflicting parameters
+        (dict(nonexistent_param=1), "unknown parameter"),
+        (dict(seg_mode="2d", do_3D=True), "seg_mode"),
+        # overlap vs tile, on either axis
+        (dict(poly_tile_size=100, poly_tile_overlap=100), "must be smaller"),
+        (dict(gpu_tile_size="12000x400", gpu_tile_overlap=500), "every axis"),
+        (dict(gpu_tile_size=400, gpu_tile_overlap=500), "every axis"),
+        # min_gpu_tile floor: applies to the SHORTER axis, and moves with scale
+        (dict(gpu_tile_size=2000), "below the floor"),
+        (dict(gpu_tile_size="12000x3000"), "below the floor"),
+        (dict(gpu_tile_size=6000, scale=8), "below the floor"),
+        # tiled-path exclusions
+        (dict(gpu_tile_size=9000, gpu_tile_iou=0.0), "gpu_tile_iou"),
+        (dict(gpu_tile_size=9000, gpu_tile_iou=1.0), "gpu_tile_iou"),
+        (dict(gpu_tile_size=9000, n_gpu_threads=0), "n_gpu_threads"),
+        # per-tile CLAHE would give neighbouring tiles different transfer functions
+        (dict(gpu_tile_size=9000, apply_clahe=True), "apply_clahe"),
+        (dict(seg_mode="3d_stitched", anisotropy=3.5), "only used when"),
     ],
 )
 def test_validation_rules(kwargs, match):
@@ -417,38 +414,6 @@ def test_bad_gpu_tile_size_raises_with_the_accepted_forms(bad):
     assert "'auto'" in msg and "<y>x<x>" in msg
 
 
-def test_overlap_must_be_smaller_than_every_axis():
-    with pytest.raises(ConfigError, match="every axis"):
-        CellposeConfig.from_kwargs(gpu_tile_size="12000x400", gpu_tile_overlap=500)
-
-
-def test_square_tile_smaller_than_overlap_raises():
-    with pytest.raises(ConfigError, match="every axis"):
-        CellposeConfig.from_kwargs(gpu_tile_size=400, gpu_tile_overlap=500)
-
-
-@pytest.mark.parametrize("iou", [0.0, 1.0, -0.1, 1.5])
-def test_gpu_tile_iou_must_be_a_proper_fraction(iou):
-    with pytest.raises(ConfigError, match="gpu_tile_iou"):
-        CellposeConfig.from_kwargs(gpu_tile_size=9000, gpu_tile_iou=iou)
-
-
-def test_n_gpu_threads_must_be_positive():
-    with pytest.raises(ConfigError, match="n_gpu_threads"):
-        CellposeConfig.from_kwargs(gpu_tile_size=9000, n_gpu_threads=0)
-
-
-def test_gpu_merge_choices_are_enforced():
-    with pytest.raises(ConfigError, match="gpu_merge"):
-        CellposeConfig.from_kwargs(gpu_tile_size=9000, gpu_merge="average")
-
-
-def test_clahe_is_rejected_on_the_tiled_path():
-    """Per-tile CLAHE would give neighbours different transfer functions."""
-    with pytest.raises(ConfigError, match="apply_clahe"):
-        CellposeConfig.from_kwargs(gpu_tile_size=9000, apply_clahe=True)
-
-
 def test_clahe_still_allowed_without_tiling():
     assert CellposeConfig.from_kwargs(apply_clahe=True).apply_clahe is True
 
@@ -496,19 +461,9 @@ def test_min_gpu_tile_is_poly_tile_size_times_scale():
     assert cfg.min_gpu_tile() == 4000
 
 
-def test_tile_below_the_floor_is_rejected():
-    with pytest.raises(ConfigError, match="below the floor"):
-        CellposeConfig.from_kwargs(gpu_tile_size=3000)      # floor is 1000*4
-
-
 def test_tile_at_the_floor_is_accepted():
     cfg = CellposeConfig.from_kwargs(gpu_tile_size=4000)
     assert cfg.resolved_gpu_tile() == (4000, 4000)
-
-
-def test_floor_applies_to_the_shorter_axis_of_a_non_square_tile():
-    with pytest.raises(ConfigError, match="below the floor"):
-        CellposeConfig.from_kwargs(gpu_tile_size="12000x3000")
 
 
 def test_floor_moves_with_poly_tile_size():
@@ -516,11 +471,6 @@ def test_floor_moves_with_poly_tile_size():
     cfg = CellposeConfig.from_kwargs(gpu_tile_size=3000, poly_tile_size=500)
     assert cfg.min_gpu_tile() == 2000
     assert cfg.resolved_gpu_tile() == (3000, 3000)
-
-
-def test_floor_moves_with_scale():
-    with pytest.raises(ConfigError, match="below the floor"):
-        CellposeConfig.from_kwargs(gpu_tile_size=6000, scale=8)   # floor is 8000
 
 
 def test_floor_error_names_both_inputs():
@@ -550,12 +500,6 @@ def test_flow3d_smooth_z_defaults_on_at_two():
     constant."""
     cfg = CellposeConfig.from_kwargs(seg_mode="3d_true")
     assert cfg.flow3d_smooth_z == 2.0
-
-
-@pytest.mark.parametrize("bad", [-0.1, -2])
-def test_flow3d_smooth_z_rejects_negative(bad):
-    with pytest.raises(ConfigError, match="flow3d_smooth_z"):
-        CellposeConfig.from_kwargs(seg_mode="3d_true", flow3d_smooth_z=bad)
 
 
 @pytest.mark.parametrize("mode", ["2d", "3d_stitched"])

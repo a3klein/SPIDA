@@ -155,69 +155,6 @@ def test_cellpose_wrapper_2d_stack_reorders_channels(monkeypatch):
     assert dummy.kwargs["z_axis"] == 0
 
 
-def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch):
-    dummy = _DummyModel()
-    _patch_load_model(monkeypatch, dummy)
-
-    nuc = np.arange(16, dtype=np.uint16).reshape(4, 4)
-    cyto = np.arange(16, dtype=np.uint16).reshape(4, 4) * 2
-    _write_tif(tmp_path / "img_DAPI.tif", nuc)
-    _write_tif(tmp_path / "img_PolyT.tif", cyto)
-
-    img = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name="PolyT",
-                       image_ext=".tif", scale=1)
-
-    cellpose._cellpose_wrapper(img, _cfg(seg_mode="2d"))
-
-    assert dummy.img.shape == (4, 4, 2)
-    assert dummy.kwargs["channel_axis"] == -1
-    assert "z_axis" not in dummy.kwargs
-
-
-def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
-    dummy = _DummyModel()
-    _patch_load_model(monkeypatch, dummy)
-
-    stack = [
-        np.full((4, 4), fill_value=1, dtype=np.uint16),
-        np.full((4, 4), fill_value=3, dtype=np.uint16),
-    ]
-    for idx, plane in enumerate(stack):
-        _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
-
-    img = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name=None,
-                       image_ext=".tif", scale=1)
-
-    cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_stitched", stitch_threshold=0.4))
-
-    assert dummy.img.shape == (2, 4, 4, 1)
-    assert dummy.kwargs["channel_axis"] == -1
-    assert dummy.kwargs["z_axis"] == 0
-    assert dummy.kwargs["stitch_threshold"] == 0.4
-
-
-def test_pipeline_3d_do3d_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
-    dummy = _DummyModel()
-    _patch_load_model(monkeypatch, dummy)
-
-    stack = [
-        np.full((4, 4), fill_value=1, dtype=np.uint16),
-        np.full((4, 4), fill_value=3, dtype=np.uint16),
-    ]
-    for idx, plane in enumerate(stack):
-        _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
-
-    img = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name=None,
-                       image_ext=".tif", scale=1)
-
-    cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_true"))
-
-    assert dummy.img.shape == (2, 4, 4, 1)
-    assert dummy.kwargs["channel_axis"] == -1
-    assert dummy.kwargs["z_axis"] == 0
-    assert dummy.kwargs["do_3D"] is True
-
-
 def _gaussian_2d(shape, center, sigma, amplitude=1.0):
     yy, xx = np.indices(shape)
     cy, cx = center

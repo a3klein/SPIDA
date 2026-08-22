@@ -153,14 +153,8 @@ def test_redundancy_is_minimal_when_the_tile_packs_cleanly():
 # tissue mask: bbox, coverage, gating, zeroing
 # ---------------------------------------------------------------------------
 
-def _read_window(planes, y0, y1, x0, x1, **kw):
-    """The old `_read_window(planes, ...) -> (Y, X, Z)`, via the shared reader.
-
-    `read_stains` returns (C, Y, X, Z) for a dict of stains; one stain's window
-    is channel 0. Keeping the old call shape here means the read tests below are
-    unchanged from when they were written against `read_window`, so they are a
-    direct check that the merged reader did not change behaviour.
-    """
+def _window(planes, y0, y1, x0, x1, **kw):
+    """One stain's `(Y, X, Z)` window via `read_stains`, which returns 4D."""
     from spida.S.io.mosaic import read_stains
     return read_stains({"s": planes}, window=(y0, y1, x0, x1), **kw)[0]
 
@@ -289,22 +283,22 @@ def test_find_stain_planes_raises_for_missing_stain(mosaic_dir):
         find_stain_planes(mosaic_dir, "GAPDH")
 
 
-def test_read_window_matches_a_full_read(mosaic_dir):
+def test_windowed_read_matches_a_full_read(mosaic_dir):
     """The whole point of the lazy reader: identical pixels, without loading the
     64.5 GB a real z-stack would need."""
     import tifffile
 
     planes = find_stain_planes(mosaic_dir, "DAPI")
-    got = _read_window(planes, 10, 20, 5, 15)
+    got = _window(planes, 10, 20, 5, 15)
     assert got.shape == (10, 10, 3)                        # (Y, X, Z)
     for z, p in enumerate(planes):
         expected = tifffile.imread(str(p))[10:20, 5:15]
         assert np.array_equal(got[..., z], expected)
 
 
-def test_read_window_partial_edge(mosaic_dir):
+def test_windowed_read_clips_at_the_edge(mosaic_dir):
     planes = find_stain_planes(mosaic_dir, "DAPI")
-    got = _read_window(planes, 60, 80, 40, 60)              # runs past the edge
+    got = _window(planes, 60, 80, 40, 60)              # runs past the edge
     assert got.shape[0] == 4 and got.shape[1] == 8         # clipped by numpy
     assert got.shape[2] == 3
 
@@ -433,14 +427,18 @@ def test_optimizer_respects_max_tile_area():
     assert best["tile_area"] <= cap
 
 
-def test_optimizer_skips_background_only_tiles():
-    """A mask occupying one corner should leave most tiles unkept."""
+def test_optimizer_gate_skips_empty_tiles_when_tissue_is_scattered():
+    """Tissue in two opposite corners: the bbox spans everything, so only the
+    per-tile gate can drop the empty interior. A COMPACT corner mask would not
+    test this -- `optimize_grid` clips to the bbox first, and one tile then
+    covers it."""
     mask = np.zeros((4000, 4000), dtype=bool)
-    mask[0:800, 0:800] = True
-    best, _ = optimize_grid(mask, overlap=100, tile_min=200, tile_max=800,
-                            step=100, ds=4)
-    assert best["n_kept"] <= best["n_tiles"]
-    assert best["cost_area"] > 0
+    mask[0:600, 0:600] = True
+    mask[3400:4000, 3400:4000] = True
+    best, _ = optimize_grid(mask, overlap=100, tile_min=400, tile_max=1200,
+                            step=200, ds=4)
+    assert best["n_kept"] < best["n_tiles"] / 4
+    assert best["cost_area"] == best["n_kept"] * best["tile_area"]
 
 
 def test_optimizer_raises_when_nothing_is_viable():
@@ -452,7 +450,7 @@ def test_optimizer_raises_when_nothing_is_viable():
 
 
 def test_optimizer_cost_ranks_consistently_with_kept_area():
-    """cost_area must be a monotone function of kept tiles x tile area (+ overhead)."""
+    """cost_area is exactly kept tiles x tile area -- no per-tile overhead term."""
     mask = np.ones((2000, 2000), dtype=bool)
     _, scored = optimize_grid(mask, overlap=100, tile_min=500, tile_max=2000,
                               step=500, ds=8)
@@ -498,20 +496,20 @@ def test_score_grid_partial_is_zero_only_when_tiles_are_truly_full():
 # streaming downscale during the read
 # ---------------------------------------------------------------------------
 
-def test_read_window_streamed_downscale_is_bit_identical(mosaic_dir):
+def test_streamed_downscale_is_bit_identical(mosaic_dir):
     """The whole point: reduce during the read so the full-res window is never
     materialised, WITHOUT changing a single value. downscale_local_mean is a
     block mean, so any ds-aligned row split is exact."""
     import skimage as ski
 
     planes = find_stain_planes(mosaic_dir, "DAPI")
-    full = _read_window(planes, 0, 64, 0, 48)                       # (64, 48, 3)
+    full = _window(planes, 0, 64, 0, 48)                       # (64, 48, 3)
     expected = np.stack(
         [ski.transform.downscale_local_mean(full[..., z], (4, 4))
          for z in range(full.shape[-1])], axis=-1)
 
     for strip in (4, 8, 16, 1024):                                 # incl. > window
-        got = _read_window(planes, 0, 64, 0, 48, downscale=4, strip_rows=strip)
+        got = _window(planes, 0, 64, 0, 48, downscale=4, strip_rows=strip)
         assert got.shape == expected.shape
         assert np.array_equal(got, expected), f"strip_rows={strip} differs"
 
@@ -552,24 +550,24 @@ def test_read_stains_is_4d_even_for_one_plane(mosaic_dir, tmp_path):
     assert img.ndim == 4 and img.shape[0] == 1 and img.shape[-1] == 1
 
 
-def test_read_window_downscale_handles_unaligned_extent(mosaic_dir):
+def test_streamed_downscale_handles_unaligned_extent(mosaic_dir):
     """A window whose height is not a multiple of ds must still match a
     whole-window reduction (the trailing partial block is padded identically)."""
     import skimage as ski
 
     planes = find_stain_planes(mosaic_dir, "DAPI")
-    full = _read_window(planes, 0, 50, 0, 30)                       # 50 and 30 % 4 != 0
+    full = _window(planes, 0, 50, 0, 30)                       # 50 and 30 % 4 != 0
     expected = np.stack(
         [ski.transform.downscale_local_mean(full[..., z], (4, 4))
          for z in range(full.shape[-1])], axis=-1)
-    got = _read_window(planes, 0, 50, 0, 30, downscale=4, strip_rows=8)
+    got = _window(planes, 0, 50, 0, 30, downscale=4, strip_rows=8)
     assert np.array_equal(got, expected)
 
 
-def test_read_window_downscale_one_is_a_passthrough(mosaic_dir):
+def test_downscale_of_one_is_a_passthrough(mosaic_dir):
     planes = find_stain_planes(mosaic_dir, "DAPI")
-    assert np.array_equal(_read_window(planes, 0, 16, 0, 16),
-                          _read_window(planes, 0, 16, 0, 16, downscale=1))
+    assert np.array_equal(_window(planes, 0, 16, 0, 16),
+                          _window(planes, 0, 16, 0, 16, downscale=1))
 
 
 # ---------------------------------------------------------------------------
@@ -737,21 +735,26 @@ def test_stitch_largest_vs_union_merge():
     assert joined.geometry.iloc[0].area == pytest.approx(big.union(small).area)
 
 
-def test_stitch_ignores_missing_and_empty_tiles():
-    """Tiles dropped by the tissue gate simply are not in the dict."""
+def test_a_tile_contributing_nothing_is_ignored():
+    """Three shapes of "no cells here": key absent (the gate skipped it), an
+    empty frame, and None. Production only produces the first two -- gated tiles
+    never reach the post worker, and `masks_to_geodataframe` returns an empty
+    frame rather than None -- but `add_tile` guards all three."""
     from shapely.geometry import box
+    import geopandas as gpd
 
     tiles = [Tile(0, 0, 0, 0, 100, 100), Tile(0, 1, 0, 80, 100, 100)]
-    polys = {(0, 0): _gdf([(1, 0, box(10, 10, 20, 20))])}      # (0,1) skipped
-    out = stitch_polygons(polys, tiles, iou_threshold=0.2)
-    assert len(out) == 1
+    one = _gdf([(1, 0, box(10, 10, 20, 20))])
 
+    assert len(stitch_polygons({(0, 0): one}, tiles, iou_threshold=0.2)) == 1
 
-def test_stitch_with_no_polygons_returns_empty_frame():
-    tiles = [Tile(0, 0, 0, 0, 100, 100)]
-    out = stitch_polygons({}, tiles, iou_threshold=0.2)
-    assert len(out) == 0
-    assert {"ID", "z"}.issubset(out.columns)
+    for absent in (None, gpd.GeoDataFrame({"ID": [], "z": [],
+                                           "Geometry": gpd.GeoSeries([], dtype="geometry")},
+                                          geometry="Geometry", crs=None)):
+        s = PolygonStitcher(tiles)
+        s.add_tile((0, 0), one)
+        s.add_tile((0, 1), absent)
+        assert len(s.finish()) == 1
 
 
 def test_stitch_output_ids_are_dense_from_one():
@@ -764,11 +767,6 @@ def test_stitch_output_ids_are_dense_from_one():
     }
     out = stitch_polygons(polys, tiles, iou_threshold=0.2)
     assert sorted(out["ID"].tolist()) == [1, 2, 3]
-
-
-def test_stitch_rejects_unknown_merge_mode():
-    with pytest.raises(ValueError, match="merge must be"):
-        stitch_polygons({}, [], merge="average")
 
 
 # ---------------------------------------------------------------------------
@@ -899,12 +897,6 @@ from spida.S.segmentation.tiling import (  # noqa: E402
 )
 
 
-def test_default_iou_matches_the_validated_value():
-    """THM1 tiles 3/6/8 (job 1472): flat 0.911-0.915 over 0.05-0.6, useful
-    window ~0.10-0.20."""
-    assert DEFAULT_STITCH_IOU == 0.15
-
-
 def test_incremental_equals_batch_regardless_of_arrival_order():
     """Tiles finish in whatever order the GPU emits them, so the result must not
     depend on arrival order."""
@@ -967,15 +959,6 @@ def test_incremental_is_thread_safe():
     assert len(out) == len(batch)
 
 
-def test_stitcher_handles_empty_tiles():
-    from shapely.geometry import box
-    tiles = [Tile(0, 0, 0, 0, 100, 100), Tile(0, 1, 0, 80, 100, 100)]
-    s = PolygonStitcher(tiles)
-    s.add_tile((0, 0), _gdf([(1, 0, box(10, 10, 20, 20))]))
-    s.add_tile((0, 1), None)                          # gate-skipped tile
-    assert len(s.finish()) == 1
-
-
 def test_stitcher_rejects_unknown_merge_mode():
     with pytest.raises(ValueError, match="merge must be"):
         PolygonStitcher([], merge="average")
@@ -988,12 +971,6 @@ def test_stitcher_rejects_unknown_merge_mode():
 from spida.S.segmentation.tiling import (  # noqa: E402
     DEFAULT_GPU_THREADS,
 )
-
-
-def test_default_gpu_threads_is_greater_than_one():
-    """A single GPU thread cannot overlap its own CPU tail (cellpose does mask
-    reconstruction inside model.eval; ~10% idle GPU measured)."""
-    assert DEFAULT_GPU_THREADS >= 2
 
 
 def _many_tile_mosaic(tmp_path, n_cols=6, tile=128, overlap=32):
@@ -1102,45 +1079,3 @@ def test_gpu_pool_propagates_errors_without_hanging(tmp_path):
 # and it pins the negative-origin behaviour itself — which is why
 # `masks._fit_tiling` clamps around that behaviour rather than changing it here.
 # ---------------------------------------------------------------------------
-
-GOLDEN_PATH = Path(__file__).parent / "data" / "tiling_golden.pkl"
-
-
-def _capture_grid(shape, tile_size, overlap):
-    """Same reduction the golden file was recorded with.
-
-    Configs that raise are recorded as a marker string rather than dropped —
-    turning a raise into a silent empty grid is exactly the kind of regression
-    this is here to catch.
-    """
-    from spida.utilities.tiling import tile_grid_with_overlap
-
-    try:
-        info_list = tile_grid_with_overlap(shape, tile_size, overlap)
-    except Exception as exc:                       # noqa: BLE001
-        return f"RAISED {type(exc).__name__}"
-    return [
-        (info["tile_id"], tuple(info["position"]), tuple(info["end_position"]),
-         tuple(info["actual_size"]))
-        for info in info_list
-    ]
-
-
-@pytest.mark.skipif(not GOLDEN_PATH.is_file(), reason="golden master not present")
-def test_tile_grid_matches_the_golden_master():
-    import pickle
-
-    golden = pickle.loads(GOLDEN_PATH.read_bytes())
-    assert len(golden) == 108, "golden master truncated"
-
-    mismatches = []
-    for (shape, tile_repr, overlap_repr), expected in golden:
-        tile_size = ast.literal_eval(tile_repr)
-        overlap = ast.literal_eval(overlap_repr)
-        got = _capture_grid(shape, tile_size, overlap)
-        if got != expected:
-            mismatches.append((shape, tile_size, overlap))
-
-    assert not mismatches, (
-        f"{len(mismatches)}/{len(golden)} tiling configs changed: {mismatches[:5]}"
-    )

@@ -264,6 +264,15 @@ def _apply_clahe(img: np.ndarray, cfg: CellposeConfig) -> np.ndarray:
 
 
 # for meta
+def _cellpose_version() -> str | None:
+    """Recorded for provenance"""
+    try:
+        import cellpose
+        return getattr(cellpose, "version", None)
+    except Exception:                                  # pragma: no cover
+        return None
+
+
 def _spida_version() -> str | None:
     try:
         from importlib.metadata import version
@@ -636,7 +645,7 @@ def run_cellpose(root_dir: str, output_dir: str, region: str, *,
         },
         "timing_s": {k: round(v, 3) for k, v in timing.items()},
         "versions": {
-            "cellpose": getattr(__import__("cellpose"), "version", None),
+            "cellpose": _cellpose_version(),
             "spida": _spida_version(),
         },
     }

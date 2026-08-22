@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-pytest.importorskip("cellpose")
 
 from spida.S.segmentation.backends import cellpose as cpb
 from spida.S.segmentation.backends import masks as masks_mod
@@ -105,25 +104,6 @@ def test_config_values_reach_eval_kwargs():
 # z reduction
 # ---------------------------------------------------------------------------
 
-def test_reduce_z_middle_picks_centre_plane():
-    img = np.stack([np.full((4, 4), i, dtype=np.uint16) for i in range(7)], axis=-1)
-    img = img[None]                                        # (1, 4, 4, 7)
-    out = cpb.reduce_z(img, "middle")
-    assert out.shape == (1, 4, 4)
-    assert np.all(out[0] == 3)                             # plane 7 // 2 == 3
-
-
-def test_reduce_z_mip_takes_maximum():
-    img = np.stack([np.full((4, 4), i, dtype=np.uint16) for i in range(7)], axis=-1)
-    out = cpb.reduce_z(img[None], "mip")
-    assert out.shape == (1, 4, 4)
-    assert np.all(out[0] == 6)
-
-
-def test_reduce_z_passes_through_single_plane():
-    img = np.zeros((1, 4, 4), dtype=np.uint16)
-    assert cpb.reduce_z(img, "middle").shape == (1, 4, 4)
-
 
 # ---------------------------------------------------------------------------
 # end-to-end run_cellpose with a mocked model
@@ -182,6 +162,21 @@ def _patch_model(monkeypatch, masks):
     # keep polygon extraction single-process so the mask fixtures stay cheap
     monkeypatch.setattr(masks_mod, "max_cpu", 1, raising=False)
     return fake
+
+
+@pytest.mark.parametrize("z_reduce,expected", [("middle", 1.0), ("mip", 2.0)])
+def test_reduce_z_collapses_a_stack(z_reduce, expected):
+    img = np.zeros((1, 4, 4, 3), dtype=np.float32)
+    img[..., 1] = 1.0                       # centre plane
+    img[..., 2] = 2.0                       # brightest
+    out = cpb.reduce_z(img, z_reduce)
+    assert out.shape == (1, 4, 4)
+    assert np.allclose(out, expected)
+
+
+def test_reduce_z_passes_through_a_single_plane():
+    img = np.ones((1, 4, 4), dtype=np.float32)
+    assert cpb.reduce_z(img, "mip").shape == (1, 4, 4)
 
 
 def test_run_cellpose_2d_writes_outputs_and_meta(monkeypatch, images_dir, tmp_path):
@@ -501,11 +496,19 @@ def test_tissue_mask_zeroes_signal_outside_it(monkeypatch, mosaic_dir, tmp_path)
     assert json.loads((out / "meta.json").read_text())["tiling"]["bbox"] == [0, 64, 0, 64]
 
 
-def test_mask_shape_mismatch_raises(monkeypatch, mosaic_dir, tmp_path):
+@pytest.mark.parametrize("tiled", [False, True])
+def test_a_misaligned_tissue_mask_raises_on_either_path(monkeypatch, mosaic_dir,
+                                                        tmp_path, tiled):
+    """Both paths reach the same `_load_and_check_mask`."""
+    from spida.S.segmentation.backends.config import ConfigError
+
     _patch_labelling_model(monkeypatch)
     mask_path = _write_mask(mosaic_dir, np.ones((32, 32), dtype=bool))
+    extra = dict(gpu_tile_size=40, gpu_tile_overlap=8) if tiled else {}
     with pytest.raises(ConfigError, match="pixel-aligned"):
-        _run_tiled(mosaic_dir, tmp_path / "out", tissue_mask_path=mask_path)
+        cpb.run_cellpose(str(mosaic_dir), str(tmp_path / "o"), "r", seg_mode="2d",
+                         scale=1, min_size=0, min_z=1, poly_tile_size=20,
+                         poly_tile_overlap=5, tissue_mask_path=mask_path, **extra)
 
 
 def test_auto_tile_size_without_a_mask_raises(monkeypatch, mosaic_dir, tmp_path):
@@ -609,19 +612,6 @@ def test_untiled_path_squeezes_a_single_plane_stain(monkeypatch, mosaic_dir,
         f"expected a 2D (Y, X, C) eval, got {model.eval_shapes[0]} -- the "
         f"single-plane squeeze in _segment_whole did not fire"
     )
-
-
-def test_untiled_path_rejects_a_misaligned_tissue_mask(monkeypatch, mosaic_dir,
-                                                       tmp_path):
-    """A mask on a different pixel grid would silently mask the wrong region."""
-    from spida.S.segmentation.backends.config import ConfigError
-
-    _patch_labelling_model(monkeypatch)
-    mask_path = _write_mask(mosaic_dir, np.ones((32, 32), dtype=bool))
-    with pytest.raises(ConfigError, match="pixel-aligned"):
-        cpb.run_cellpose(str(mosaic_dir), str(tmp_path / "o"), "r", seg_mode="2d",
-                         scale=1, min_size=0, min_z=1, poly_tile_size=20,
-                         poly_tile_overlap=5, tissue_mask_path=mask_path)
 
 
 def test_tiled_path_handles_zero_cells(monkeypatch, tmp_path, caplog):
