@@ -3,8 +3,8 @@
 # DESCRIPTION: Run Cellpose segmentation on deconvoluted images.
 
 #SBATCH -J cellpose_gpu_{EXP_N}_{REG_N}
-#SBATCH --partition=gpu-l40s-ondemand
-#SBATCH --constraint=g6e.4xlarge
+#SBATCH --partition={GPU_PARTITION}
+#SBATCH --constraint={GPU_CONSTRAINT}
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/3a_cellpose_gpu_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/3a_cellpose_gpu_{EXP_N}_{REG_N}.out
 
@@ -42,6 +42,11 @@ fi
 cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 
 # --- Compute ---
+# Tiling and any other method kwargs script_aws.py chose. Empty means the whole
+# region goes to the GPU in one model.eval call. Deliberately unquoted below so
+# it word-splits into separate arguments (and to nothing when empty).
+SEG_EXTRA_ARGS="{SEG_EXTRA_ARGS}"
+
 echo -e "\nRunning Cellpose segmentation (backend only) on region {REGION} of experiment {EXPERIMENT}\n"
 # Raw boundaries land at the region-scoped segmentation dir —
 # resolved from --segmentation_store + --prefix_name (no --input_dir/--output_dir).
@@ -55,13 +60,17 @@ pixi run --frozen -e cellpose \
     --prefix_name cellpose_cell \
     --root_path {ROOT_DIR} \
     --segmentation_store {SEGMENTATION_DIR} \
+    {TISSUE_MASK_ARG}\
+    --seg_mode={SEG_MODE} \
+    --model={CELLPOSE_MODEL} \
     --scale=4 \
     --image_ext=.decon.tif \
     --nuc_stain_name=DAPI \
     --cyto_stain_name=PolyT \
     --flow_threshold=0 \
     --cellprob_threshold=-2 \
-    --tile_norm_blocksize=2960
+    --tile_norm_blocksize=2960 \
+    $SEG_EXTRA_ARGS
 
 # --- Sync to S3 ---
 echo -e "\nSyncing cellpose segmentation to S3...\n"

@@ -1,6 +1,7 @@
 #!/bin/bash
 # FILENAME: 1_start.sh
-# DESCRIPTION: Ingest region into spatialdata zarr store, run transcript QC and hexagon clustering.
+# DESCRIPTION: Ingest region into spatialdata zarr store, build the tissue mask,
+#              and run transcript QC.
 
 #SBATCH -J start_{EXP_N}_{REG_N}
 #SBATCH --partition=cpu-ondemand
@@ -62,6 +63,15 @@ pixi run --frozen -e preprocessing \
     {EXPERIMENT} \
     {REGION}
 
+echo -e "\nComputing tissue mask - {REG_N} - {EXP_N}\n"
+pixi run --frozen -e preprocessing \
+    python -m spida.P.cli --config {CONFIG_PATH} \
+    tissue-mask \
+    {EXPERIMENT} \
+    {REGION} \
+    --rho_min {TISSUE_RHO_MIN} \
+    --plot
+
 echo -e "\nRunning Transcript QC\n"
 pixi run --frozen -e preprocessing \
     spida-P --config {CONFIG_PATH} \
@@ -69,16 +79,6 @@ pixi run --frozen -e preprocessing \
     {EXPERIMENT} \
     {REGION} \
     --hex_size 30 \
-    --min_transcripts 100
-
-echo -e "\nClustering Hexagons\n"
-pixi run --frozen -e preprocessing \
-    spida-P --config {CONFIG_PATH} \
-    cluster-hexes \
-    {EXPERIMENT} \
-    {REGION} \
-    --hex_size 30 \
-    --leiden_resolution 0.6 \
     --min_transcripts 100
 
 echo -e "\nGenerating Load QC Figures\n"
@@ -104,5 +104,7 @@ pixi run --frozen -e preprocessing \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
+aws s3 cp {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/tissue_mask.tif \
+    s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/tissue_mask.tif --only-show-errors
 aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
 aws s3 sync {ROOT_DIR}/images/ s3://{S3_BUCKET}/spida_outputs/images/ --only-show-errors

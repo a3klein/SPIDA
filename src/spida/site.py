@@ -83,23 +83,33 @@ def generate_load_qc_figs(
     tz_qc_key = "transcript_qc_shapes"
     tz_qc_table_key = "adata_hex_s30.0_o0.0_clustered"
 
-    try:
-        grid=sdata[tz_qc_key].copy()
-    except KeyError:
-        logger.info(f"Key {tz_qc_key} not found in sdata for experiment {exp_name} region {reg_name}. Skipping QC plots.")
-        tz_qc_grid_key = "adata_hex_s30.0_o0.0"
-        adata_hex = sdata[tz_qc_grid_key].copy()
+    # Both inputs are optional: transcript_qc_shapes comes from `transcript-qc`
+    # and the clustered hex table only from `cluster-hexes`. A region processed
+    # without either still gets the rest of its figures.
+    grid = sdata[tz_qc_key].copy() if tz_qc_key in sdata.shapes else None
+    if grid is None:
+        logger.info("Key %s not found for %s / %s; skipping the transcript QC plot.",
+                    tz_qc_key, exp_name, reg_name)
+
+    adata_hex = None
+    if tz_qc_table_key in sdata.tables:
+        adata_hex = sdata[tz_qc_table_key].copy()
         adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)
+    else:
+        # plot_tz_hex_qc needs leiden / umap / leiden_colors, so the unclustered
+        # hex table is not a usable substitute.
+        logger.info("Key %s not found for %s / %s; skipping the hex cluster plot "
+                    "(run `cluster-hexes` to get it).", tz_qc_table_key, exp_name, reg_name)
 
     cmap="RdYlGn_r"
-    adata_hex = sdata[tz_qc_table_key].copy()
-    adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)
 
     plot_load_images(sdata, image_key, img_dir)
     if plot_decon:
         plot_decon_images(sdata, decon_image_key, img_dir)
-    plot_tz_qc(grid, img_dir, cmap=cmap)
-    plot_tz_hex_qc(adata_hex, img_dir)
+    if grid is not None:
+        plot_tz_qc(grid, img_dir, cmap=cmap)
+    if adata_hex is not None:
+        plot_tz_hex_qc(adata_hex, img_dir)
 
 @cli.command(cls=RichCommand, help="Generate QC figures for a given segmentation for the SPIDA website.")
 @click.argument("exp_name", type=str)

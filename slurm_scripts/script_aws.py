@@ -12,20 +12,26 @@ provides ROOT_DIR, SEGMENTATION_DIR, and CUTOFFS_PATH.  It is also passed
 verbatim as CONFIG_PATH so SPIDA commands receive --config at runtime.
 
 Two template variants are available, selected with --template_type:
-  rsync  (default) — transfers data via rsync over the S3 FUSE mount at /s3-data/
-                     uses slurm_scripts/aws_templates/
-  s3               — transfers data via 'aws s3 sync' using the EC2 instance IAM role
-                     uses slurm_scripts/aws_s3_templates/
+  s3     (default) — transfers data via 'aws s3 sync' using the EC2 instance IAM role
+                     uses aws_templates/aws_s3_template/
+  rsync            — transfers data via rsync over the S3 FUSE mount at /s3-data/
+                     uses aws_templates/aws_rsync_template/
+
+Step 3a segmentation is configured here rather than left to the CellposeConfig
+defaults, so a generated script records the run it performed. By default it tiles
+the region ('auto' grid) and gates inference to the tissue mask that step 1
+builds; --gpu_tile_size none --no_tissue_mask restores the older whole-region,
+ungated behaviour.
 
 Usage examples
 --------------
-# Single region (rsync, default):
+# Single region (aws s3 sync, default):
 python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
     --brain_region CTX --region_name region_UCI-5224 --lab salk
 
-# Single region (aws s3 sync):
+# Single region over the S3 FUSE mount:
 python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
-    --brain_region CTX --region_name region_UCI-5224 --lab salk --template_type s3
+    --brain_region CTX --region_name region_UCI-5224 --lab salk --template_type rsync
 
 # All regions in an experiment (discovers region_* dirs from a local path):
 python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
@@ -35,6 +41,13 @@ python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
 
 # Re-run only steps 3 and 4:
 python script_aws.py ... --steps 3,4
+
+# Untiled whole-region segmentation (the pre-tiling behaviour):
+python script_aws.py ... --gpu_tile_size none --no_tissue_mask
+
+# True-3D segmentation on whichever L40S pool has capacity:
+python script_aws.py ... --seg_mode 3d_true \\
+    --gpu_partition gpu-l40s-ondemand,gpu-l40s-spot
 """
 
 import os
@@ -187,7 +200,8 @@ def _parse_list(arg: str) -> list:
     default="all",
     show_default=True,
     help="Comma-separated list of steps to enable in chain.sh (1-4). "
-         "Default 'all' enables every step.",
+         "Default 'all' enables every step. Step 1 builds the tissue mask that "
+         "step 3a's tiling and gating need.",
 )
 @click.option(
     "--force_2d_segmentation",
@@ -196,6 +210,71 @@ def _parse_list(arg: str) -> list:
     help="Use the middle z-slice (_z3.decon.tif) for cellpose input instead of the full "
          "deconvolved image (.decon.tif). Use for 3D experiments (PSC-01, MTC_REPEAT) "
          "where segmentation should stay consistent with 2D brain regions.",
+)
+@click.option(
+    "--seg_mode",
+    type=click.Choice(["2d", "3d_stitched", "3d_true"], case_sensitive=False),
+    default="3d_stitched",
+    show_default=True,
+    help="Cellpose segmentation mode for step 3a. '2d' segments one z-slice; "
+         "'3d_stitched' segments each slice and links them by IoU; "
+         "'3d_true' uses joint 3D flows and anisotropy.",
+)
+@click.option(
+    "--cellpose_model",
+    type=click.Choice(["cpsam", "cpsam_v2", "cpdino", "cpdino-vitb"], case_sensitive=False),
+    default="cpsam",
+    show_default=True,
+    help="Cellpose model for step 3a. Passed explicitly so the run is reproducible "
+         "from the generated script rather than from the config default.",
+)
+@click.option(
+    "--gpu_tile_size",
+    default="auto",
+    show_default=True,
+    help="Outer GPU tile edge for step 3a, in full-resolution pixels: 'auto' searches "
+         "for the grid sending the least area to the GPU (requires the step-1 tissue "
+         "mask), an int gives a square tile, '<y>x<x>' a non-square one, and 'none' "
+         "disables tiling so the whole region goes to the GPU in one model.eval call.",
+)
+@click.option(
+    "--gpu_tile_overlap",
+    type=int,
+    default=500,
+    show_default=True,
+    help="Outer-tile overlap in full-resolution pixels. Only used when tiling is on. "
+         "Too small an overlap loses cells that straddle a tile edge.",
+)
+@click.option(
+    "--tissue_mask/--no_tissue_mask",
+    "use_tissue_mask",
+    default=True,
+    show_default=True,
+    help="Gate step 3a to the step-1 tissue mask, passed as an explicit path so a "
+         "missing mask fails the job instead of silently segmenting the full extent. "
+         "--no_tissue_mask segments ungated (and is incompatible with --gpu_tile_size=auto).",
+)
+@click.option(
+    "--tissue_rho_min",
+    type=float,
+    default=5.0,
+    show_default=True,
+    help="Min transcript density (tx/100 um^2) for step 1 to call a pixel tissue.",
+)
+@click.option(
+    "--gpu_partition",
+    default="gpu-l40s-ondemand",
+    show_default=True,
+    help="SLURM partition(s) for the GPU steps. Accepts a comma-separated list "
+         "(e.g. 'gpu-l40s-ondemand,gpu-l40s-spot') to survive one pool running out "
+         "of capacity -- note spot nodes can be preempted mid-run.",
+)
+@click.option(
+    "--gpu_constraint",
+    default="g6e.4xlarge|g6e.16xlarge",
+    show_default=True,
+    help="SLURM --constraint for the GPU steps. '|' means OR, so the job takes "
+         "whichever instance type has capacity.",
 )
 def config_templates_aws(
     experiment_name: str,
@@ -212,6 +291,14 @@ def config_templates_aws(
     reg_n: str | None,
     steps: list,
     force_2d_segmentation: bool,
+    seg_mode: str,
+    cellpose_model: str,
+    gpu_tile_size: str,
+    gpu_tile_overlap: int,
+    use_tissue_mask: bool,
+    tissue_rho_min: float,
+    gpu_partition: str,
+    gpu_constraint: str,
 ):
     """Generate AWS Slurm job scripts for EXPERIMENT_NAME."""
 
@@ -304,8 +391,9 @@ def config_templates_aws(
     # Step flags
     # ------------------------------------------------------------------
     if len(steps) == 1 and steps[0] == "all":
-        step1, step2, step3, step4 = "true", "true", "true", "true"
+        step1 = step2 = step3 = step4 = "true"
     else:
+        steps = [x.strip().lower() for x in steps]
         step1 = "true" if "1" in steps else "false"
         step2 = "true" if "2" in steps else "false"
         step3 = "true" if "3" in steps else "false"
@@ -317,6 +405,38 @@ def config_templates_aws(
     image_ext = "_z3.decon.tif" if force_2d_segmentation else ".decon.tif"
     if force_2d_segmentation:
         click.echo("  force_2d_segmentation=True → cellpose will use _z3.decon.tif")
+
+    # ------------------------------------------------------------------
+    # Segmentation wiring for step 3a
+    # ------------------------------------------------------------------
+    # 'auto' optimises the tile grid against the tissue mask, so it cannot run
+    # ungated. Catch that here rather than letting the GPU job start and die.
+    tiling_off = str(gpu_tile_size).lower() in ("", "none", "off", "false")
+    if not tiling_off and str(gpu_tile_size).lower() == "auto" and not use_tissue_mask:
+        click.echo(
+            "ERROR: --gpu_tile_size=auto needs a tissue mask to optimise the grid "
+            "against. Either drop --no_tissue_mask, or give an explicit tile size.",
+            err=True,
+        )
+        sys.exit(1)
+
+    seg_extra = []
+    if not tiling_off:
+        seg_extra.append(f"--gpu_tile_size={gpu_tile_size}")
+        seg_extra.append(f"--gpu_tile_overlap={gpu_tile_overlap}")
+    seg_extra_args = " ".join(seg_extra)
+
+    if use_tissue_mask and step1 == "false":
+        click.echo(
+            "  WARNING: step 1 builds tissue_mask.tif but is disabled — 3a will fail "
+            "unless the mask already exists in S3 for this region.",
+        )
+
+    click.echo(
+        f"  segmentation: seg_mode={seg_mode} model={cellpose_model} "
+        f"tiling={'off' if tiling_off else gpu_tile_size} "
+        f"tissue_mask={'on' if use_tissue_mask else 'off'}"
+    )
 
     # ------------------------------------------------------------------
     # Process each region
@@ -335,6 +455,16 @@ def config_templates_aws(
             click.echo(f"  Region {current_region} → {current_reg_n}")
 
         click.echo(f"\nConfiguring {exp_n} / {current_reg_n}  ({current_region})")
+
+        # Explicit path rather than the backend's auto-discovery, so a region whose
+        # mask was never built fails the job instead of quietly segmenting the full
+        # extent -- a silent difference that is hard to spot downstream. Trailing
+        # space: the template appends a line continuation right after it.
+        tissue_mask_arg = (
+            f"--tissue_mask_path {ROOT_DIR}/{experiment_name}/out/{current_region}"
+            "/images/tissue_mask.tif "
+            if use_tissue_mask else ""
+        )
 
         # Create job output directory
         job_dir = output_dir / brain_region / exp_n / current_reg_n
@@ -368,6 +498,13 @@ def config_templates_aws(
                     STEP_3=step3,
                     STEP_4=step4,
                     IMAGE_EXT=image_ext,
+                    SEG_MODE=seg_mode,
+                    CELLPOSE_MODEL=cellpose_model,
+                    SEG_EXTRA_ARGS=seg_extra_args,
+                    TISSUE_MASK_ARG=tissue_mask_arg,
+                    TISSUE_RHO_MIN=tissue_rho_min,
+                    GPU_PARTITION=gpu_partition,
+                    GPU_CONSTRAINT=gpu_constraint,
                 )
             except KeyError as e:
                 click.echo(

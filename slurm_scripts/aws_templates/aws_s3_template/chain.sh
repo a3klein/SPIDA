@@ -1,8 +1,15 @@
 #!/bin/bash
 # FILENAME: chain.sh
 # DESCRIPTION: Submit the processing chain for experiment {EXPERIMENT}, region {REGION}.
-# Steps 1, 2a, and 2b are submitted immediately (no inter-dependencies).
-# Step 3a waits on 2a and 2b; step 3b waits on 1 and 3a; step 4 waits on 3b.
+#
+# Dependency graph (edges only apply when both ends are enabled):
+#   1  ingest / tissue mask / transcript QC ─┬─> 3a cellpose GPU ─> 3b ─> 4 proseg
+#   2a decon DAPI  ──────────────────────────┤
+#   2b decon PolyT ──────────────────────────┘
+#
+# 3a waits on step 1 because that is where tissue_mask.tif is built, which
+# tissue-gated segmentation and --gpu_tile_size=auto both need. 3b waits on
+# step 1 as well, for the zarr store.
 
 # Fail fast: if any sbatch returns non-zero, abort before submitting downstream steps.
 set -euo pipefail
@@ -14,6 +21,20 @@ DO_1={STEP_1}
 DO_2={STEP_2}
 DO_3={STEP_3}
 DO_4={STEP_4}
+
+# Join the job IDs that actually got submitted into an --dependency=afterok arg.
+# Skipped steps contribute nothing, so re-running a subset never waits on a job
+# that was never queued.
+dep_arg() {{
+    local ids=""
+    for jid in "$@"; do
+        [[ -n "$jid" ]] && ids="${{ids}}:${{jid}}"
+    done
+    [[ -n "$ids" ]] && echo "--dependency=afterok${{ids}}"
+    return 0
+}}
+
+jid1="" jid2a="" jid2b="" jid3a="" jid3b=""
 
 if [[ $DO_1 == "true" ]]; then
     echo "Step 1: Submitting ingest / transcript QC..."
@@ -35,24 +56,12 @@ fi
 if [[ $DO_3 == "true" ]]; then
     echo "Step 3: Submitting Cellpose (GPU + CPU)..."
 
-    # 3a: cellpose GPU — depends on decon steps if they ran
-    if [[ -v jid2a ]] && [[ -v jid2b ]]; then
-        jid3a=$(sbatch --dependency=afterok:$jid2a:$jid2b 3a_cellpose_gpu.sh | awk '{{print $4}}')
-    else
-        jid3a=$(sbatch 3a_cellpose_gpu.sh | awk '{{print $4}}')
-    fi
+    # 3a needs the deconvolved images (step 2) and the tissue mask (step 1).
+    jid3a=$(sbatch $(dep_arg "$jid2a" "$jid2b" "$jid1") 3a_cellpose_gpu.sh | awk '{{print $4}}')
     echo "  cellpose GPU job ID: $jid3a"
 
-    # 3b: cellpose CPU — depends on zarr store (step 1) AND cellpose GPU (step 3a)
-    if [[ -v jid1 ]] && [[ -v jid3a ]]; then
-        jid3b=$(sbatch --dependency=afterok:$jid1:$jid3a 3b_cellpose_cpu.sh | awk '{{print $4}}')
-    elif [[ -v jid1 ]]; then
-        jid3b=$(sbatch --dependency=afterok:$jid1 3b_cellpose_cpu.sh | awk '{{print $4}}')
-    elif [[ -v jid3a ]]; then
-        jid3b=$(sbatch --dependency=afterok:$jid3a 3b_cellpose_cpu.sh | awk '{{print $4}}')
-    else
-        jid3b=$(sbatch 3b_cellpose_cpu.sh | awk '{{print $4}}')
-    fi
+    # 3b needs the zarr store (step 1) and the raw boundaries (step 3a).
+    jid3b=$(sbatch $(dep_arg "$jid1" "$jid3a") 3b_cellpose_cpu.sh | awk '{{print $4}}')
     echo "  cellpose CPU job ID: $jid3b"
 else
     echo "Step 3: Skipping."
@@ -60,11 +69,7 @@ fi
 
 if [[ $DO_4 == "true" ]]; then
     echo "Step 4: Submitting ProSeg..."
-    if [[ -v jid3b ]]; then
-        jid4=$(sbatch --dependency=afterok:$jid3b 4_proseg.sh | awk '{{print $4}}')
-    else
-        jid4=$(sbatch 4_proseg.sh | awk '{{print $4}}')
-    fi
+    jid4=$(sbatch $(dep_arg "$jid3b") 4_proseg.sh | awk '{{print $4}}')
     echo "  proseg job ID: $jid4"
 else
     echo "Step 4: Skipping."
