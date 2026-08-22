@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,8 +41,8 @@ SPIDA_ENV_VAR = "CELLPOSE_MODEL_PATH"
 
 #: Models SPIDA knows about, with the notes that should inform picking one.
 KNOWN_MODELS: dict[str, str] = {
-    "cpsam": "Cellpose-SAM (ViT-L). SPIDA production default.",
-    "cpsam_v2": "Improved SAM, better on low contrast.",
+    "cpsam": "Cellpose-SAM (ViT-L).",
+    "cpsam_v2": "Improved SAM.",
     "cpdino": "DINOv3 ViT-L backbone. Needs the `dinov3` package.",
     "cpdino-vitb": "DINOv3 ViT-B backbone. ~2.2x faster and lowest VRAM. Needs `dinov3`.",
 }
@@ -169,6 +170,35 @@ def read_native_xy_um(path: str | Path) -> float:
     return 1.0 / px_per_um
 
 
+#: ``<tile_y>x<tile_x>`` — the non-square form of ``gpu_tile_size``.
+_GPU_TILE_RE = re.compile(r"^\s*(\d+)\s*[x×]\s*(\d+)\s*$", re.IGNORECASE)
+
+def parse_gpu_tile_size(value: int | str | None):
+    """Normalise ``gpu_tile_size`` to ``None`` | ``"auto"`` | ``(tile_y, tile_x)``.
+
+    Accepts an int (square tile), ``"<y>x<x>"`` (non-square) or ``"auto"``
+    (optimise against the tissue mask). ``None`` means the untiled single-call
+    path — today's behaviour.
+    """
+    if value is None or value == "auto":
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return (value, value)
+    text = str(value).strip()
+    if text.isdigit():
+        # Programmatic callers bypass BackendConfig's str->int coercion.
+        return (int(text), int(text))
+    match = _GPU_TILE_RE.match(text)
+    if match is None:
+        raise ConfigError(
+            f"gpu_tile_size={value!r} is not understood. Use an int for a square "
+            f"tile (e.g. 9000), '<y>x<x>' for a non-square one (e.g. "
+            f"'12000x9500'), or 'auto' to optimise the grid against the tissue "
+            f"mask. Omit it entirely for the untiled single-call path."
+        )
+    return (int(match.group(1)), int(match.group(2)))
+
+
 def derive_anisotropy(micron_per_z: float, native_xy_um: float, scale: int) -> float:
     """z:xy voxel-spacing ratio *as cellpose sees it*, i.e. after xy downsampling.
 
@@ -214,8 +244,9 @@ class CellposeConfig(BackendConfig):
     tile_norm_blocksize: int = 0
     diameter: float | None = None
     cp_min_size: int = 100
-    batch_size: int = 8
+    batch_size: int = 32
     stitch_threshold: float = 0.2
+    flow3d_smooth_z: float = 2.0
 
     # --- inputs -----------------------------------------------------------
     nuc_stain_name: str = "DAPI"
@@ -226,6 +257,16 @@ class CellposeConfig(BackendConfig):
     apply_clahe: bool = False
     clahe_clip_limit: float = 20.0
     clahe_tile_grid_size: int = 8
+
+    # --- GPU tiling (whole-mosaic segmentation) ---------------------------
+    gpu_tile_size: int | str | None = None
+    gpu_tile_overlap: int = 500
+    gpu_tile_iou: float = 0.15
+    gpu_tile_containment: float = 0.5
+    gpu_merge: Literal["union", "largest"] = "union"
+    n_gpu_threads: int = 2
+    n_prep_workers: int | None = None
+    n_post_workers: int | None = None
 
     # --- polygon post-processing ------------------------------------------
     min_size: int = 100
@@ -247,14 +288,13 @@ class CellposeConfig(BackendConfig):
         "seg_mode": ("2d", "3d_stitched", "3d_true"),
         "z_reduce": ("middle", "mip"),
         "model": tuple(KNOWN_MODELS),
+        "gpu_merge": ("union", "largest"),
     }
 
     HELP: ClassVar[dict[str, str]] = {
-        "seg_mode": "2d = one z-slice, emitted as a single-plane mask (the 2D->3D "
-                    "replication happens downstream in ingest_polygons); "
-                    "3d_stitched = 2D "
-                    "per slice linked by stitch_threshold (SPIDA production "
-                    "default); 3d_true = joint 3D flows using anisotropy.",
+        "seg_mode": "2d = one z-slice, emitted as a single-plane mask; "
+                    "3d_stitched = 2D per slice linked by stitch_threshold; "
+                    "3d_true = joint 3D flows using anisotropy.",
         "z_reduce": "For seg_mode=2d only: take the middle z-slice, or a "
                     "maximum-intensity projection over z.",
         "model": "Cellpose model NAME (not a path). "
@@ -264,45 +304,56 @@ class CellposeConfig(BackendConfig):
                      "~/.cellpose/models.",
         "use_bfloat16": "Half-precision inference. ~1.85x faster at mean "
                         "per-cell IoU 0.985 vs fp32.",
-        "scale": "xy downsample factor applied before inference. Coupled to "
-                 "anisotropy.",
+        "scale": "xy downsample factor applied before inference. Coupled to anisotropy.",
         "anisotropy": "seg_mode=3d_true only. 'auto' derives z_step / "
                       "(native_xy * scale) from the region's "
-                      "micron_to_mosaic transform, which is the physically "
-                      "correct value. Lowering it is measurably all cost and "
-                      "no benefit.",
+                      "micron_to_mosaic transform, which is the physically correct value.",
         "micron_to_mosaic_path": (
-            f"Explicit path to the micron->mosaic transform used to derive "
-            f"anisotropy. Default None auto-discovers "
-            f"<images_dir>/{M2M_FILENAME}; set this only when the transform "
+            f"Explicit path to the micron-to-mosaic transform used to derive anisotropy. "
+            f"Default None auto-discovers <images_dir>/{M2M_FILENAME}; set this only when the transform "
             f"lives elsewhere. Accepts a file or a containing directory."
         ),
         "micron_per_z": "Micron thickness of one z-step.",
         "n_z_planes": "Number of z-planes in the input stack.",
+        "flow_threshold": "Cellpose's intenral flow threshold.",
+        "cellprob_threshold": "Cellpose's internal cell probability threshold.",
         "tile_norm_blocksize": "Cellpose normalisation block size (0 = global).",
-        "diameter": "Expected cell diameter in pixels; None lets cellpose decide.",
-        "cp_min_size": "Cellpose's INTERNAL minimum mask size, in downsampled "
-                       "pixels. Distinct from --min_size.",
-        "batch_size": "Measured to have no effect on speed or output; exposed "
-                      "for reproducibility only.",
-        "stitch_threshold": "seg_mode=3d_stitched only: IoU for linking masks "
-                            "across adjacent z-slices.",
+        "diameter": "Expected cell diameter in pixels; Cellpose internal parameter.",
+        "cp_min_size": "Cellpose's internal minimum mask size, in downsampled pixels. Distinct from --min_size.",
+        "batch_size": "Internal patches cellpose pushes through the network per forward pass.",
+        "stitch_threshold": "seg_mode=3d_stitched only: IoU for linking masks across adjacent z-slices.",
+        "flow3d_smooth_z": "seg_mode=3d_true only: Gaussian sigma applied to the 3D flow field along Z before mask reconstruction"
+            "(cellpose `flow3D_smooth`). XY smoothing is deliberately not exposed.",
         "cyto_stain_name": "Second channel (e.g. PolyT). Cheap to add (~1% GPU) "
                            "but changes the target from nucleus to whole cell.",
+        "image_ext": "File extension of the input images (i.e. `.tif` or `.decon.tif`).",
         "apply_clahe": "Contrast-limited adaptive histogram equalisation before "
                        "inference.",
-        "min_size": "Minimum POLYGON area, in full-resolution pixels squared, "
-                    "applied after upscaling. Distinct from --cp_min_size.",
-        "min_z": "seg_mode=3d_* only: drop cells spanning fewer than this many "
-                 "z-planes.",
-        "poly_tile_size": "Inner tiling for parallel polygon extraction. This "
-                          "is NOT the GPU tiling: it splits one label array "
-                          "whose IDs are already globally unique, so fragments "
-                          "re-merge by ID.",
+        "gpu_tile_size": (
+            "Outer (GPU) tile edge in full-resolution pixels. None (default) "
+            "runs the whole region in one model.eval call. "
+            "An int gives a square tile; '<y>x<x>' a non-square one; "
+            "'auto' searches the (tile_y, tile_x) surface for the grid that "
+            "sends the least area to the GPU, which needs a tissue mask. Each "
+            "tile is an independent model.eval, so cells crossing a tile edge "
+            "are stitched together."
+        ),
+        "gpu_tile_overlap": "Outer-tile overlap in full-resolution pixels. Too small overlap might miss cells.",
+        "gpu_tile_iou": "IoU for declaring two tiles' fragments the same cell. ",
+        "gpu_tile_containment": "Intersection as a fraction of the smaller fragment's area to stitch cells. 0 disables this.",
+        "gpu_merge": "How to resolve a merged cell's overlapping fragments on a shared z-plane."
+                    " `union` dissolves them, `largest` keeps the biggest.",
+        "n_gpu_threads": "Concurrent model.eval callers sharing 1 loaded model. More helpful for multi-GPU systems than 1 single GPU.",
+        "n_prep_workers": "Threads reading and downscaling tile windows ahead of the GPU.",
+        "n_post_workers": "Threads polygonising finished tiles behind the GPU. " 
+                    "n_gpu_threads, n_prep_workers, and n_post_workers all compete for the job's CPUs.",
+        "min_size": "Minimum polygon area, in full-resolution pixels squared, applied after upscaling. Distinct from --cp_min_size.",
+        "min_z": "seg_mode=3d_* only: drop cells spanning fewer than this many z-planes.",
+        "poly_tile_size": "Inner tiling for parallel polygon extraction. This is not the GPU tiling: it splits one label array "
+                          "whose IDs are already globally unique, so fragments re-merge by ID.",
         "poly_tile_overlap": "Overlap for the inner polygon tiling.",
         "poly_tolerance": "Polygon simplification tolerance, in pixels.",
-        "n_poly_workers": "Processes for polygon extraction. None = all "
-                          "available CPUs.",
+        "n_poly_workers": "Processes for polygon extraction. None = all available CPUs.",
     }
 
     # ------------------------------------------------------------------
@@ -384,12 +435,107 @@ class CellposeConfig(BackendConfig):
                 "anisotropy='auto' derivation under seg_mode='3d_true'.",
                 self.micron_to_mosaic_path,
             )
+        # --- GPU tiling ---------------------------------------------------
+        gpu_tile = parse_gpu_tile_size(self.gpu_tile_size)   # raises on garbage
+        if gpu_tile is not None:
+            if self.gpu_tile_overlap < 0:
+                raise ConfigError(
+                    f"gpu_tile_overlap must be >= 0, got {self.gpu_tile_overlap}."
+                )
+            if isinstance(gpu_tile, tuple):
+                if min(gpu_tile) <= self.gpu_tile_overlap:
+                    raise ConfigError(
+                        f"gpu_tile_overlap ({self.gpu_tile_overlap}) must be "
+                        f"smaller than every axis of gpu_tile_size {gpu_tile}; "
+                        f"otherwise the grid never advances."
+                    )
+                if min(gpu_tile) < self.min_gpu_tile():
+                    raise ConfigError(
+                        f"gpu_tile_size {gpu_tile} is below the floor of "
+                        f"{self.min_gpu_tile()} px "
+                        f"(poly_tile_size={self.poly_tile_size} x "
+                        f"scale={self.scale}): the tile would downscale to less "
+                        f"than one inner polygon tile. Raise gpu_tile_size, or "
+                        f"lower poly_tile_size if the small tile is deliberate."
+                    )
+            if not 0.0 < self.gpu_tile_iou < 1.0:
+                raise ConfigError(
+                    f"gpu_tile_iou must be in (0, 1), got {self.gpu_tile_iou}."
+                )
+            # 0 is allowed here, unlike gpu_tile_iou: it means "disabled".
+            if not 0.0 <= self.gpu_tile_containment < 1.0:
+                raise ConfigError(
+                    f"gpu_tile_containment must be in [0, 1), got "
+                    f"{self.gpu_tile_containment}."
+                )
+            if self.n_gpu_threads < 1:
+                raise ConfigError(
+                    f"n_gpu_threads must be >= 1, got {self.n_gpu_threads}."
+                )
+            for name in ("n_prep_workers", "n_post_workers"):
+                value = getattr(self, name)
+                if value is not None and value < 1:
+                    raise ConfigError(f"{name} must be >= 1 or None, got {value}.")
+            if self.apply_clahe:
+                raise ConfigError(
+                    "apply_clahe cannot be combined with gpu_tile_size: CLAHE is "
+                    "a global contrast transform, and applying it per tile would "
+                    "make adjacent tiles incomparable at their shared edge."
+                )
+        else:
+            # Inert-parameter warning, same treatment as micron_to_mosaic_path.
+            defaults = type(self)
+            for name in ("gpu_tile_overlap", "gpu_tile_iou", "gpu_tile_containment",
+                         "gpu_merge",
+                         "n_gpu_threads", "n_prep_workers", "n_post_workers"):
+                if getattr(self, name) != getattr(defaults, name):
+                    logger.warning(
+                        "%s=%s is set but unused: it only applies when "
+                        "gpu_tile_size is given (the tiled path).",
+                        name, getattr(self, name),
+                    )
+
+        # Mode-specific, NOT tiled-specific: keep it outside the tiled branch.
+        if self.flow3d_smooth_z < 0:
+            raise ConfigError(
+                f"flow3d_smooth_z must be >= 0 (0 disables), got "
+                f"{self.flow3d_smooth_z}."
+            )
+        # Warn only if EXPLICITLY set for a mode that cannot use it. Comparing
+        # against the class default matters now that the default is non-zero:
+        # otherwise every 3d_stitched and 2d run warns about a value it never
+        # chose. Same treatment the tiled-only parameters get below.
+        if (self.seg_mode != "3d_true"
+                and self.flow3d_smooth_z != type(self).flow3d_smooth_z):
+            logger.warning(
+                "flow3d_smooth_z=%s is ignored for seg_mode=%r: cellpose applies "
+                "flow3D_smooth only on the do_3D path. 3d_stitched has no ring "
+                "artifact to fix.", self.flow3d_smooth_z, self.seg_mode,
+            )
+
         if self.seg_mode == "2d" and self.min_z > 1:
             logger.info(
                 "seg_mode=2d produces a single-plane mask, so the min_z=%d filter "
                 "does not apply; 2D->3D replication across %d planes happens "
                 "downstream in ingest_polygons.", self.min_z, self.n_z_planes,
             )
+
+    # ------------------------------------------------------------------
+    def min_gpu_tile(self) -> int:
+        """
+        Smallest sane outer tile edge, in full-resolution pixels.
+        """
+        return self.poly_tile_size * self.scale
+
+    # ------------------------------------------------------------------
+    def resolved_gpu_tile(self):
+        """``None`` | ``"auto"`` | ``(tile_y, tile_x)``.
+
+        ``None`` selects the single-call path; anything else selects the tiled
+        one. Validated in :meth:`validate`, so this cannot raise here for a
+        config that was built through ``from_kwargs``.
+        """
+        return parse_gpu_tile_size(self.gpu_tile_size)
 
     # ------------------------------------------------------------------
     def resolved_anisotropy(self, images_dir: str | Path) -> float | None:

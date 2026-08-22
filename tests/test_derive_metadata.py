@@ -14,7 +14,7 @@ import geopandas as gpd
 import shapely.geometry as geom
 import pytest
 
-from spida.S.segmentation.segmentation_utils import derive_entity_metadata
+from spida.S.segmentation.postprocess import derive_entity_metadata
 
 DATA = Path(__file__).parent / "data" / "segmentation_utils"
 BOUNDARIES = DATA / "cellpose_micron_space.parquet"

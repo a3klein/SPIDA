@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import itertools
 import multiprocessing as mp
-from functools import partial
+from functools import partial, reduce
 
 import numpy as np
 import geopandas as gpd
@@ -27,6 +27,18 @@ logger = logging.getLogger(__package__)
 
 # default worker count; callers may override (e.g. tests set masks.max_cpu = 1)
 max_cpu = mp.cpu_count()
+
+
+def _contours_to_geometry(contours):
+    """
+    Combine every contour of ONE label on ONE z-plane into a single geometry.
+    Returns None when no contour has enough points to form a polygon.
+    """
+    polys = [Polygon(c) for c in contours if len(c) > 3]
+    if not polys:
+        return None
+    geom = reduce(lambda a, b: a.symmetric_difference(b), polys)
+    return None if geom.is_empty else geom
 
 
 def convert_mask(mask_id, masks, tolerance: float = 0.5):
@@ -50,14 +62,12 @@ def convert_mask(mask_id, masks, tolerance: float = 0.5):
         padded_mask = np.pad(mask[m], 1, mode="constant")
         contours = ski.measure.find_contours(padded_mask, 0.5)
         contours = [contour - 1 for contour in contours]
-        if len(contours[0]) > 3:
-            polygons.append(
-                Polygon(contours[0]).simplify(
-                    tolerance=tolerance, preserve_topology=True
-                )
-            )
-            cells.append(mask_id)
-            layers.append(m)
+        geom = _contours_to_geometry(contours)
+        if geom is None:
+            continue
+        polygons.append(geom.simplify(tolerance=tolerance, preserve_topology=True))
+        cells.append(mask_id)
+        layers.append(m)
     return polygons, cells, layers
 
 
@@ -97,30 +107,38 @@ def masks_to_geodataframe(
     tolerance: float = 0.5,
     tile_size: int | tuple = 1000,
     overlap: int | tuple = 200,
+    n_workers: int | None = None,
 ) -> gpd.GeoDataFrame:
     """Convert a full label mask (2D or 3D) to a polygon GeoDataFrame.
 
-    Tiles the mask (with overlap), vectorizes each tile in parallel, and merges
-    tile-local polygons back into global coordinates.
+    Tiles the mask (with overlap), vectorizes each tile, and merges tile-local
+    polygons back into global coordinates.
+
+    ``n_workers`` controls the process pool; ``None`` uses the module-level
+    ``max_cpu``. Pass **1** to run serially and skip ``mp.Pool`` entirely, 
+    required when calling this from a worker.
     """
+    workers = max_cpu if n_workers is None else max(1, int(n_workers))
     tiles, tile_info = tile_image_with_overlap(
         masks, tile_size=tile_size, overlap=overlap
     )
-    logger.info(f"Generated {len(tiles)} tiles.")
+    # Inner polygon tiling, once per OUTER tile -- 46+ near-identical lines
+    # on a real mosaic, so debug.
+    logger.debug("Generated %d inner polygon tiles.", len(tiles))
 
     parallel_func = partial(_masks_to_polygons, tolerance=tolerance)
-    with mp.Pool(max_cpu) as pool:
-        geo_list = list(tqdm(pool.map(parallel_func, tiles), total=len(tiles)))
+    if workers == 1:
+        geo_list = [parallel_func(t) for t in tiles]
+    else:
+        with mp.Pool(workers) as pool:
+            geo_list = list(tqdm(pool.map(parallel_func, tiles), total=len(tiles)))
 
     merged_polygons = merge_tile_polygons(tile_info, geo_list, geom_col="Geometry")
 
     # Dissolve each cell's per-tile fragments into one polygon per (cell, z-plane).
-    # Tiling is an internal implementation detail (for parallelism/memory), so the
-    # returned polygons must not leak tile fragments. Dissolving by ["ID", "z"]
-    # handles both cases: in 2D `z` is constant (== dissolve by ID); in 3D it keeps
-    # z-planes separate (dissolving by ID alone would collapse a cell's planes).
+    # Dissolving by ID alone would collapse a cell's planes.
     if not merged_polygons.empty and "ID" in merged_polygons.columns:
         merged_polygons = merged_polygons.dissolve(by=["ID", "z"]).reset_index()
 
-    logger.info("Finished mask -> polygon conversion")
+    logger.debug("Finished mask -> polygon conversion")
     return merged_polygons

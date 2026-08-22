@@ -19,6 +19,7 @@ def run_setup(
     seg_name: str,
     donor_name: str = None,
     do_tsne: bool = False,
+    consensus_cluster: bool = True,
 ):
     """
     Setup the AnnData object for further analysis.
@@ -30,7 +31,8 @@ def run_setup(
     seg_name (str): Name of the segmentation.
     donor_name (str, optional): Name of the donor. Defaults to None.
     do_tsne (bool, optional): Whether to also compute the tSNE embedding (in addition to UMAP). Defaults to False.
-
+    consensus_cluster (bool, optional): Use ALLCools consensus clustering (200 Leiden
+        repeats across `n_jobs` workers) rather than a single Leiden run. Defaults to True.
     Returns:
     AnnData: The modified AnnData object.
     """
@@ -54,7 +56,8 @@ def run_setup(
     adata.layers['volume_norm'] = scp.csr_matrix(adata.X / adata.obs['volume'].values[:, np.newaxis])
     adata.X = adata.layers['raw'].copy()
     normalize_adata(adata, layer='raw', log1p=True)
-    _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35, consensus_cluster=True, do_tsne=do_tsne)
+    _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35,
+                     consensus_cluster=consensus_cluster, do_tsne=do_tsne)
 
     try:
         from ..utilities.degs import call_degs_scran

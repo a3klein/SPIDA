@@ -1,10 +1,9 @@
-"""Cellpose segmentation backend.
+"""
+Cellpose segmentation backend.
 
-Emits RAW output only — ``polygons.parquet`` with ``ID`` (the global cellpose
-label), ``z`` and ``Geometry`` in full-resolution pixel space, plus a
-``meta.json`` recording exactly how the run was configured. The
-segmentation-schema fields (``ZIndex``/``ZLevel``/``EntityID``) are derived
-downstream by ``ingest_polygons``, so those conventions live in one place.
+Emits raw output - ``polygons.parquet`` with ``ID`` (global label),
+``z`` and ``Geometry`` in full-resolution pixel space. Emits ``meta.json``, 
+a recording of the runconfigurations.
 
 All tunables are described by :class:`CellposeConfig`; see
 ``segment-region cellpose --list-params``.
@@ -21,10 +20,12 @@ from pathlib import Path
 import warnings
 import logging
 
-from natsort import natsorted
-import skimage as ski
-import cv2  # NOTE: must precede the cellpose import — see below
+# Must come before importing cellpose.
+# `cellpose.models` pulls in torch, which loads the system libstdc++
+# importing cv2 after that raises `version CXXABI_1.3.15 not found`.
+import cv2  
 
+from ...io.mosaic import find_stain_planes, load_tissue_mask, probe_mosaic_shape, read_stains
 from .masks import masks_to_geodataframe
 from .config import ConfigError
 from .cellpose_config import (
@@ -34,21 +35,15 @@ from .cellpose_config import (
     resolve_model,
 )
 
-# .env is read BEFORE cellpose is imported on purpose: cellpose resolves its
-# model cache (``models.MODEL_DIR``) from CELLPOSE_LOCAL_MODELS_PATH at *import*
-# time, so bridging SPIDA's own key across has to happen first to have any
-# effect. The CLI does the same via ``config.export_env_only_config``; this
-# covers programmatic callers that bypass the CLI.
+# DO NOT MOVE THIS BLOCK INTO A FUNCTION.
+#
+# cellpose resolves its model cache (``models.MODEL_DIR``) from
+# CELLPOSE_LOCAL_MODELS_PATH at IMPORT time, so bridging SPIDA's own key across
+# has to happen before the first `import cellpose.models`.
 load_dotenv()
 if os.getenv(SPIDA_ENV_VAR) and not os.getenv(CELLPOSE_ENV_VAR):
     os.environ[CELLPOSE_ENV_VAR] = os.environ[SPIDA_ENV_VAR]
 
-# The `import cv2` above must stay ABOVE this import: `cellpose.models` pulls in
-# torch, which loads the system libstdc++; if that happens first, cv2 then fails
-# with `version CXXABI_1.3.15 not found`.
-from cellpose import models, core, io  # type: ignore  # noqa: E402
-
-# io.logger_setup() # TODO: Maybe put this in a temporary file since this creates race conditions between multiple runs.
 
 logger = logging.getLogger(__package__)
 
@@ -58,118 +53,70 @@ MODE_TRUE_3D = "3d_true"
 
 META_FILE = "meta.json"
 
-
 def _require_gpu():
+    from cellpose import core
     if not core.use_gpu():
         raise ImportError("No GPU access")
 
 
-def _load_image(
-    image_path: Path,
-    image_ext: str = ".tif",
-    nuc_stain_name: str = "DAPI",
-    cyto_stain_name: str | None = None,
-    downscale: int | None = None,
-):
+def _resolve_stains(
+    cfg: CellposeConfig,
+    root_dir: str
+) -> dict[str, list[Path]]:
     """
-    Load an image from the specified path.
-
     Parameters:
-    image_path (str): Path to the image file.
-    image_ext (str): Extension of the image file (default is '.tif').
-    nuc_stain_name (str): Name of the nuclear stain (default is 'DAPI').
-    cyto_stain_name (str): Name of the cytoplasmic stain (default is 'PolyT').
+        cfg (CellposeConfig): Configuration for cellpose segmentation.
+        root_dir (str): Directory holding the region's mosaic stain TIFFs.
 
     Returns:
-    np.ndarray: Loaded image as a numpy array.
+        dict[str, list[Path]]: ``{stain: z-ordered planes}`` for this run, nucleus FIRST.
     """
-    files = natsorted(
-        [
-            f
-            for f in image_path.glob("*" + image_ext)
-            if "_masks" not in f.name and "_flows" not in f.name
-        ]
-    )
-    logger.info(f"Found {len(files)} images in {image_path}")
+    images = Path(root_dir)
+    stains = {
+        cfg.nuc_stain_name: find_stain_planes(
+            images, cfg.nuc_stain_name, cfg.image_ext)
+    }
+    if cfg.cyto_stain_name:
+        stains[cfg.cyto_stain_name] = find_stain_planes(
+            images, cfg.cyto_stain_name, cfg.image_ext)
+    for stain, planes in stains.items():
+        logger.info("%s: %d plane(s) - %s", stain, len(planes),
+                    [f.name for f in planes])
+    return stains
 
-    nuc_files = []
-    for f in files:
-        if nuc_stain_name in f.name:
-            nuc_files.append(f)
 
-    if len(nuc_files) == 0:
-        raise ValueError(
-            f"No nuclear stain file found with name '{nuc_stain_name}' in {image_path}"
+def _load_and_check_mask(
+    tissue_mask_path,
+    mosaic_shape: tuple[int, int]
+) -> np.ndarray | None:
+    """
+    Load the tissue mask and assert it is on the mosaic's pixel grid.
+
+    Parameters:
+        tissue_mask_path (str | Path | None): Path to the tissue mask file.
+        mosaic_shape (tuple[int, int]): Shape of the mosaic image.
+    
+    Returns:
+        np.ndarray | None: The loaded tissue mask, or None if no path was provided.
+    """
+    if not tissue_mask_path:
+        return None
+    mask = load_tissue_mask(tissue_mask_path)
+    if mask.shape != mosaic_shape:
+        raise ConfigError(
+            f"tissue mask {tissue_mask_path} has shape {mask.shape} but the "
+            f"mosaic is {mosaic_shape}; they must be pixel-aligned."
         )
-    elif len(nuc_files) == 1:
-        nuc_file = nuc_files[0]
-        nuc_img = io.imread(nuc_file)
-        if downscale and downscale > 1:
-            factors = (1,) * (nuc_img.ndim - 2) + (downscale, downscale)
-            nuc_img = ski.transform.downscale_local_mean(nuc_img, factors)
-    else:
-        # Stack 3D image
-        nuc_files = natsorted(nuc_files)
-        stack_3d = []
-        for _fn in nuc_files:
-            logger.info(f"  {_fn}")
-            _img = io.imread(_fn)
-            if downscale and downscale > 1:
-                _img = ski.transform.downscale_local_mean(
-                    _img, (downscale, downscale)
-                )
-            stack_3d.append(_img)
-        nuc_img = np.stack(stack_3d, axis=-1)
-
-    logger.info(f"Loaded images: Nuclear - {nuc_files}, Image Shape: {nuc_img.shape}")
-
-    if cyto_stain_name is not None:
-        cyto_files = []
-        for f in files:
-            if cyto_stain_name in f.name:
-                cyto_files.append(f)
-
-        if len(cyto_files) == 0:
-            raise ValueError(
-                f"No cytoplasmic stain file found with name '{cyto_stain_name}' in {image_path}"
-            )
-        elif len(cyto_files) == 1:
-            cyto_file = cyto_files[0]
-            cyto_img = io.imread(cyto_file)
-            if downscale and downscale > 1:
-                factors = (1,) * (cyto_img.ndim - 2) + (downscale, downscale)
-                cyto_img = ski.transform.downscale_local_mean(cyto_img, factors)
-        else:
-            # Stack 3D image
-            cyto_files = natsorted(cyto_files)
-            stack_3d = []
-            for _fn in cyto_files:
-                logger.info(f"  {_fn}")
-                _img = io.imread(_fn)
-                if downscale and downscale > 1:
-                    _img = ski.transform.downscale_local_mean(
-                        _img, (downscale, downscale)
-                    )
-                stack_3d.append(_img)
-            cyto_img = np.stack(stack_3d, axis=-1)
-
-        logger.info(f"Loaded images: Cytoplasmic - {cyto_files}, Image Shape: {cyto_img.shape}")
-        return np.stack([nuc_img, cyto_img], axis=0)
-    else:
-        logger.info(
-            f"No cytoplasmic stain file found with name '{cyto_stain_name}' in {image_path}, returning nuclear image only."
-        )
-        return np.expand_dims(nuc_img, axis=0)
+    logger.info("tissue mask: %.1f%% of the mosaic is tissue",
+                100 * float(mask.mean()))
+    return mask
 
 
+# Load in cellpose model
 def _load_model(cfg: CellposeConfig):
-    """Load the cellpose model named by ``cfg.model``.
+    """Load the cellpose model named by ``cfg.model``."""
+    from cellpose import models
 
-    Name resolution and the existence check live in
-    :func:`~.cellpose_config.resolve_model`, which never lets cellpose silently
-    substitute a different model. Returns ``(model, resolution)`` so the caller
-    can record exactly which weights were used.
-    """
     _require_gpu()
     resolution = resolve_model(cfg.model, cfg.model_dir)
     resolution.log()
@@ -180,7 +127,7 @@ def _load_model(cfg: CellposeConfig):
     )
     return model, resolution
 
-
+# Different options for collapzing multiple z-slices into a single plane for a 2D segmentation. 
 def reduce_z(img: np.ndarray, z_reduce: str) -> np.ndarray:
     """Collapse a ``(C, Y, X, Z)`` stack to a single ``(C, Y, X)`` plane."""
     if img.ndim != 4:
@@ -194,13 +141,19 @@ def reduce_z(img: np.ndarray, z_reduce: str) -> np.ndarray:
     return img[..., mid]
 
 
-def build_eval_call(cfg: CellposeConfig, img: np.ndarray,
-                    anisotropy: float | None = None):
-    """Map ``cfg.seg_mode`` + input shape onto ``(image, model.eval kwargs)``.
+# GPU-free for unit-testing purposes. 
+def build_eval_call(
+    cfg: CellposeConfig,
+    img: np.ndarray,
+    anisotropy: float | None = None
+):
+    """
+    Map cfg.seg_mode + input shape onto (image, model.eval kwargs).
 
-    Pure and GPU-free so the mode semantics are unit-testable. ``img`` arrives
-    channels-first — ``(C, Y, X)`` for one plane or ``(C, Y, X, Z)`` for a stack
-    — and is transposed to cellpose's channels-last expectation.
+    Parameters:
+    cfg (CellposeConfig): Configuration for cellpose segmentation.
+    img (np.ndarray): Input image array, either (C, Y, X) for single-plane or (C, Y, X, Z) for a stack.
+    anisotropy (float | None): Anisotropy factor for 3D segmentation, if applicable.
     """
     common = dict(
         batch_size=cfg.batch_size,
@@ -218,20 +171,20 @@ def build_eval_call(cfg: CellposeConfig, img: np.ndarray,
                 f"(C, Y, X, Z); got shape {img.shape}. Use seg_mode='{MODE_2D}' "
                 f"for single-plane input."
             )
-        img = np.transpose(img, (3, 1, 2, 0))          # (C,Y,X,Z) -> (Z,Y,X,C)
+        img = np.transpose(img, (3, 1, 2, 0)) # (C,Y,X,Z) -> (Z,Y,X,C)
         kwargs = dict(common, do_3D=True, z_axis=0, channel_axis=-1)
-        if anisotropy is not None:
+        if anisotropy is not None: # anisotropy is a physical property of the image. (XY vs. Z spacing)
             kwargs["anisotropy"] = anisotropy
+        if cfg.flow3d_smooth_z > 0: # smoothing in 3D is relevant when anisotropy is applied to control for rings/holes.
+            kwargs["flow3D_smooth"] = [float(cfg.flow3d_smooth_z), 0.0, 0.0]
         return img, kwargs
 
     if cfg.seg_mode == MODE_STITCHED:
         if img.ndim == 4:
-            img = np.transpose(img, (3, 1, 2, 0))      # (C,Y,X,Z) -> (Z,Y,X,C)
+            img = np.transpose(img, (3, 1, 2, 0)) # (C,Y,X,Z) -> (Z,Y,X,C)
             return img, dict(common, do_3D=False, z_axis=0, channel_axis=-1,
                              stitch_threshold=cfg.stitch_threshold)
-        # Degenerate: a single plane has nothing to stitch across. This is the
-        # standard case for --force_2d_segmentation, where IMAGE_EXT selects one
-        # z-slice file, so it must stay a warning rather than an error.
+        # Degenerate: a single plane has nothing to stitch across.
         logger.warning(
             "seg_mode='%s' but the input has a single z-plane; running plain 2D "
             "(stitch_threshold ignored).", MODE_STITCHED,
@@ -239,7 +192,7 @@ def build_eval_call(cfg: CellposeConfig, img: np.ndarray,
 
     # 2D: explicitly requested, or a stitched request with single-plane input.
     if img.ndim == 3:
-        img = np.moveaxis(img, 0, -1)                  # (C,Y,X) -> (Y,X,C)
+        img = np.moveaxis(img, 0, -1) # (C,Y,X) -> (Y,X,C)
         channel_axis = -1
     elif img.ndim == 2:
         channel_axis = None
@@ -252,23 +205,52 @@ def build_eval_call(cfg: CellposeConfig, img: np.ndarray,
                      stitch_threshold=0)
 
 
-def _cellpose_wrapper(img, cfg: CellposeConfig, anisotropy: float | None = None):
-    """Load the model and run one ``model.eval``. Returns
-    ``(masks, flows, styles, resolution)``."""
-    model, resolution = _load_model(cfg)
-    img, eval_kwargs = build_eval_call(cfg, img, anisotropy)
-
-    logger.info("Running cellpose eval (seg_mode=%s, model=%s, image=%s):",
-                cfg.seg_mode, cfg.model, img.shape)
+def _log_eval_call(
+    what: str,
+    cfg: CellposeConfig,
+    shape,
+    eval_kwargs: dict
+) -> None:
+    """
+    Log one `model.eval` invocation's resolved kwargs.
+    """
+    logger.info("%s (seg_mode=%s, model=%s, image=%s):",
+                what, cfg.seg_mode, cfg.model, shape)
     for key, value in eval_kwargs.items():
         logger.info("  %s: %s", key, value)
 
+
+# Wraps the internal cellpose calls: loads model + config and runs the eval call.
+def _cellpose_wrapper(
+    img,
+    cfg: CellposeConfig,
+    anisotropy: float | None = None
+):
+    """
+    Load the model and run one ``model.eval``. Returns ``(masks, flows, styles, resolution)``.
+
+    Parameters:
+    img (np.ndarray): Input image array, either (C, Y, X) for single-plane or (C, Y, X, Z) for a stack.
+    cfg (CellposeConfig): Configuration for cellpose segmentation.
+    anisotropy (float | None): Anisotropy factor for 3D segmentation, if applicable.
+    """
+    model, resolution = _load_model(cfg)
+    img, eval_kwargs = build_eval_call(cfg, img, anisotropy)
+
+    _log_eval_call("Running cellpose eval", cfg, img.shape, eval_kwargs)
     masks, flows, styles = model.eval(img, **eval_kwargs)
     return masks, flows, styles, resolution
 
 
+# For optional image preprocessing just to cellpose
 def _apply_clahe(img: np.ndarray, cfg: CellposeConfig) -> np.ndarray:
-    """CLAHE contrast enhancement (single-plane input only, as before)."""
+    """
+    CLAHE contrast enhancement (single-plane input only, as before).
+
+    Parameters:
+    img (np.ndarray): Input image array.
+    cfg (CellposeConfig): Configuration for cellpose segmentation.
+    """
     logger.info("Applying CLAHE with clipLimit=%s and tileGridSize=%s",
                 cfg.clahe_clip_limit, cfg.clahe_tile_grid_size)
     clahe = cv2.createCLAHE(
@@ -281,6 +263,7 @@ def _apply_clahe(img: np.ndarray, cfg: CellposeConfig) -> np.ndarray:
     return (img / 256).astype("uint8")
 
 
+# for meta
 def _spida_version() -> str | None:
     try:
         from importlib.metadata import version
@@ -289,42 +272,75 @@ def _spida_version() -> str | None:
         return None
 
 
-def run_cellpose(root_dir: str, output_dir: str, region: str, **kwargs):
-    """Run cellpose segmentation for one region.
+# For the case where a tile returns no detected polygons. 
+def _empty_polygons() -> gpd.GeoDataFrame:
+    """A well-formed empty result."""
+    return gpd.GeoDataFrame(
+        {
+            "ID": np.array([], dtype=np.int64),
+            "z": np.array([], dtype=np.int64),
+            "Geometry": gpd.GeoSeries([], dtype="geometry"),
+        },
+        geometry="Geometry",
+        crs=None,
+    )
 
+# This is for serializing the tiling plan to JSON.
+def _plan_meta(plan: dict) -> dict:
+    """
     Parameters:
-    root_dir (str): Directory holding the region's mosaic stain TIFFs.
-    output_dir (str): Fully-resolved output directory for this region+segmentation
-        (the caller resolves the layout; nothing is appended here).
-    region (str): Region name — used for logging and provenance only.
-    **kwargs: Any :class:`CellposeConfig` field. Unknown names raise, and
-        deprecated ones (``do_3D``, ``project_3d_to_2d``, ``tile_size``,
-        ``overlap``, ``model_name``, ...) are translated with a warning. Run
-        ``segment-region cellpose --list-params`` for the full surface.
+    plan (dict): The tiling plan dictionary.
 
     Returns:
-        bool: True if the produced masks are a 3D stack, False if a single plane.
+    dict: A JSON-safe summary of the tiling plan.
     """
-    cfg = CellposeConfig.from_kwargs(**kwargs)
+    summary = {k: v for k, v in plan.items()
+               if k not in ("tiles", "to_segment", "skipped")}
+    summary["segment_tiles"] = [
+        {"gi": t.gi, "gj": t.gj, "y0": t.y0, "x0": t.x0,
+         "height": t.height, "width": t.width}
+        for t in plan["to_segment"]
+    ]
+    return summary
 
-    logger.info("run_cellpose: region=%s", region)
-    logger.info("  root_dir   = %s", root_dir)
-    logger.info("  output_dir = %s", output_dir)
-    for name, value in cfg.to_meta().items():
-        logger.info("  %s = %s", name, value)
 
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
+# The single-call path: one ``model.eval`` over the whole input, no tiling.
+def _segment_whole(
+    cfg: CellposeConfig,
+    root_dir: str,
+    region: str,
+    tissue_mask_path,
+    timing: dict
+) -> tuple[gpd.GeoDataFrame, dict]:
+    """
+    Single ``model.eval`` over an entire image.
 
-    timing: dict[str, float] = {}
+    Parameters:
+    cfg (CellposeConfig): Configuration for cellpose segmentation.
+    root_dir (str): Directory holding the region's mosaic stain TIFFs.
+    region (str): Region name — used for logging and provenance only.
+    tissue_mask_path (str | Path | None): Full-resolution boolean tissue mask.
+        Out-of-tissue pixels are zeroed during the read, so cells cannot be
+        called outside the tissue. Previously only the tiled path could do this
+        and the untiled path warned the mask was ignored; both now share one
+        reader, so the mask costs nothing to honour here.
+    timing (dict): Dictionary to record timing information.
+
+    Returns:
+        tuple[gpd.GeoDataFrame, dict]: A tuple containing the GeoDataFrame of 
+        detected polygons and a dictionary with segmentation information.
+    """
     t0 = time.perf_counter()
-    img = _load_image(
-        Path(root_dir),
-        image_ext=cfg.image_ext,
-        nuc_stain_name=cfg.nuc_stain_name,
-        cyto_stain_name=cfg.cyto_stain_name,
-        downscale=cfg.scale,
-    )
+    stains = _resolve_stains(cfg, root_dir)
+    mosaic_shape = probe_mosaic_shape(next(iter(stains.values()))[0])
+    mask = _load_and_check_mask(tissue_mask_path, mosaic_shape)
+
+    img = read_stains(stains, downscale=cfg.scale, mask=mask)   # (C, Y, X, Z)
+    del mask
+
+    # Collapse a single-plane stain to (C, Y, X) for the 2D path.
+    if img.shape[-1] == 1:
+        img = img[..., 0]
     timing["load_s"] = time.perf_counter() - t0
     loaded_shape = tuple(int(n) for n in img.shape)
     logger.info("Loaded image shape (downscaled by %d): %s", cfg.scale, loaded_shape)
@@ -343,26 +359,19 @@ def run_cellpose(root_dir: str, output_dir: str, region: str, **kwargs):
                 "(got shape %s); skipping CLAHE.", img.shape,
             )
 
+    # read in anisotropy from path if auto.
     anisotropy = cfg.resolved_anisotropy(root_dir)
 
     logger.info("STARTING SEGMENTATION (seg_mode=%s)", cfg.seg_mode)
     t0 = time.perf_counter()
-    masks, _flows, _styles, resolution = _cellpose_wrapper(img, cfg, anisotropy)
+    masks, _flows, _styles, resolution = _cellpose_wrapper(img, cfg, anisotropy) # call wrapper - actual segmentation.
     timing["segment_s"] = time.perf_counter() - t0
     logger.info("SEGMENTATION COMPLETED in %.1fs", timing["segment_s"])
 
     n_labels = int(len(np.unique(masks)) - 1)
     logger.info("Masks detected: %d; mask shape: %s", n_labels, masks.shape)
 
-    # Key off the MASK, not the input image: seg_mode decides whether z survives.
-    is_3d = masks.ndim == 3
-    logger.info("Mask dimensionality: %dD; treating as %s for polygon conversion.",
-                masks.ndim, "3D" if is_3d else "2D")
-
-    # Inner (polygon-extraction) tiling. NOT the same as GPU tiling: this splits a
-    # single label array whose IDs are already globally unique, so a cell crossing
-    # a tile edge keeps its ID and its fragments re-merge by (ID, z) in the
-    # dissolve inside masks_to_geodataframe.
+    # Inner (polygon-extraction) tiling. Not the same as GPU tiling.
     t0 = time.perf_counter()
     gdf = masks_to_geodataframe(
         masks,
@@ -370,29 +379,219 @@ def run_cellpose(root_dir: str, output_dir: str, region: str, **kwargs):
         tile_size=cfg.poly_tile_size,
         overlap=cfg.poly_tile_overlap,
     )
-    n_raw = len(gdf)
-
     if gdf.empty:
-        # A blank mask yields a frame carrying only tiling internals — no ID/z —
-        # which would crash the min_z groupby and produce a parquet that
-        # ingest_polygons cannot read. Normalise to a well-formed empty frame.
         logger.warning(
             "cellpose produced NO cells for region %s (mask labels: %d). Writing an "
             "empty polygons.parquet; check the input images and thresholds.",
             region, n_labels,
         )
-        gdf = gpd.GeoDataFrame(
-            {
-                "ID": np.array([], dtype=np.int64),
-                "z": np.array([], dtype=np.int64),
-                "Geometry": gpd.GeoSeries([], dtype="geometry"),
-            },
-            geometry="Geometry",
-            crs=None,
+        gdf = _empty_polygons()
+    gdf.geometry = gdf.geometry.affine_transform([cfg.scale, 0, 0, cfg.scale, 0, 0])
+    timing["polygons_s"] = time.perf_counter() - t0
+
+    info = {
+        # Key off the mask, not the input image: seg_mode decides whether z survives.
+        "is_3d": masks.ndim == 3,
+        "resolution": resolution,
+        "anisotropy": anisotropy,
+        "image": {"loaded_shape": loaded_shape, "eval_ndim": int(img.ndim)},
+        "masks": {"shape": [int(n) for n in masks.shape], "n_labels": n_labels},
+    }
+    return gdf, info
+
+# Multiple calls to model.eval with tiling across GPUs.
+def _segment_tiled(
+    cfg: CellposeConfig,
+    root_dir: str,
+    region: str,
+    tissue_mask_path,
+    timing: dict
+) -> tuple[gpd.GeoDataFrame, dict]:
+    """
+    Builds tiles and calls one independent ``model.eval`` per tile, stitched by IoU.
+
+    Parameters: 
+    cfg (CellposeConfig): Configuration for cellpose segmentation.
+    root_dir (str): Directory holding the region's mosaic stain TIFFs.
+    region (str): Region name — used for logging and provenance only.
+    tissue_mask_path (str | Path | None): Full-resolution boolean tissue mask.
+    timing (dict): Dictionary to record timing information.
+
+    Returns: 
+        tuple[gpd.GeoDataFrame, dict]: A tuple containing the GeoDataFrame of 
+        detected polygons and a dictionary with segmentation information.
+    """
+    from ..tiling import (
+        DEFAULT_TILE_MIN,
+        optimize_grid,
+        plan_grid,
+        run_tiled,
+    )
+
+    stain_planes = _resolve_stains(cfg, root_dir)
+    mosaic_shape = probe_mosaic_shape(next(iter(stain_planes.values()))[0])
+    n_planes = len(next(iter(stain_planes.values())))
+    logger.info("tiled: mosaic %s, %d channel(s) x %d z-plane(s)",
+                mosaic_shape, len(stain_planes), n_planes)
+
+    t0 = time.perf_counter()
+    mask = _load_and_check_mask(tissue_mask_path, mosaic_shape)
+    timing["mask_s"] = time.perf_counter() - t0
+
+    # Grid search block.
+    tile = cfg.resolved_gpu_tile()
+    if tile == "auto":
+        if mask is None:
+            # Fatal by choice
+            raise ConfigError(
+                "gpu_tile_size='auto' optimises the grid against the tissue mask, "
+                "but no mask is available for this region. Run `tissue-mask` "
+                "first, pass --tissue_mask_path, or give an explicit "
+                "--gpu_tile_size."
+            )
+        # The search floor must respect min_gpu_tile()
+        best, _scored = optimize_grid(
+            mask, overlap=cfg.gpu_tile_overlap,
+            tile_min=max(DEFAULT_TILE_MIN, cfg.min_gpu_tile()),
+        )
+        tile = (best["tile_y"], best["tile_x"])
+        logger.info("gpu_tile_size='auto' -> %dx%d", *tile)
+
+    plan = plan_grid(mosaic_shape, tile, cfg.gpu_tile_overlap, mask=mask)
+    # build_grid clamps the tile to the tissue bbox, so a genuinely narrow
+    # region can land under the floor through no fault of the config.
+    if min(plan["tile_size"] if isinstance(plan["tile_size"], tuple)
+           else (plan["tile_size"],)) < cfg.min_gpu_tile():
+        logger.warning(
+            "tiling: the tissue bbox %s clamped the tile to %s, below the "
+            "%d px floor (poly_tile_size x scale). Segmentation is still "
+            "correct.",
+            plan["bbox"], plan["tile_size"], cfg.min_gpu_tile(),
         )
 
-    gdf.geometry = gdf.geometry.affine_transform([cfg.scale, 0, 0, cfg.scale, 0, 0])
+    # 1 model for the whole run, shared by every GPU thread.
+    model, resolution = _load_model(cfg)
+    anisotropy = cfg.resolved_anisotropy(root_dir)
+    seen: dict = {}
 
+    # The tiled counterpart of `_cellpose_wrapper`. Enables sharing of model across threads.
+    def eval_tile(img: np.ndarray) -> np.ndarray:
+        """``(C, Y, X, Z)`` -> label array. Called concurrently; must stay pure."""
+        if cfg.seg_mode == MODE_2D:
+            img = reduce_z(img, cfg.z_reduce)
+        arr, eval_kwargs = build_eval_call(cfg, img, anisotropy)
+        if "logged" not in seen:
+            seen["logged"] = True
+            _log_eval_call("tiled eval", cfg, arr.shape, eval_kwargs)
+            seen["eval_shape"] = tuple(int(n) for n in arr.shape)
+        masks, _flows, _styles = model.eval(arr, **eval_kwargs)
+        seen.setdefault("mask_ndim", int(np.ndim(masks)))
+        return masks
+
+    logger.info("STARTING TILED SEGMENTATION (%d tiles, seg_mode=%s, %d GPU thread(s))",
+                plan["n_segment"], cfg.seg_mode, cfg.n_gpu_threads)
+    t0 = time.perf_counter()
+    gdf = run_tiled( # Actually calling the segmentation.
+        plan, stain_planes, eval_tile,
+        scale=cfg.scale,
+        mask=mask,
+        poly_tile_size=cfg.poly_tile_size,
+        poly_tile_overlap=cfg.poly_tile_overlap,
+        poly_tolerance=cfg.poly_tolerance,
+        n_gpu_threads=cfg.n_gpu_threads,
+        n_prep=cfg.n_prep_workers,
+        n_post=cfg.n_post_workers,
+        iou_threshold=cfg.gpu_tile_iou,
+        containment_threshold=cfg.gpu_tile_containment,
+        merge=cfg.gpu_merge,
+    )
+    timing["segment_s"] = time.perf_counter() - t0
+    logger.info("TILED SEGMENTATION COMPLETED in %.1fs", timing["segment_s"])
+
+    # The rest of this function is about setting the appropriate metadata. 
+    n_labels = int(gdf["ID"].nunique()) if len(gdf) else 0
+    if gdf.empty:
+        logger.warning(
+            "cellpose produced NO cells for region %s across %d tiles. Writing an "
+            "empty polygons.parquet; check the input images and thresholds.",
+            region, plan["n_segment"],
+        )
+        gdf = _empty_polygons()
+
+    info = {
+        "is_3d": seen.get("mask_ndim", 2) == 3,
+        "resolution": resolution,
+        "anisotropy": anisotropy,
+        "image": {
+            "mosaic_shape": [int(n) for n in mosaic_shape],
+            "n_z_planes": n_planes,
+            "channels": list(stain_planes),
+            "tile_eval_shape": seen.get("eval_shape"),
+        },
+        "masks": {"shape": None, "n_labels": n_labels},
+        "tiling": _plan_meta(plan) | {
+            "tissue_mask_path": str(tissue_mask_path) if tissue_mask_path else None,
+            "iou_threshold": cfg.gpu_tile_iou,
+            "containment_threshold": cfg.gpu_tile_containment,
+            "merge": cfg.gpu_merge,
+            "n_gpu_threads": cfg.n_gpu_threads,
+            "n_prep_workers": cfg.n_prep_workers,
+            "n_post_workers": cfg.n_post_workers,
+        },
+    }
+    return gdf, info
+
+
+def run_cellpose(root_dir: str, output_dir: str, region: str, *,
+                 tissue_mask_path: str | Path | None = None, **kwargs):
+    """Run cellpose segmentation for one region.
+
+    Two segmentation paths, selected by ``gpu_tile_size``: the default ``None``
+    runs a single ``model.eval`` over the whole input, while any other value
+    tiles the mosaic, segments each tile independently through one shared model
+    and stitches the polygons back together by IoU. Both return polygons in
+    full-resolution pixel space, so everything downstream of the model eval is identical.
+
+    Parameters:
+    root_dir (str): Directory holding the region's mosaic stain TIFFs.
+    output_dir (str): Fully-resolved output directory for this region+segmentation
+        (the caller resolves the layout; nothing is appended here).
+    region (str): Region name — used for logging and provenance only.
+    tissue_mask_path (str | Path | None): Full-resolution boolean tissue mask.
+        Used three ways on the tiled path — it sets the grid extent, drops tiles
+        with no tissue, and zeroes out-of-tissue pixels before downscaling —
+        and is resolved by the caller (``segment_region``), not here. Ignored
+        with a warning on the untiled path, which segments its whole input.
+    **kwargs: Any :class:`CellposeConfig` field. Unknown names raise, and
+        deprecated ones (``do_3D``, ``project_3d_to_2d``, ``tile_size``,
+        ``overlap``, ``model_name``, ...) are translated with a warning. Run
+        ``segment-region cellpose --list-params`` for the full surface.
+
+    Returns:
+        bool: True if the produced masks are a 3D stack, False if a single plane.
+    """
+    cfg = CellposeConfig.from_kwargs(**kwargs)
+
+    logger.info("run_cellpose: region=%s", region)
+    logger.info("  root_dir   = %s", root_dir)
+    logger.info("  output_dir = %s", output_dir)
+    logger.info("  tissue_mask_path = %s", tissue_mask_path)
+    for name, value in cfg.to_meta().items():
+        logger.info("  %s = %s", name, value)
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    timing: dict[str, float] = {}
+    tiled = cfg.resolved_gpu_tile() is not None
+    if tiled:
+        gdf, info = _segment_tiled(cfg, root_dir, region, tissue_mask_path, timing)
+    else:
+        gdf, info = _segment_whole(cfg, root_dir, region, tissue_mask_path, timing)
+    is_3d = info["is_3d"]
+
+    t0 = time.perf_counter()
+    n_raw = len(gdf)
     logger.info("Filtering out polygons with area <= %d (full-resolution px^2)",
                 cfg.min_size)
     gdf = gdf[gdf.geometry.area > cfg.min_size]
@@ -401,22 +600,22 @@ def run_cellpose(root_dir: str, output_dir: str, region: str, **kwargs):
 
     if is_3d:
         logger.info("Filtering out cells spanning fewer than %d z-planes", cfg.min_z)
-        # Group on ID (the globally-unique cellpose label), which is constant
-        # across a cell's z-planes and across inner tiles.
         per_cell = gdf.groupby("ID")["z"].count()
         keep = per_cell[per_cell >= cfg.min_z].index
         gdf = gdf[gdf["ID"].isin(keep)].copy()
         logger.info("  %d -> %d polygons", n_post_area, len(gdf))
     n_final = len(gdf)
-    timing["polygons_s"] = time.perf_counter() - t0
+    timing["filter_s"] = time.perf_counter() - t0
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         gdf.to_parquet(out / "polygons.parquet", index=False)
 
+    resolution = info["resolution"]
     meta = {
         "method": "cellpose",
         "region": region,
+        "path": "tiled" if tiled else "single",
         "config": cfg.to_meta(),
         "model": {
             "name": resolution.name,
@@ -426,9 +625,10 @@ def run_cellpose(root_dir: str, output_dir: str, region: str, **kwargs):
             "downloaded": resolution.will_download,
             "size_bytes": resolution.size_bytes,
         },
-        "anisotropy_resolved": anisotropy,
-        "image": {"loaded_shape": loaded_shape, "eval_ndim": int(img.ndim)},
-        "masks": {"shape": [int(n) for n in masks.shape], "n_labels": n_labels},
+        "anisotropy_resolved": info["anisotropy"],
+        "tissue_mask_path": str(tissue_mask_path) if tissue_mask_path else None,
+        "image": info["image"],
+        "masks": info["masks"],
         "polygon_counts": {
             "post_dissolve": n_raw,
             "post_area": n_post_area,
@@ -440,6 +640,8 @@ def run_cellpose(root_dir: str, output_dir: str, region: str, **kwargs):
             "spida": _spida_version(),
         },
     }
+    if "tiling" in info:
+        meta["tiling"] = info["tiling"]
     (out / META_FILE).write_text(json.dumps(meta, indent=2, default=str))
     logger.info("Wrote %s and %s", out / "polygons.parquet", out / META_FILE)
 

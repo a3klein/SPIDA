@@ -13,7 +13,7 @@ import geopandas as gpd
 import shapely.geometry as geom
 import pytest
 
-from spida.S.segmentation.segmentation_utils import partition_transcripts
+from spida.S.segmentation.postprocess import partition_transcripts
 
 DATA = Path(__file__).parent / "data" / "segmentation_utils"
 BOUNDARIES = DATA / "cellpose_micron_space.parquet"

@@ -23,7 +23,7 @@ import geopandas as gpd
 from shapely.affinity import affine_transform
 
 from .backends.base import SegmentationClass
-from .segmentation_utils import (
+from .postprocess import (
     convert_geometry,
     _read_micron_to_mosaic_transform,
     _to_multipoly,

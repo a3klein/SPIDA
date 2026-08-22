@@ -64,7 +64,12 @@ class Filter:
         Load metadata from an AnnData object and return it as a Polars DataFrame.
         """
         df_obs = pl.DataFrame(self.adata.obs)
-        present = {k: v for k, v in self.PRESET["meta_map"].items() if k in df_obs.columns}
+        # Rename with skip for already present names
+        present = {
+            k: v
+            for k, v in self.PRESET["meta_map"].items()
+            if k in df_obs.columns and (k == v or v not in df_obs.columns)
+        }
         df_obs = df_obs.rename(present)
 
         select_cols = [CELL_ID, CELL_X, CELL_Y, CELL_VOLUME]

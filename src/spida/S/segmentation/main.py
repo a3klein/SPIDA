@@ -99,6 +99,46 @@ def align_geometries(
 # `segment-region` and `process-segmentation-region`; the legacy
 # `run-segmentation-region` remains only as a deprecation redirect.
 # ===========================================================================
+
+#: Filename that ``P/tissue_mask.py`` writes into a region's images dir (its``QC_MASK_TIF_NAME``).
+TISSUE_MASK_FILENAME = "tissue_mask.tif"
+
+#: Methods whose backend accepts ``tissue_mask_path``. this set
+#: only records which backends have been wired to consume it so far.
+_TISSUE_MASK_METHODS = frozenset({"cellpose"})
+
+
+def resolve_tissue_mask_path(
+    explicit: str | Path | None, images_dir: str | Path
+) -> Path | None:
+    """Locate a region's tissue mask, or ``None`` when it has none.
+
+    Explicit and auto-discovered paths are treated differently on purpose: a
+    mask the caller *asked* for must exist, whereas absence of the
+    conventional file simply means this region has not had ``tissue-mask`` run
+    and should segment ungated.
+    """
+    if explicit is not None:
+        path = Path(explicit).expanduser()
+        if path.is_dir():
+            path = path / TISSUE_MASK_FILENAME
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"tissue_mask_path={explicit} does not exist (looked for "
+                f"{path}). Run `tissue-mask` for this region first, or omit "
+                f"--tissue_mask_path to segment without a tissue gate."
+            )
+        logger.info("tissue mask (explicit): %s", path)
+        return path
+
+    path = Path(images_dir) / TISSUE_MASK_FILENAME
+    if path.is_file():
+        logger.info("tissue mask (auto-discovered): %s", path)
+        return path
+    logger.info("no tissue mask at %s; segmenting the full extent", path)
+    return None
+
+
 def segment_region(
     method: str,
     exp_name: str,
@@ -108,6 +148,7 @@ def segment_region(
     root_path: str | Path | None = None,
     segmentation_store: str | Path | None = None,
     rust_bin_path: str | Path | None = None,
+    tissue_mask_path: str | Path | None = None,
     **kwargs,
 ):
     """Run only the segmentation *backend* for a region (produces raw boundaries).
@@ -121,6 +162,10 @@ def segment_region(
     prefix_name (str | None): Segmentation name / output-directory leaf; defaults to the
         method name. This is the same label used as the ``prefix_name`` at load time
         (default is None).
+    tissue_mask_path (str | Path | None): Boolean tissue mask restricting where
+        segmentation runs, as written by ``tissue-mask``. Default None auto-discovers
+        ``{root}/{exp}/out/{region}/images/tissue_mask.tif`` and proceeds ungated
+        if it is absent; an explicit path that does not exist raises.
     """
     from .backends import get_spec, resolve_region_dir
 
@@ -131,18 +176,28 @@ def segment_region(
     processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")
     seg_out = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
     input_dir = f"{processed_root}/{exp_name}/out"
+    images_dir = f"{input_dir}/{reg_name}/images"
     output_dir = str(resolve_region_dir(seg_out, exp_name, reg_name, label))
     logger.info("segment_region: %s v%s on %s/%s -> %s",
                 method, spec.version, exp_name, reg_name, output_dir)
+
+    if tissue_mask_path is not None and method not in _TISSUE_MASK_METHODS:
+        raise ValueError(
+            f"tissue_mask_path was given but the {method!r} backend does not "
+            f"consume it yet (wired for: {', '.join(sorted(_TISSUE_MASK_METHODS))})."
+        )
 
     if method == "cellpose":
         # cellpose/mesmer read mosaic stain tiffs from the region's images dir;
         # proseg reads {out}/{region}/detected_transcripts.csv (so it takes {out}).
         from .backends.cellpose import run_cellpose
-        run_cellpose(f"{input_dir}/{reg_name}/images", output_dir, reg_name, **kwargs)
+        run_cellpose(images_dir, output_dir, reg_name,
+                     tissue_mask_path=resolve_tissue_mask_path(
+                         tissue_mask_path, images_dir),
+                     **kwargs)
     elif method == "mesmer":
         from .backends.mesmer import run_mesmer
-        run_mesmer(f"{input_dir}/{reg_name}/images", output_dir, reg_name, **kwargs)
+        run_mesmer(images_dir, output_dir, reg_name, **kwargs)
     elif method == "proseg":
         from .backends.proseg import run_proseg
         run_proseg(input_dir, output_dir, reg_name, rust_bin_path=rust_bin_path, **kwargs)
@@ -209,7 +264,7 @@ def process_segmentation_region(
         return
 
     from .ingest import ingest_polygons
-    from .segmentation_utils import (
+    from .postprocess import (
         partition_transcripts, derive_entity_metadata, sum_signals,
     )
 
@@ -327,7 +382,7 @@ def process_custom_segmentation(
         SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
     )
     from .ingest import ingest_custom_polygons
-    from .segmentation_utils import (
+    from .postprocess import (
         partition_transcripts, derive_entity_metadata, sum_signals,
         _ENTITY_COL, _ZINDEX_COL,
     )

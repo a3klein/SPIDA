@@ -1,5 +1,6 @@
 from pathlib import Path
 from collections.abc import Callable
+from dataclasses import dataclass
 import logging
 
 import numpy as np
@@ -17,6 +18,429 @@ import matplotlib.cm as cm
 logger = logging.getLogger(__name__)
 
 
+def tile_grid_with_overlap(
+    shape: tuple,
+    tile_size: int | tuple,
+    overlap: int | tuple = 0,
+    color: str = None,
+):
+    """
+    Compute tile positions covering an array shape, WITHOUT needing the array.
+
+    This is the geometry half of :func:`tile_image_with_overlap`, split out so
+    callers that cannot hold the data in memory can still lay out a grid. That is
+    the whole reason it exists: a full-resolution MERSCOPE z-stack is ~64 GB, so
+    GPU-scale segmentation tiling has to plan from coordinates and then read each
+    window lazily.
+
+    Positions, ordering and edge handling are identical to
+    :func:`tile_image_with_overlap` — that function now calls this one and simply
+    slices the result, so the two can never drift apart.
+
+    Parameters:
+    -----------
+    shape : tuple
+        Shape of the array to be tiled (2D or 3D).
+    tile_size : int or tuple
+        Size of each tile. If int, square/cubic tiles (for 3D the depth is taken
+        as the full extent). If tuple, must match ``len(shape)``.
+    overlap : int or tuple, optional
+        Overlap in pixels. If int, applied to every axis (for 3D, depth gets 0).
+    color : str, optional
+        Passed through onto each tile_info dict.
+
+    Returns:
+    --------
+    tile_info : list of dict
+        One dict per tile: ``position``, ``end_position``, ``actual_size``,
+        ``tile_id``, ``overlap_region``, ``color``.
+
+    Examples:
+    ---------
+    info = tile_grid_with_overlap((82428, 55905), tile_size=(12250, 9500), overlap=500)
+    """
+
+    # Convert tile_size to tuple if it's an integer
+    if isinstance(tile_size, int):
+        if len(shape) == 2:
+            tile_size = (tile_size, tile_size)
+        elif len(shape) == 3:
+            tile_size = (shape[0], tile_size, tile_size)
+        else:
+            raise ValueError("Unsupported image dimensions")
+
+    # Convert overlap to tuple if it's an integer
+    if isinstance(overlap, int):
+        if len(shape) == 2:
+            overlap = tuple([overlap] * len(tile_size))
+        elif len(shape) == 3:
+            overlap = (0,) + tuple([overlap] * (len(tile_size) - 1))
+        else:
+            raise ValueError("Unsupported image dimensions")
+
+    # Validate dimensions
+    if len(tile_size) != len(shape):
+        raise ValueError(
+            f"tile_size dimensions ({len(tile_size)}) must match image dimensions ({len(shape)})"
+        )
+
+    if len(overlap) != len(shape):
+        raise ValueError(
+            f"overlap dimensions ({len(overlap)}) must match image dimensions ({len(shape)})"
+        )
+
+    # Clamp a tile that is LARGER than the extent, before step_size is derived.
+    tile_size = tuple(min(ts, dim) for ts, dim in zip(tile_size, shape))
+    # Get overlap while settin goverlap to 0 for tile that spans an axis entirely.
+    overlap = tuple(0 if ts >= dim else ov
+                    for ts, ov, dim in zip(tile_size, overlap, shape))
+
+    tile_info = []
+    tile_id = 0
+
+    # Calculate step size (tile_size - overlap)
+    step_size = tuple(ts - ov for ts, ov in zip(tile_size, overlap))
+
+    # Generate tile positions
+    if len(shape) == 2:
+        height, width = shape
+        tile_h, tile_w = tile_size
+        step_h, step_w = step_size
+
+        for row in range(0, height - tile_h + 1, step_h):
+            for col in range(0, width - tile_w + 1, step_w):
+                # Handle edge cases where we might go beyond image boundaries
+                end_row = min(row + tile_h, height)
+                end_col = min(col + tile_w, width)
+
+                # Extract tile
+
+                # Store tile information
+                info = {
+                    "tile_id": tile_id,
+                    "position": (row, col),
+                    "end_position": (end_row, end_col),
+                    "actual_size": None,  # filled below
+                    "overlap_region": {
+                        "top": row > 0,
+                        "bottom": end_row < height,
+                        "left": col > 0,
+                        "right": end_col < width,
+                    },
+                    "color": color,
+                }
+
+                tile_info.append(info)
+                tile_id += 1
+
+        # Handle remaining edge tiles
+        # Right edge
+        if (width - tile_w) % step_w != 0:
+            col = width - tile_w
+            for row in range(0, height - tile_h + 1, step_h):
+                end_row = min(row + tile_h, height)
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (row, col),
+                    "end_position": (end_row, width),
+                    "actual_size": None,  # filled below
+                    "overlap_region": {
+                        "top": row > 0,
+                        "bottom": end_row < height,
+                        "left": True,
+                        "right": False,
+                    },
+                    "color": color,
+                }
+
+                tile_info.append(info)
+                tile_id += 1
+
+        # Bottom edge
+        if (height - tile_h) % step_h != 0:
+            row = height - tile_h
+            for col in range(0, width - tile_w + 1, step_w):
+                end_col = min(col + tile_w, width)
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (row, col),
+                    "end_position": (height, end_col),
+                    "actual_size": None,  # filled below
+                    "overlap_region": {
+                        "top": True,
+                        "bottom": False,
+                        "left": col > 0,
+                        "right": end_col < width,
+                    },
+                    "color": color,
+                }
+
+                tile_info.append(info)
+                tile_id += 1
+
+        # Bottom-right corner
+        if (height - tile_h) % step_h != 0 and (width - tile_w) % step_w != 0:
+            row = height - tile_h
+            col = width - tile_w
+
+            info = {
+                "tile_id": tile_id,
+                "position": (row, col),
+                "end_position": (height, width),
+                "actual_size": None,  # filled below
+                "overlap_region": {
+                    "top": True,
+                    "bottom": False,
+                    "left": True,
+                    "right": False,
+                },
+                "color": color,
+            }
+
+            tile_info.append(info)
+            tile_id += 1
+
+    elif len(shape) == 3:
+        depth, height, width = shape
+        tile_d, tile_h, tile_w = tile_size
+        step_d, step_h, step_w = step_size
+
+        # Main grid of tiles
+        for d in range(0, depth - tile_d + 1, step_d):
+            for row in range(0, height - tile_h + 1, step_h):
+                for col in range(0, width - tile_w + 1, step_w):
+                    # Handle edge cases where we might go beyond image boundaries
+                    end_d = min(d + tile_d, depth)
+                    end_row = min(row + tile_h, height)
+                    end_col = min(col + tile_w, width)
+
+                    # Extract tile
+
+                    # Store tile information
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (end_d, end_row, end_col),
+                        "actual_size": None,  # filled below
+                        "overlap_region": {
+                            "front": d > 0,
+                            "back": end_d < depth,
+                            "top": row > 0,
+                            "bottom": end_row < height,
+                            "left": col > 0,
+                            "right": end_col < width,
+                        },
+                        "color": color,
+                    }
+
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Handle edge tiles for 3D
+        # Right edge tiles
+        if (width - tile_w) % step_w != 0:
+            col = width - tile_w
+            for d in range(0, depth - tile_d + 1, step_d):
+                for row in range(0, height - tile_h + 1, step_h):
+                    end_d = min(d + tile_d, depth)
+                    end_row = min(row + tile_h, height)
+
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (end_d, end_row, width),
+                        "actual_size": None,  # filled below
+                        "overlap_region": {
+                            "front": d > 0,
+                            "back": end_d < depth,
+                            "top": row > 0,
+                            "bottom": end_row < height,
+                            "left": True,
+                            "right": False,
+                        },
+                        "color": color,
+                    }
+
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Bottom edge tiles
+        if (height - tile_h) % step_h != 0:
+            row = height - tile_h
+            for d in range(0, depth - tile_d + 1, step_d):
+                for col in range(0, width - tile_w + 1, step_w):
+                    end_d = min(d + tile_d, depth)
+                    end_col = min(col + tile_w, width)
+
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (end_d, height, end_col),
+                        "actual_size": None,  # filled below
+                        "overlap_region": {
+                            "front": d > 0,
+                            "back": end_d < depth,
+                            "top": True,
+                            "bottom": False,
+                            "left": col > 0,
+                            "right": end_col < width,
+                        },
+                        "color": color,
+                    }
+
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Back edge tiles
+        if (depth - tile_d) % step_d != 0:
+            d = depth - tile_d
+            for row in range(0, height - tile_h + 1, step_h):
+                for col in range(0, width - tile_w + 1, step_w):
+                    end_row = min(row + tile_h, height)
+                    end_col = min(col + tile_w, width)
+
+                    info = {
+                        "tile_id": tile_id,
+                        "position": (d, row, col),
+                        "end_position": (depth, end_row, end_col),
+                        "actual_size": None,  # filled below
+                        "overlap_region": {
+                            "front": True,
+                            "back": False,
+                            "top": row > 0,
+                            "bottom": end_row < height,
+                            "left": col > 0,
+                            "right": end_col < width,
+                        },
+                        "color": color,
+                    }
+
+                    tile_info.append(info)
+                    tile_id += 1
+
+        # Corner edge tiles
+        # Bottom-right edge
+        if (height - tile_h) % step_h != 0 and (width - tile_w) % step_w != 0:
+            row = height - tile_h
+            col = width - tile_w
+            for d in range(0, depth - tile_d + 1, step_d):
+                end_d = min(d + tile_d, depth)
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (d, row, col),
+                    "end_position": (end_d, height, width),
+                    "actual_size": None,  # filled below
+                    "overlap_region": {
+                        "front": d > 0,
+                        "back": end_d < depth,
+                        "top": True,
+                        "bottom": False,
+                        "left": True,
+                        "right": False,
+                    },
+                    "color": color,
+                }
+
+                tile_info.append(info)
+                tile_id += 1
+
+        # Back-right edge
+        if (depth - tile_d) % step_d != 0 and (width - tile_w) % step_w != 0:
+            d = depth - tile_d
+            col = width - tile_w
+            for row in range(0, height - tile_h + 1, step_h):
+                end_row = min(row + tile_h, height)
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (d, row, col),
+                    "end_position": (depth, end_row, width),
+                    "actual_size": None,  # filled below
+                    "overlap_region": {
+                        "front": True,
+                        "back": False,
+                        "top": row > 0,
+                        "bottom": end_row < height,
+                        "left": True,
+                        "right": False,
+                    },
+                    "color": color,
+                }
+
+                tile_info.append(info)
+                tile_id += 1
+
+        # Back-bottom edge
+        if (depth - tile_d) % step_d != 0 and (height - tile_h) % step_h != 0:
+            d = depth - tile_d
+            row = height - tile_h
+            for col in range(0, width - tile_w + 1, step_w):
+                end_col = min(col + tile_w, width)
+
+                info = {
+                    "tile_id": tile_id,
+                    "position": (d, row, col),
+                    "end_position": (depth, height, end_col),
+                    "actual_size": None,  # filled below
+                    "overlap_region": {
+                        "front": True,
+                        "back": False,
+                        "top": True,
+                        "bottom": False,
+                        "left": col > 0,
+                        "right": end_col < width,
+                    },
+                    "color": color,
+                }
+
+                tile_info.append(info)
+                tile_id += 1
+
+        # Back-bottom-right corner
+        if (
+            (depth - tile_d) % step_d != 0
+            and (height - tile_h) % step_h != 0
+            and (width - tile_w) % step_w != 0
+        ):
+            d = depth - tile_d
+            row = height - tile_h
+            col = width - tile_w
+
+            info = {
+                "tile_id": tile_id,
+                "position": (d, row, col),
+                "end_position": (depth, height, width),
+                "actual_size": None,  # filled below
+                "overlap_region": {
+                    "front": True,
+                    "back": False,
+                    "top": True,
+                    "bottom": False,
+                    "left": True,
+                    "right": False,
+                },
+                "color": color,
+            }
+
+            tile_info.append(info)
+            tile_id += 1
+
+    else:
+        raise ValueError(f"Unsupported image dimensions: {len(shape)}D images are not supported")
+
+    # `actual_size` must match what numpy would actually return. Rederiving from the slice.
+    for info in tile_info:
+        info["actual_size"] = tuple(
+            len(range(*slice(s, e).indices(dim)))
+            for s, e, dim in zip(info["position"], info["end_position"], shape)
+        )
+
+    return tile_info
+
+
 def tile_image_with_overlap(
     image: np.ndarray,
     tile_size: int | tuple,
@@ -25,6 +449,10 @@ def tile_image_with_overlap(
 ):
     """
     Tile a large image into smaller tiles with specified overlap.
+
+    Thin wrapper: :func:`tile_grid_with_overlap` decides the geometry, this slices
+    the array accordingly. Behaviour is unchanged — positions, ordering, edge
+    tiles and tile_info contents are all produced by the shared function.
 
     Parameters:
     -----------
@@ -44,11 +472,7 @@ def tile_image_with_overlap(
     tiles : list of numpy.ndarray
         List of tile arrays
     tile_info : list of dict
-        List of dictionaries containing tile information:
-        - 'position': starting position (row, col) or (depth, row, col)
-        - 'end_position': ending position
-        - 'tile_id': unique identifier for the tile
-        - 'overlap_region': dict with overlap information
+        See :func:`tile_grid_with_overlap`.
 
     Examples:
     ---------
@@ -58,401 +482,15 @@ def tile_image_with_overlap(
     # For 3D image
     tiles, info = tile_image_with_overlap(img_3d, tile_size=(7, 512, 512), overlap=(0, 64, 64))
     """
-
     # Handle input validation
     if not isinstance(image, np.ndarray):
         raise ValueError("Image must be a numpy array")
 
-    # Convert tile_size to tuple if it's an integer
-    if isinstance(tile_size, int):
-        if image.ndim == 2:
-            tile_size = (tile_size, tile_size)
-        elif image.ndim == 3:
-            tile_size = (image.shape[0], tile_size, tile_size)
-        else:
-            raise ValueError("Unsupported image dimensions")
-
-    # Convert overlap to tuple if it's an integer
-    if isinstance(overlap, int):
-        if image.ndim == 2:
-            overlap = tuple([overlap] * len(tile_size))
-        elif image.ndim == 3:
-            overlap = (0,) + tuple([overlap] * (len(tile_size) - 1))
-        else:
-            raise ValueError("Unsupported image dimensions")
-
-    # Validate dimensions
-    if len(tile_size) != image.ndim:
-        raise ValueError(
-            f"tile_size dimensions ({len(tile_size)}) must match image dimensions ({image.ndim})"
-        )
-
-    if len(overlap) != image.ndim:
-        raise ValueError(
-            f"overlap dimensions ({len(overlap)}) must match image dimensions ({image.ndim})"
-        )
-
-    tiles = []
-    tile_info = []
-    tile_id = 0
-
-    # Calculate step size (tile_size - overlap)
-    step_size = tuple(ts - ov for ts, ov in zip(tile_size, overlap))
-
-    # Generate tile positions
-    if image.ndim == 2:
-        height, width = image.shape
-        tile_h, tile_w = tile_size
-        step_h, step_w = step_size
-
-        for row in range(0, height - tile_h + 1, step_h):
-            for col in range(0, width - tile_w + 1, step_w):
-                # Handle edge cases where we might go beyond image boundaries
-                end_row = min(row + tile_h, height)
-                end_col = min(col + tile_w, width)
-
-                # Extract tile
-                tile = image[row:end_row, col:end_col]
-
-                # Store tile information
-                info = {
-                    "tile_id": tile_id,
-                    "position": (row, col),
-                    "end_position": (end_row, end_col),
-                    "actual_size": tile.shape,
-                    "overlap_region": {
-                        "top": row > 0,
-                        "bottom": end_row < height,
-                        "left": col > 0,
-                        "right": end_col < width,
-                    },
-                    "color": color,
-                }
-
-                tiles.append(tile)
-                tile_info.append(info)
-                tile_id += 1
-
-        # Handle remaining edge tiles
-        # Right edge
-        if (width - tile_w) % step_w != 0:
-            col = width - tile_w
-            for row in range(0, height - tile_h + 1, step_h):
-                end_row = min(row + tile_h, height)
-                tile = image[row:end_row, col:width]
-
-                info = {
-                    "tile_id": tile_id,
-                    "position": (row, col),
-                    "end_position": (end_row, width),
-                    "actual_size": tile.shape,
-                    "overlap_region": {
-                        "top": row > 0,
-                        "bottom": end_row < height,
-                        "left": True,
-                        "right": False,
-                    },
-                    "color": color,
-                }
-
-                tiles.append(tile)
-                tile_info.append(info)
-                tile_id += 1
-
-        # Bottom edge
-        if (height - tile_h) % step_h != 0:
-            row = height - tile_h
-            for col in range(0, width - tile_w + 1, step_w):
-                end_col = min(col + tile_w, width)
-                tile = image[row:height, col:end_col]
-
-                info = {
-                    "tile_id": tile_id,
-                    "position": (row, col),
-                    "end_position": (height, end_col),
-                    "actual_size": tile.shape,
-                    "overlap_region": {
-                        "top": True,
-                        "bottom": False,
-                        "left": col > 0,
-                        "right": end_col < width,
-                    },
-                    "color": color,
-                }
-
-                tiles.append(tile)
-                tile_info.append(info)
-                tile_id += 1
-
-        # Bottom-right corner
-        if (height - tile_h) % step_h != 0 and (width - tile_w) % step_w != 0:
-            row = height - tile_h
-            col = width - tile_w
-            tile = image[row:height, col:width]
-
-            info = {
-                "tile_id": tile_id,
-                "position": (row, col),
-                "end_position": (height, width),
-                "actual_size": tile.shape,
-                "overlap_region": {
-                    "top": True,
-                    "bottom": False,
-                    "left": True,
-                    "right": False,
-                },
-                "color": color,
-            }
-
-            tiles.append(tile)
-            tile_info.append(info)
-            tile_id += 1
-
-    elif image.ndim == 3:
-        depth, height, width = image.shape
-        tile_d, tile_h, tile_w = tile_size
-        step_d, step_h, step_w = step_size
-
-        # Main grid of tiles
-        for d in range(0, depth - tile_d + 1, step_d):
-            for row in range(0, height - tile_h + 1, step_h):
-                for col in range(0, width - tile_w + 1, step_w):
-                    # Handle edge cases where we might go beyond image boundaries
-                    end_d = min(d + tile_d, depth)
-                    end_row = min(row + tile_h, height)
-                    end_col = min(col + tile_w, width)
-
-                    # Extract tile
-                    tile = image[d:end_d, row:end_row, col:end_col]
-
-                    # Store tile information
-                    info = {
-                        "tile_id": tile_id,
-                        "position": (d, row, col),
-                        "end_position": (end_d, end_row, end_col),
-                        "actual_size": tile.shape,
-                        "overlap_region": {
-                            "front": d > 0,
-                            "back": end_d < depth,
-                            "top": row > 0,
-                            "bottom": end_row < height,
-                            "left": col > 0,
-                            "right": end_col < width,
-                        },
-                        "color": color,
-                    }
-
-                    tiles.append(tile)
-                    tile_info.append(info)
-                    tile_id += 1
-
-        # Handle edge tiles for 3D
-        # Right edge tiles
-        if (width - tile_w) % step_w != 0:
-            col = width - tile_w
-            for d in range(0, depth - tile_d + 1, step_d):
-                for row in range(0, height - tile_h + 1, step_h):
-                    end_d = min(d + tile_d, depth)
-                    end_row = min(row + tile_h, height)
-                    tile = image[d:end_d, row:end_row, col:width]
-
-                    info = {
-                        "tile_id": tile_id,
-                        "position": (d, row, col),
-                        "end_position": (end_d, end_row, width),
-                        "actual_size": tile.shape,
-                        "overlap_region": {
-                            "front": d > 0,
-                            "back": end_d < depth,
-                            "top": row > 0,
-                            "bottom": end_row < height,
-                            "left": True,
-                            "right": False,
-                        },
-                        "color": color,
-                    }
-
-                    tiles.append(tile)
-                    tile_info.append(info)
-                    tile_id += 1
-
-        # Bottom edge tiles
-        if (height - tile_h) % step_h != 0:
-            row = height - tile_h
-            for d in range(0, depth - tile_d + 1, step_d):
-                for col in range(0, width - tile_w + 1, step_w):
-                    end_d = min(d + tile_d, depth)
-                    end_col = min(col + tile_w, width)
-                    tile = image[d:end_d, row:height, col:end_col]
-
-                    info = {
-                        "tile_id": tile_id,
-                        "position": (d, row, col),
-                        "end_position": (end_d, height, end_col),
-                        "actual_size": tile.shape,
-                        "overlap_region": {
-                            "front": d > 0,
-                            "back": end_d < depth,
-                            "top": True,
-                            "bottom": False,
-                            "left": col > 0,
-                            "right": end_col < width,
-                        },
-                        "color": color,
-                    }
-
-                    tiles.append(tile)
-                    tile_info.append(info)
-                    tile_id += 1
-
-        # Back edge tiles
-        if (depth - tile_d) % step_d != 0:
-            d = depth - tile_d
-            for row in range(0, height - tile_h + 1, step_h):
-                for col in range(0, width - tile_w + 1, step_w):
-                    end_row = min(row + tile_h, height)
-                    end_col = min(col + tile_w, width)
-                    tile = image[d:depth, row:end_row, col:end_col]
-
-                    info = {
-                        "tile_id": tile_id,
-                        "position": (d, row, col),
-                        "end_position": (depth, end_row, end_col),
-                        "actual_size": tile.shape,
-                        "overlap_region": {
-                            "front": True,
-                            "back": False,
-                            "top": row > 0,
-                            "bottom": end_row < height,
-                            "left": col > 0,
-                            "right": end_col < width,
-                        },
-                        "color": color,
-                    }
-
-                    tiles.append(tile)
-                    tile_info.append(info)
-                    tile_id += 1
-
-        # Corner edge tiles
-        # Bottom-right edge
-        if (height - tile_h) % step_h != 0 and (width - tile_w) % step_w != 0:
-            row = height - tile_h
-            col = width - tile_w
-            for d in range(0, depth - tile_d + 1, step_d):
-                end_d = min(d + tile_d, depth)
-                tile = image[d:end_d, row:height, col:width]
-
-                info = {
-                    "tile_id": tile_id,
-                    "position": (d, row, col),
-                    "end_position": (end_d, height, width),
-                    "actual_size": tile.shape,
-                    "overlap_region": {
-                        "front": d > 0,
-                        "back": end_d < depth,
-                        "top": True,
-                        "bottom": False,
-                        "left": True,
-                        "right": False,
-                    },
-                    "color": color,
-                }
-
-                tiles.append(tile)
-                tile_info.append(info)
-                tile_id += 1
-
-        # Back-right edge
-        if (depth - tile_d) % step_d != 0 and (width - tile_w) % step_w != 0:
-            d = depth - tile_d
-            col = width - tile_w
-            for row in range(0, height - tile_h + 1, step_h):
-                end_row = min(row + tile_h, height)
-                tile = image[d:depth, row:end_row, col:width]
-
-                info = {
-                    "tile_id": tile_id,
-                    "position": (d, row, col),
-                    "end_position": (depth, end_row, width),
-                    "actual_size": tile.shape,
-                    "overlap_region": {
-                        "front": True,
-                        "back": False,
-                        "top": row > 0,
-                        "bottom": end_row < height,
-                        "left": True,
-                        "right": False,
-                    },
-                    "color": color,
-                }
-
-                tiles.append(tile)
-                tile_info.append(info)
-                tile_id += 1
-
-        # Back-bottom edge
-        if (depth - tile_d) % step_d != 0 and (height - tile_h) % step_h != 0:
-            d = depth - tile_d
-            row = height - tile_h
-            for col in range(0, width - tile_w + 1, step_w):
-                end_col = min(col + tile_w, width)
-                tile = image[d:depth, row:height, col:end_col]
-
-                info = {
-                    "tile_id": tile_id,
-                    "position": (d, row, col),
-                    "end_position": (depth, height, end_col),
-                    "actual_size": tile.shape,
-                    "overlap_region": {
-                        "front": True,
-                        "back": False,
-                        "top": True,
-                        "bottom": False,
-                        "left": col > 0,
-                        "right": end_col < width,
-                    },
-                    "color": color,
-                }
-
-                tiles.append(tile)
-                tile_info.append(info)
-                tile_id += 1
-
-        # Back-bottom-right corner
-        if (
-            (depth - tile_d) % step_d != 0
-            and (height - tile_h) % step_h != 0
-            and (width - tile_w) % step_w != 0
-        ):
-            d = depth - tile_d
-            row = height - tile_h
-            col = width - tile_w
-            tile = image[d:depth, row:height, col:width]
-
-            info = {
-                "tile_id": tile_id,
-                "position": (d, row, col),
-                "end_position": (depth, height, width),
-                "actual_size": tile.shape,
-                "overlap_region": {
-                    "front": True,
-                    "back": False,
-                    "top": True,
-                    "bottom": False,
-                    "left": True,
-                    "right": False,
-                },
-                "color": color,
-            }
-
-            tiles.append(tile)
-            tile_info.append(info)
-            tile_id += 1
-
-    else:
-        raise ValueError(f"Unsupported image dimensions: {image.ndim}D images are not supported")
-
+    tile_info = tile_grid_with_overlap(image.shape, tile_size, overlap, color=color)
+    tiles = [
+        image[tuple(slice(s, e) for s, e in zip(i["position"], i["end_position"]))]
+        for i in tile_info
+    ]
     return tiles, tile_info
 
 
@@ -1405,3 +1443,292 @@ def hex_area_from_size(hex_size: float) -> float:
     if hex_size <= 0:
         raise ValueError("hex_size must be > 0")
     return (3.0 * math.sqrt(3.0) / 2.0) * (hex_size ** 2)
+
+
+# ===========================================================================
+# OVERLAPPING-TILE GEOMETRY AND TILE-SIZE OPTIMISATION
+#
+# optimize_grid picks the (tile_y, tile_x) that minimises area for a given tissue mask, to save compute cost.
+# ===========================================================================
+
+def bbox_of_mask(mask: np.ndarray) -> tuple[int, int, int, int]:
+    """
+    (y0, y1, x0, x1) bounding box of any 2D boolean mask, half-open.
+
+    Used to shrink a tiling extent to the region that actually has content.
+    Raises if the mask is empty — tiling nothing is never intended.
+    """
+    rows = np.flatnonzero(mask.any(axis=1))
+    cols = np.flatnonzero(mask.any(axis=0))
+    if rows.size == 0 or cols.size == 0:
+        raise ValueError("mask is empty; nothing to tile")
+    return int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+
+
+@dataclass(frozen=True)
+class Tile:
+    """
+    One tile of an overlapping grid, in absolute pixel coordinates.
+
+    ``gi``/``gj`` are grid indices, which let a consumer walk neighbours; 
+    ``y0``/``x0`` are absolute offsets, they already include the bbox origin.
+    """
+    gi: int
+    gj: int
+    y0: int
+    x0: int
+    height: int
+    width: int
+
+    @property
+    def y1(self) -> int:
+        return self.y0 + self.height
+
+    @property
+    def x1(self) -> int:
+        return self.x0 + self.width
+
+    @property
+    def area(self) -> int:
+        return self.height * self.width
+
+
+def build_grid(bbox: tuple[int, int, int, int], tile, overlap: int) -> list[Tile]:
+    """
+    Tile a bounding box.
+
+    The layout rules (stride, right-aligned final tile, per-axis solving) live in
+    :func:`tile_grid_with_overlap` above.
+    """
+    y0, y1, x0, x1 = bbox
+    height, width = y1 - y0, x1 - x0
+    tile_y, tile_x = (tile, tile) if isinstance(tile, (int, np.integer)) else tile
+    tile_y, tile_x = min(int(tile_y), height), min(int(tile_x), width)
+    if tile_y <= overlap or tile_x <= overlap:
+        raise ValueError(
+            f"tile ({tile_y}x{tile_x}, clamped to the {height}x{width} extent) "
+            f"must exceed overlap ({overlap})"
+        )
+
+    info = tile_grid_with_overlap((height, width), (tile_y, tile_x), overlap)
+
+    # tile_info has no grid indices: the shared function emits the main grid
+    # first and then appends edge rows/columns, so rank the distinct origins.
+    ys = sorted({i["position"][0] for i in info})
+    xs = sorted({i["position"][1] for i in info})
+    yi = {v: k for k, v in enumerate(ys)}
+    xi = {v: k for k, v in enumerate(xs)}
+    return [
+        Tile(
+            gi=yi[i["position"][0]], gj=xi[i["position"][1]],
+            y0=y0 + i["position"][0], x0=x0 + i["position"][1],
+            height=i["actual_size"][0], width=i["actual_size"][1],
+        )
+        for i in info
+    ]
+
+def redundancy(tiles: list[Tile], bbox: tuple[int, int, int, int]) -> float:
+    """Total tile area over bbox area — the fraction of pixels processed twice."""
+    y0, y1, x0, x1 = bbox
+    return sum(t.area for t in tiles) / ((y1 - y0) * (x1 - x0))
+
+
+def tile_coverage(mask: np.ndarray, tile: Tile) -> float:
+    """Fraction of a tile's pixels that are tissue."""
+    window = mask[tile.y0:tile.y1, tile.x0:tile.x1]
+    if window.size == 0:
+        return 0.0
+    return float(window.mean())
+
+
+# ---------------------------------------------------------------------------
+# tile-size optimisation
+#
+# Tiles need not be square, and the cost surface is not smooth: an arbitrary tile
+# does not pack evenly into the extent, so the adaptive grid appends a
+# right-aligned final tile whose overlap exceeds `o`. That makes redundancy
+# non-monotonic in tile size. There is therefore no analytic optimum to solve for.
+# The surface is cheap to evaluate exhaustively.
+# ---------------------------------------------------------------------------
+# The objective is simply TOTAL AREA: sum of the areas of tiles that contain any tissue.
+
+# Default search bounds per axis, in full-resolution pixels.
+# tile_min should be at least poly_tile_size * scale (see `CellposeConfig.min_gpu_tile`)
+DEFAULT_TILE_MIN = 1500
+DEFAULT_TILE_MAX = 12000
+
+def mask_integral_image(
+    mask: np.ndarray,
+    ds: int = 8
+) -> tuple[np.ndarray, int]:
+    """
+    Summed-area table of tissue pixels over a ``ds``-downsampled mask.
+
+    Downsampling keeps the table small and costs no meaningful accuracy.
+
+    Returned table is padded by one zero row/column so rectangle sums need no
+    boundary special-casing.
+    """
+    if ds < 1:
+        raise ValueError(f"ds must be >= 1, got {ds}")
+    h, w = mask.shape
+    nh, nw = h // ds, w // ds
+    if nh == 0 or nw == 0:
+        raise ValueError(f"ds={ds} is too coarse for a {h}x{w} mask")
+    reduced = (mask[: nh * ds, : nw * ds]
+               .reshape(nh, ds, nw, ds)
+               .sum(axis=(1, 3), dtype=np.int64))
+    integral = np.zeros((nh + 1, nw + 1), dtype=np.int64)
+    np.cumsum(np.cumsum(reduced, axis=0), axis=1, out=integral[1:, 1:])
+    return integral, ds
+
+
+def rect_sums(
+    integral: np.ndarray,
+    ds: int,
+    y0, y1, x0, x1
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Vectorised tissue-pixel sums for rectangles given in full-res coordinates.
+
+    Returns ``(tissue_pixels, sampled_pixels)``. Bounds are snapped outward to
+    block edges (floor the lower, ceil the upper), so the sampled rectangle is a
+    superset of the requested one. ``sampled_pixels`` is returned so callers can judge.
+    """
+    limit_y, limit_x = integral.shape[0] - 1, integral.shape[1] - 1
+    a = np.clip(np.asarray(y0) // ds, 0, limit_y)
+    b = np.clip(-(-np.asarray(y1) // ds), 0, limit_y)   # ceil
+    c = np.clip(np.asarray(x0) // ds, 0, limit_x)
+    d = np.clip(-(-np.asarray(x1) // ds), 0, limit_x)
+    sums = integral[b, d] - integral[a, d] - integral[b, c] + integral[a, c]
+    sampled = (b - a) * ds * (d - c) * ds
+    return sums, sampled
+
+
+def score_grid(
+    integral: np.ndarray,
+    ds: int,
+    bbox: tuple[int, int, int, int],
+    tile_y: int,
+    tile_x: int,
+    overlap: int,
+) -> dict:
+    """
+    Cost of one candidate ``(tile_y, tile_x, overlap)``, via the integral image.
+
+    ``cost_area`` is the total pixel area of tiles that contain tissue — the
+    quantity to minimise.
+    """
+    y0, y1, x0, x1 = bbox
+    tiles = build_grid(bbox, (tile_y, tile_x), overlap)
+    gy = np.array([t.y0 for t in tiles])
+    gx = np.array([t.x0 for t in tiles])
+    height = tiles[0].height
+    width = tiles[0].width
+
+    sums, sampled = rect_sums(integral, ds, gy, gy + height, gx, gx + width)
+
+    n_tiles = gy.size
+    area = height * width
+    kept_mask = sums > 0
+    n_kept = int(kept_mask.sum())
+
+    # `sums` counts tissue pixels (each ds x ds block contributes up to ds^2), so
+    # "fully tissue" is `sums == sampled`, both in pixels.
+    n_partial = int((kept_mask & (sums < sampled)).sum())
+    return {
+        "tile_y": tile_y,
+        "tile_x": tile_x,
+        "overlap": overlap,
+        "grid": (len({t.gi for t in tiles}), len({t.gj for t in tiles})),
+        "n_tiles": n_tiles,
+        "n_kept": n_kept,
+        "n_partial": n_partial,
+        "tile_area": area,
+        "redundancy": (n_tiles * area) / ((y1 - y0) * (x1 - x0)),
+        # the objective: total area actually pushed through the GPU
+        "cost_area": n_kept * area,
+    }
+
+
+def optimize_grid(
+    mask: np.ndarray,
+    *,
+    overlap: int | list[int] = 500,
+    tile_min: int = DEFAULT_TILE_MIN,
+    tile_max: int = DEFAULT_TILE_MAX,
+    step: int = 250,
+    max_tile_area: int | None = None,
+    ds: int = 8,
+    allow_non_square: bool = True,
+) -> tuple[dict, list[dict]]:
+    """Search the 2D ``(tile_y, tile_x)`` surface and return the cheapest grid.
+
+    Exhaustive rather than analytic because the surface is discontinuous (see the
+    module comment above). Costs one integral-image pass plus one vectorised
+    lookup per candidate.
+
+    Parameters:
+    mask (np.ndarray): boolean tissue mask at full resolution.
+    overlap (int | list[int]): overlap(s) to search. Must stay above roughly one
+        cell diameter (~95 px at 0.106 um/px) so a boundary cell is fully
+        contained in at least one tile — this is a correctness floor, not a
+        tunable, so it is not searched downward by default.
+    tile_min / tile_max / step (int): candidate range per axis, in full-res px.
+    max_tile_area (int | None): reject candidates whose tile area exceeds this.
+        Host RAM is the real tile-size limit and scales with area.
+    allow_non_square (bool): if False, restrict to ``tile_y == tile_x``.
+
+    Returns ``(best, all_scored)``; ``all_scored`` is sorted by cost so callers
+    can log the runner-up surface or record it for provenance.
+    """
+    integral, ds = mask_integral_image(mask, ds)
+    bbox = bbox_of_mask(mask)
+    y_extent, x_extent = bbox[1] - bbox[0], bbox[3] - bbox[2]
+    overlaps = [overlap] if isinstance(overlap, int) else list(overlap)
+
+    def candidates(extent: int) -> list[int]:
+        top = min(tile_max, extent)
+        vals = list(range(tile_min, top + 1, step))
+        if not vals or vals[-1] != top:
+            vals.append(top)                 # always consider "one tile per axis"
+        return vals
+
+    ys_c, xs_c = candidates(y_extent), candidates(x_extent)
+    scored: list[dict] = []
+    for o in overlaps:
+        for ty in ys_c:
+            if ty <= o:
+                continue
+            for tx in (xs_c if allow_non_square else [ty]):
+                if tx <= o or tx > x_extent and tx != min(tile_max, x_extent):
+                    continue
+                if max_tile_area is not None and ty * tx > max_tile_area:
+                    continue
+                scored.append(score_grid(integral, ds, bbox, ty, tx, o))
+
+    if not scored:
+        raise ValueError(
+            "no viable tile candidates; check tile_min/tile_max/overlap and "
+            "max_tile_area against the tissue bbox "
+            f"({y_extent}x{x_extent})"
+        )
+    scored.sort(key=lambda s: s["cost_area"])
+    best = scored[0]
+    logger.info(
+        "optimize_grid: searched %d candidates -> best tile %dx%d overlap=%d, "
+        "grid %dx%d, %d/%d tiles kept (%d partial), redundancy=%.2f, cost=%.0f GPU-s",
+        len(scored), best["tile_y"], best["tile_x"], best["overlap"],
+        *best["grid"], best["n_kept"], best["n_tiles"], best["n_partial"],
+        best["redundancy"], best["cost_area"],
+    )
+    square_best = next((s for s in scored
+                        if s["tile_y"] == s["tile_x"]), None)
+    if square_best is not None and square_best is not best:
+        logger.info(
+            "optimize_grid: best SQUARE tile would be %d (area %.3g px^2, "
+            "%.1f%% worse than the non-square optimum)",
+            square_best["tile_y"], square_best["cost_area"],
+            (square_best["cost_area"] / best["cost_area"] - 1) * 100,
+        )
+    return best, scored

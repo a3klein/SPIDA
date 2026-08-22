@@ -18,7 +18,7 @@ import geopandas as gpd
 import shapely.geometry as geom
 import pytest
 
-from spida.S.segmentation.segmentation_utils import (
+from spida.S.segmentation.postprocess import (
     convert_geometry,
     harmonize_polygons,
 )

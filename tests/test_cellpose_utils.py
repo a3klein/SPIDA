@@ -19,24 +19,46 @@ def _write_tif(path: Path, array: np.ndarray) -> None:
     iio.imwrite(path, array)
 
 
-def test_load_image_downscale_2d_single_channel(tmp_path: Path):
+def _load_region(images_dir: Path, **cfg_kw) -> np.ndarray:
+    """Load a region's stains the way `_segment_whole` does.
+
+    Three production steps: `_resolve_stains` -> `read_stains` -> the
+    single-plane squeeze. The squeeze is repeated here rather than imported
+    because it lives inline in `_segment_whole`, which also runs a model; the
+    guard against the two drifting apart is
+    `test_untiled_path_squeezes_a_single_plane_stain` in
+    test_cellpose_backend_wiring.py, which asserts on the shape the MODEL sees.
+    """
+    from spida.S.io.mosaic import read_stains
+
+    cfg = CellposeConfig.from_kwargs(**cfg_kw)
+    stains = cellpose._resolve_stains(cfg, images_dir)
+    img = read_stains(stains, downscale=cfg.scale)
+    return img[..., 0] if img.shape[-1] == 1 else img
+
+
+def test_read_stains_downscale_2d_single_channel(tmp_path: Path):
+    """`read_stains` is always 4D -- Z=1 here. The collapse to (C, Y, X) is the
+    caller's, tested via `_load_region` below and on the model input in
+    test_cellpose_backend_wiring.py."""
+    from spida.S.io.mosaic import read_stains
+
     img = np.arange(16, dtype=np.uint16).reshape(4, 4)
     _write_tif(tmp_path / "img_DAPI.tif", img)
 
-    loaded = cellpose._load_image(
-        tmp_path,
-        image_ext=".tif",
-        nuc_stain_name="DAPI",
-        cyto_stain_name=None,
-        downscale=2,
-    )
+    cfg = CellposeConfig.from_kwargs(nuc_stain_name="DAPI", cyto_stain_name=None,
+                                     image_ext=".tif", scale=2)
+    loaded = read_stains(cellpose._resolve_stains(cfg, tmp_path), downscale=2)
 
     expected = ski.transform.downscale_local_mean(img, (2, 2))
-    assert loaded.shape == (1, 2, 2)
-    assert np.allclose(loaded[0], expected)
+    assert loaded.shape == (1, 2, 2, 1)
+    assert np.allclose(loaded[0, ..., 0], expected)
+    # and the caller-side collapse the 2D path depends on
+    assert _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name=None,
+                        image_ext=".tif", scale=2).shape == (1, 2, 2)
 
 
-def test_load_image_downscale_3d_stack(tmp_path: Path):
+def test_read_stains_downscale_3d_stack(tmp_path: Path):
     stack = [
         np.full((4, 4), fill_value=1, dtype=np.uint16),
         np.full((4, 4), fill_value=3, dtype=np.uint16),
@@ -44,34 +66,24 @@ def test_load_image_downscale_3d_stack(tmp_path: Path):
     for idx, plane in enumerate(stack):
         _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
 
-    loaded = cellpose._load_image(
-        tmp_path,
-        image_ext=".tif",
-        nuc_stain_name="DAPI",
-        cyto_stain_name=None,
-        downscale=2,
-    )
+    loaded = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name=None,
+                          image_ext=".tif", scale=2)
 
     expected = np.stack(
         [ski.transform.downscale_local_mean(p, (2, 2)) for p in stack], axis=-1
     )
-    assert loaded.shape == (1, 2, 2, 2)
+    assert loaded.shape == (1, 2, 2, 2)      # multi-plane: no squeeze
     assert np.allclose(loaded[0], expected)
 
 
-def test_load_image_downscale_with_cyto(tmp_path: Path):
+def test_read_stains_downscale_with_cyto(tmp_path: Path):
     nuc = np.arange(16, dtype=np.uint16).reshape(4, 4)
     cyto = np.arange(16, dtype=np.uint16).reshape(4, 4) * 2
     _write_tif(tmp_path / "img_DAPI.tif", nuc)
     _write_tif(tmp_path / "img_PolyT.tif", cyto)
 
-    loaded = cellpose._load_image(
-        tmp_path,
-        image_ext=".tif",
-        nuc_stain_name="DAPI",
-        cyto_stain_name="PolyT",
-        downscale=2,
-    )
+    loaded = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name="PolyT",
+                          image_ext=".tif", scale=2)
 
     expected_nuc = ski.transform.downscale_local_mean(nuc, (2, 2))
     expected_cyto = ski.transform.downscale_local_mean(cyto, (2, 2))
@@ -152,13 +164,8 @@ def test_pipeline_2d_sets_channel_axis_and_no_z_axis(tmp_path: Path, monkeypatch
     _write_tif(tmp_path / "img_DAPI.tif", nuc)
     _write_tif(tmp_path / "img_PolyT.tif", cyto)
 
-    img = cellpose._load_image(
-        tmp_path,
-        image_ext=".tif",
-        nuc_stain_name="DAPI",
-        cyto_stain_name="PolyT",
-        downscale=None,
-    )
+    img = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name="PolyT",
+                       image_ext=".tif", scale=1)
 
     cellpose._cellpose_wrapper(img, _cfg(seg_mode="2d"))
 
@@ -178,13 +185,8 @@ def test_pipeline_3d_stitched_sets_channel_and_z_axis(tmp_path: Path, monkeypatc
     for idx, plane in enumerate(stack):
         _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
 
-    img = cellpose._load_image(
-        tmp_path,
-        image_ext=".tif",
-        nuc_stain_name="DAPI",
-        cyto_stain_name=None,
-        downscale=None,
-    )
+    img = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name=None,
+                       image_ext=".tif", scale=1)
 
     cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_stitched", stitch_threshold=0.4))
 
@@ -205,13 +207,8 @@ def test_pipeline_3d_do3d_sets_channel_and_z_axis(tmp_path: Path, monkeypatch):
     for idx, plane in enumerate(stack):
         _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
 
-    img = cellpose._load_image(
-        tmp_path,
-        image_ext=".tif",
-        nuc_stain_name="DAPI",
-        cyto_stain_name=None,
-        downscale=None,
-    )
+    img = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name=None,
+                       image_ext=".tif", scale=1)
 
     cellpose._cellpose_wrapper(img, _cfg(seg_mode="3d_true"))
 
@@ -301,3 +298,35 @@ def test_cellpose_3d_vs_stitched_2d_on_synthetic_stack():
         for center in centers:
             assert _mask_contains_center(masks_3d[z], center)
             assert _mask_contains_center(masks_2d[z], center)
+
+
+# --- flow3D_smooth reaches model.eval, and only on the do_3D path ---------
+def test_flow3d_smooth_passed_only_for_do_3d():
+    """Z-ONLY by construction: the ring artifact is a z-axis flow-noise effect,
+    and blurring the high-resolution XY flow risks merging touching nuclei. The
+    config exposes a scalar sigma_z so XY can never be set by accident."""
+    img = np.zeros((1, 8, 8, 4), dtype=np.uint16)          # (C, Y, X, Z)
+
+    _, kw = cellpose.build_eval_call(
+        _cfg(seg_mode="3d_true", flow3d_smooth_z=2), img, anisotropy=3.5)
+    assert kw["flow3D_smooth"] == [2.0, 0.0, 0.0]
+    assert kw["do_3D"] is True
+
+    # absent when disabled
+    _, kw = cellpose.build_eval_call(
+        _cfg(seg_mode="3d_true", flow3d_smooth_z=0), img, anisotropy=3.5)
+    assert "flow3D_smooth" not in kw
+
+    # absent on the stitched path even if set
+    _, kw = cellpose.build_eval_call(_cfg(seg_mode="3d_stitched",
+                                          flow3d_smooth_z=2), img)
+    assert "flow3D_smooth" not in kw
+
+
+def test_flow3d_smooth_is_a_real_cellpose_eval_kwarg():
+    """Guards against the kwarg being silently swallowed by **kwargs if a future
+    cellpose renames or drops it -- which would revert the ring fix invisibly,
+    since cellpose logs nothing when it applies flow3D_smooth."""
+    import inspect
+    from cellpose import models
+    assert "flow3D_smooth" in inspect.signature(models.CellposeModel.eval).parameters

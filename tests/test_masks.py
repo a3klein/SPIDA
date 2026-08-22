@@ -76,3 +76,71 @@ def test_empty_mask_returns_empty():
     masks.max_cpu = 1
     gdf = masks.masks_to_geodataframe(m, tile_size=32, overlap=8)
     assert gdf.empty
+
+
+# ---------------------------------------------------------------------------
+# Oversized inner tile
+#
+# Regression: `tile_grid_with_overlap` used to emit a NEGATIVE origin when the
+# tile exceeded the extent, and `merge_tile_polygons` uses that origin as an
+# arithmetic translation — so an oversized tile shifted every polygon by the
+# overshoot. Latent until GPU tiling started handing this function small masks;
+# it silently broke cross-tile stitching, which matches within the tile
+# rectangle the polygons had just been shifted out of.
+#
+# The clamp now lives in `tile_grid_with_overlap` (fixing every consumer at
+# once); these assert the behaviour through the real call path.
+# ---------------------------------------------------------------------------
+
+from spida.S.segmentation.backends.masks import masks_to_geodataframe
+
+
+def test_polygons_are_placed_correctly_when_the_mask_is_smaller_than_the_tile():
+    """The bug itself: a 40x40 mask under the default 1000-px inner tile."""
+    mask = np.zeros((40, 40), dtype=np.uint32)
+    mask[10:20, 25:35] = 1
+
+    gdf = masks_to_geodataframe(mask, tile_size=1000, overlap=200, n_workers=1)
+
+    bounds = gdf.geometry.bounds.iloc[0]
+    # polygon coords are (x, y) with the half-pixel contour offset
+    assert bounds["minx"] == pytest.approx(24.5)
+    assert bounds["maxx"] == pytest.approx(34.5)
+    assert bounds["miny"] == pytest.approx(9.5)
+    assert bounds["maxy"] == pytest.approx(19.5)
+
+
+def test_oversized_tile_still_returns_every_cell():
+    """A non-positive step used to drop the tile entirely, yielding no cells."""
+    mask = np.zeros((30, 30), dtype=np.uint32)
+    mask[2:8, 2:8] = 1
+    mask[20:28, 20:28] = 2
+
+    gdf = masks_to_geodataframe(mask, tile_size=5000, overlap=4000, n_workers=1)
+
+    assert set(gdf["ID"]) == {1, 2}
+
+
+def test_oversized_tile_on_one_axis_only():
+    """A sliver outer tile clamps on one axis and keeps tiling on the other."""
+    mask = np.zeros((40, 4000), dtype=np.uint32)
+    mask[10:20, 100:140] = 1
+    mask[10:20, 3000:3040] = 2
+
+    gdf = masks_to_geodataframe(mask, tile_size=1000, overlap=200, n_workers=1)
+
+    assert set(gdf["ID"]) == {1, 2}
+    far = gdf[gdf["ID"] == 2].geometry.bounds.iloc[0]
+    assert far["minx"] == pytest.approx(2999.5)
+
+
+def test_3d_mask_smaller_than_the_tile():
+    mask = np.zeros((3, 40, 40), dtype=np.uint32)
+    mask[:, 10:20, 25:35] = 1
+
+    gdf = masks_to_geodataframe(mask, tile_size=1000, overlap=200, n_workers=1)
+
+    assert set(gdf["z"]) == {0, 1, 2}
+    bounds = gdf.geometry.bounds.iloc[0]
+    assert bounds["minx"] == pytest.approx(24.5)
+    assert bounds["miny"] == pytest.approx(9.5)

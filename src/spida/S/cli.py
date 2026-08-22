@@ -406,12 +406,13 @@ def run_segmentation(
 @click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
 @click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
 @click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Rust/proseg binary path")
+@click.option("--tissue_mask_path", "tissue_mask_path", default=None, type=click.Path(), help="Tissue mask restricting where segmentation runs (default: auto-discover <images_dir>/tissue_mask.tif, else ungated).")
 @click.pass_context
 def segment_region(ctx, method, exp_name, reg_name, list_params, prefix_name,
-                   root_path, segmentation_store, rust_bin_path):
-    # Method-specific run parameters are NOT exposed as Click options: with three
-    # backends the shared command would become unusable. `--list-params` makes
-    # them discoverable instead, from the method's own config class.
+                   root_path, segmentation_store, rust_bin_path,
+                   tissue_mask_path):
+    # Method-specific run parameters are NOT exposed as Click options.
+    # `--list-params` makes them discoverable instead, from the method's own config class.
     if list_params:
         from .segmentation.backends import describe_method_params
         click.echo(describe_method_params(method))
@@ -425,7 +426,7 @@ def segment_region(ctx, method, exp_name, reg_name, list_params, prefix_name,
     from .segmentation.main import segment_region as func
     func(method=method, exp_name=exp_name, reg_name=reg_name, prefix_name=prefix_name,
          root_path=root_path, segmentation_store=segmentation_store,
-         rust_bin_path=rust_bin_path, **kwargs)
+         rust_bin_path=rust_bin_path, tissue_mask_path=tissue_mask_path, **kwargs)
 
 
 @cli.command(
@@ -693,19 +694,23 @@ if __name__ == "__main__":
     # - Technically once SPIDA is fully built this will move into the main entry point of the package.
     # - and this won't be done once in each module! 
 
-    # Configure root logger with INFO level handlers (to allow INFO messages through)
-    env = configure_logging_for_runtime(
-        level=logging.INFO,  # Handlers need to accept INFO level
-    )
-    # Set root logger level to WARNING to suppress other modules
+    # SPIDA_LOG_LEVEL raises verbosity for one run without a code change. There is
+    # otherwise no way to see DEBUG output from a SLURM job, where the process is
+    # launched by a batch script rather than a person. Unset -> INFO, i.e. the
+    # previous behaviour exactly.
+    _level = getattr(logging, os.environ.get("SPIDA_LOG_LEVEL", "INFO").upper(),
+                     logging.INFO)
+
+    # Handlers must accept the chosen level for records to get through
+    env = configure_logging_for_runtime(level=_level)
+    # Root stays at WARNING to suppress other packages regardless
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.WARNING)
-    
-    # Set the entire spida package to INFO level as well
+
+    # The spida package itself follows the requested level
     spida_logger = logging.getLogger('spida')
-    spida_logger.setLevel(logging.INFO)
-    # Set the level for the current logger
-    logger.setLevel(logging.INFO) # Set the level for the current logger
+    spida_logger.setLevel(_level)
+    logger.setLevel(_level)
     logger.info(f"Logging configured for environment: {env}")
             
     cli()

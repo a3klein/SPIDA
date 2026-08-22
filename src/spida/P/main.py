@@ -194,6 +194,7 @@ def setup_adata_region(
     image_path: Path = None,
     image_store: Path = None,
     zarr_store: str | Path | None = None,
+    consensus_cluster: bool = True,
 ):
     """
     Setup the AnnData object for downstream analysis.
@@ -205,6 +206,8 @@ def setup_adata_region(
     prefix_name (str): Prefix for the keys in the spatialdata object.
     plot (bool, optional): Whether to plot the results. Defaults to False.
     do_tsne (bool, optional): Also compute the tSNE embedding (needed by the setup plots). Defaults to False.
+    consensus_cluster (bool, optional): Use consensus clustering rather than a single
+        Leiden run. Defaults to True. See `run_setup` for the memory/runtime tradeoff.
     """
     from spida.P.setup_adata import run_setup
 
@@ -222,7 +225,8 @@ def setup_adata_region(
         exp_name, reg_name, prefix_name, zarr_store=zarr_store
     )  # Use the filtered data if available
     # Run the setup
-    adata = run_setup(adata, exp_name, reg_name, prefix_name, donor_name, do_tsne=do_tsne)
+    adata = run_setup(adata, exp_name, reg_name, prefix_name, donor_name, do_tsne=do_tsne,
+                      consensus_cluster=consensus_cluster)
     # backup the adata object
     try:
         _assign_new_table(

@@ -378,3 +378,207 @@ def test_unused_micron_to_mosaic_path_warns_but_does_not_raise(tmp_path, caplog)
         )
     assert cfg.micron_to_mosaic_path == str(tmp_path)
     assert "unused" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# GPU tiling parameters
+# ---------------------------------------------------------------------------
+
+def test_gpu_tiling_is_off_by_default():
+    """Adding the tiled path must not change any existing run."""
+    cfg = CellposeConfig.from_kwargs()
+    assert cfg.gpu_tile_size is None
+    assert cfg.resolved_gpu_tile() is None
+
+
+@pytest.mark.parametrize("value,expected", [
+    (None, None),
+    ("auto", "auto"),
+    (9000, (9000, 9000)),
+    ("9000", (9000, 9000)),          # CLI strings coerce to int first
+    ("12000x9500", (12000, 9500)),
+    (" 12000 X 9500 ", (12000, 9500)),
+])
+def test_parse_gpu_tile_size(value, expected):
+    assert cc.parse_gpu_tile_size(value) == expected
+
+
+def test_non_square_tile_survives_from_kwargs():
+    """The optimiser searches the axes independently, so 'YxX' must round-trip."""
+    cfg = CellposeConfig.from_kwargs(gpu_tile_size="12000x9500")
+    assert cfg.resolved_gpu_tile() == (12000, 9500)
+
+
+@pytest.mark.parametrize("bad", ["9000by9000", "12000x", "x9500", "big", "1e4"])
+def test_bad_gpu_tile_size_raises_with_the_accepted_forms(bad):
+    with pytest.raises(ConfigError) as exc:
+        CellposeConfig.from_kwargs(gpu_tile_size=bad)
+    msg = str(exc.value)
+    assert "'auto'" in msg and "<y>x<x>" in msg
+
+
+def test_overlap_must_be_smaller_than_every_axis():
+    with pytest.raises(ConfigError, match="every axis"):
+        CellposeConfig.from_kwargs(gpu_tile_size="12000x400", gpu_tile_overlap=500)
+
+
+def test_square_tile_smaller_than_overlap_raises():
+    with pytest.raises(ConfigError, match="every axis"):
+        CellposeConfig.from_kwargs(gpu_tile_size=400, gpu_tile_overlap=500)
+
+
+@pytest.mark.parametrize("iou", [0.0, 1.0, -0.1, 1.5])
+def test_gpu_tile_iou_must_be_a_proper_fraction(iou):
+    with pytest.raises(ConfigError, match="gpu_tile_iou"):
+        CellposeConfig.from_kwargs(gpu_tile_size=9000, gpu_tile_iou=iou)
+
+
+def test_n_gpu_threads_must_be_positive():
+    with pytest.raises(ConfigError, match="n_gpu_threads"):
+        CellposeConfig.from_kwargs(gpu_tile_size=9000, n_gpu_threads=0)
+
+
+def test_gpu_merge_choices_are_enforced():
+    with pytest.raises(ConfigError, match="gpu_merge"):
+        CellposeConfig.from_kwargs(gpu_tile_size=9000, gpu_merge="average")
+
+
+def test_clahe_is_rejected_on_the_tiled_path():
+    """Per-tile CLAHE would give neighbours different transfer functions."""
+    with pytest.raises(ConfigError, match="apply_clahe"):
+        CellposeConfig.from_kwargs(gpu_tile_size=9000, apply_clahe=True)
+
+
+def test_clahe_still_allowed_without_tiling():
+    assert CellposeConfig.from_kwargs(apply_clahe=True).apply_clahe is True
+
+
+def test_tiling_knobs_without_gpu_tile_size_warn_as_inert(caplog):
+    with caplog.at_level("WARNING"):
+        cfg = CellposeConfig.from_kwargs(gpu_tile_overlap=200, n_gpu_threads=4)
+    assert cfg.gpu_tile_overlap == 200
+    assert "unused" in caplog.text
+    assert "gpu_tile_overlap" in caplog.text and "n_gpu_threads" in caplog.text
+
+
+def test_defaulted_tiling_knobs_do_not_warn(caplog):
+    with caplog.at_level("WARNING"):
+        CellposeConfig.from_kwargs(seg_mode="2d")
+    assert "unused" not in caplog.text
+
+
+def test_gpu_tiling_params_appear_in_list_params():
+    text = CellposeConfig.describe()
+    for name in ("gpu_tile_size", "gpu_tile_overlap", "gpu_tile_iou",
+                 "gpu_merge", "n_gpu_threads"):
+        assert name in text
+    # the distinction that has bitten before: outer vs inner tiling
+    assert "poly_tile_size" in text
+
+
+def test_gpu_tile_size_recorded_in_meta():
+    meta = CellposeConfig.from_kwargs(gpu_tile_size="12000x9500").to_meta()
+    assert meta["gpu_tile_size"] == "12000x9500"
+
+
+# ---------------------------------------------------------------------------
+# min_gpu_tile floor
+#
+# Below poly_tile_size * scale an outer tile downscales to less than one inner
+# polygon tile. Historically that produced a negative tile origin that shifted
+# every polygon out of the rectangle the stitcher matches within, so nothing
+# merged across the seam. `tile_grid_with_overlap` now clamps, but the config
+# is still pointless, so it is rejected up front.
+# ---------------------------------------------------------------------------
+
+def test_min_gpu_tile_is_poly_tile_size_times_scale():
+    cfg = CellposeConfig.from_kwargs(poly_tile_size=1000, scale=4)
+    assert cfg.min_gpu_tile() == 4000
+
+
+def test_tile_below_the_floor_is_rejected():
+    with pytest.raises(ConfigError, match="below the floor"):
+        CellposeConfig.from_kwargs(gpu_tile_size=3000)      # floor is 1000*4
+
+
+def test_tile_at_the_floor_is_accepted():
+    cfg = CellposeConfig.from_kwargs(gpu_tile_size=4000)
+    assert cfg.resolved_gpu_tile() == (4000, 4000)
+
+
+def test_floor_applies_to_the_shorter_axis_of_a_non_square_tile():
+    with pytest.raises(ConfigError, match="below the floor"):
+        CellposeConfig.from_kwargs(gpu_tile_size="12000x3000")
+
+
+def test_floor_moves_with_poly_tile_size():
+    """Lowering poly_tile_size is the documented escape hatch."""
+    cfg = CellposeConfig.from_kwargs(gpu_tile_size=3000, poly_tile_size=500)
+    assert cfg.min_gpu_tile() == 2000
+    assert cfg.resolved_gpu_tile() == (3000, 3000)
+
+
+def test_floor_moves_with_scale():
+    with pytest.raises(ConfigError, match="below the floor"):
+        CellposeConfig.from_kwargs(gpu_tile_size=6000, scale=8)   # floor is 8000
+
+
+def test_floor_error_names_both_inputs():
+    with pytest.raises(ConfigError) as exc:
+        CellposeConfig.from_kwargs(gpu_tile_size=3000)
+    msg = str(exc.value)
+    assert "poly_tile_size" in msg and "scale" in msg
+
+
+def test_overlap_error_takes_precedence_over_the_floor():
+    """Overlap >= tile is the more fundamental error; report that one."""
+    with pytest.raises(ConfigError, match="every axis"):
+        CellposeConfig.from_kwargs(gpu_tile_size=400, gpu_tile_overlap=500)
+
+
+def test_floor_does_not_apply_to_auto():
+    """'auto' is bounded by optimize_grid's tile_min, not by this check."""
+    cfg = CellposeConfig.from_kwargs(gpu_tile_size="auto")
+    assert cfg.resolved_gpu_tile() == "auto"
+
+
+# --- flow3d_smooth_z (do_3D ring/donut fix) -------------------------------
+def test_flow3d_smooth_z_defaults_on_at_two():
+    """ON at sigma_z=2, the dev-bench provisional winner (rings 3.9% -> 0.6%,
+    97.5% cell-for-cell agreement, +1.1% wall). The sigma sweep may revise it and
+    decon vs raw images differ, so this is a default worth re-checking, not a
+    constant."""
+    cfg = CellposeConfig.from_kwargs(seg_mode="3d_true")
+    assert cfg.flow3d_smooth_z == 2.0
+
+
+@pytest.mark.parametrize("bad", [-0.1, -2])
+def test_flow3d_smooth_z_rejects_negative(bad):
+    with pytest.raises(ConfigError, match="flow3d_smooth_z"):
+        CellposeConfig.from_kwargs(seg_mode="3d_true", flow3d_smooth_z=bad)
+
+
+@pytest.mark.parametrize("mode", ["2d", "3d_stitched"])
+def test_flow3d_smooth_z_warns_only_when_EXPLICITLY_set(mode, caplog):
+    """cellpose applies flow3D_smooth only on the do_3D path, so setting it
+    elsewhere is a silent no-op worth warning about.
+
+    But the warning must key off "differs from the class default", not ">0":
+    now that the default is 2.0, a bare `>0` test would warn on EVERY
+    3d_stitched and 2d run about a value the caller never chose.
+    """
+    with caplog.at_level("WARNING"):
+        CellposeConfig.from_kwargs(seg_mode=mode, flow3d_smooth_z=3)
+    assert "flow3d_smooth_z" in caplog.text and "ignored" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        CellposeConfig.from_kwargs(seg_mode=mode)          # default, not chosen
+    assert "flow3d_smooth_z" not in caplog.text, (
+        "warned about the default value, which the caller did not set"
+    )
+
+
+def test_flow3d_smooth_z_is_recorded_in_meta():
+    cfg = CellposeConfig.from_kwargs(seg_mode="3d_true", flow3d_smooth_z=3)
+    assert cfg.to_meta()["flow3d_smooth_z"] == 3.0

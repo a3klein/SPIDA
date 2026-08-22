@@ -250,6 +250,7 @@ def write_adata(
 @click.option("--suffix", type=str, default="", help="Suffix for the table key (default: '')")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--do_tsne", is_flag=True, default=False, help="Also compute the tSNE embedding (needed by the setup plots; default: False = UMAP only)")
+@click.option("--consensus/--no-consensus","consensus_cluster",default=True,help="Consensus clustering (200 Leiden repeats) vs a single Leiden run. ")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
 @click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
@@ -262,6 +263,7 @@ def setup_adata_region(
     suffix: str = "",
     plot=False,
     do_tsne: bool = False,
+    consensus_cluster: bool = True,
     image_path: Path = None,
     image_store: Path = None,
     zarr_store: Path = None,
@@ -285,6 +287,7 @@ def setup_adata_region(
         suffix=suffix,
         plot=plot,
         do_tsne=do_tsne,
+        consensus_cluster=consensus_cluster,
         image_path=image_path,
         image_store=image_store,
         zarr_store=zarr_store,

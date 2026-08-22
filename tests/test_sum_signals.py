@@ -16,7 +16,7 @@ import geopandas as gpd
 import shapely.geometry as geom
 import pytest
 
-from spida.S.segmentation.segmentation_utils import sum_signals, _high_pass
+from spida.S.segmentation.postprocess import sum_signals, _high_pass
 
 DATA = Path(__file__).parent / "data" / "segmentation_utils"
 SS_BOUNDARIES = DATA / "sum_signals_boundaries.parquet"

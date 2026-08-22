@@ -1,8 +1,9 @@
-"""Pure-Python reimplementations of VPT (vizgen-postprocessing) commands.
+"""
+Post-segmentation processing: Reimplementations of VPT commands.
 
 These replace shelling out to the external ``vpt`` binary. Each function is a
 drop-in for the corresponding VPT command, reading/writing the same file formats
-and matching VPT's semantics exactly (validated bit-for-bit against the binary).
+and matching VPT's semantics exactly.
 
 Currently implemented:
     - ``partition_transcripts`` (VPT ``partition-transcripts``)
