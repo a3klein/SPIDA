@@ -1,7 +1,8 @@
 #!/bin/bash
 # FILENAME: 1_start.sh
-# DESCRIPTION: Ingest region into spatialdata zarr store, build the tissue mask,
-#              and run transcript QC.
+# DESCRIPTION: Ingest region into spatialdata zarr store and build the tissue mask.
+#              The KDE tissue mask replaces the old transcript-QC / hex-clustering
+#              pass; step 3b consumes it as the qc_mask pass region.
 
 #SBATCH -J start_{EXP_N}_{REG_N}
 #SBATCH --partition=cpu-ondemand
@@ -71,15 +72,6 @@ pixi run --frozen -e preprocessing \
     {REGION} \
     --rho_min {TISSUE_RHO_MIN} \
     --plot
-
-echo -e "\nRunning Transcript QC\n"
-pixi run --frozen -e preprocessing \
-    spida-P --config {CONFIG_PATH} \
-    transcript-qc \
-    {EXPERIMENT} \
-    {REGION} \
-    --hex_size 30 \
-    --min_transcripts 100
 
 echo -e "\nGenerating Load QC Figures\n"
 pixi run --frozen -e preprocessing \

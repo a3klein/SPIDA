@@ -179,6 +179,41 @@ def plot_tz_hex_qc(adata_hex, out_dir):
     plt.close()
 
 
+def plot_tissue_mask(sdata, points_key, out_dir, exp_name="", reg_name="",
+                     rho_min=5.0, ref_um=25.0, erode_sigma=1.0,
+                     a_min_um2=50000.0, gb=5.0):
+    """Three-panel tissue mask QC, matching `tissue-mask --plot`.
+
+    The KDE stages are not persisted to the zarr store, so they are recomputed
+    here; pass the same parameters the `tissue-mask` run used.
+    """
+    from spida.P.tissue_mask import run_tissue_mask
+
+    stages, grid, x0, y0 = run_tissue_mask(
+        sdata, points_key=points_key, images_dir=out_dir,
+        gb=gb, rho_min=rho_min, ref_um=ref_um, a_min_um2=a_min_um2,
+        erode_sigma=erode_sigma, persist=False, write_raster=False,
+    )
+
+    fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+    ax[0].imshow(np.log1p(stages["dens100"]), origin="lower", cmap="magma", aspect="equal")
+    ax[0].set_title(f"log transcript density\n{exp_name}\n{reg_name}", fontsize=9)
+    ax[1].imshow(stages["final"], origin="lower", cmap="gray_r", aspect="equal")
+    ax[1].set_title(f"tissue mask (rho>={rho_min:g} erode={erode_sigma:g}sig)\n"
+                    f"{int(stages['final'].sum())} px ({100*stages['final'].mean():.1f}%)", fontsize=9)
+    ax[2].imshow(np.log1p(stages["dens100"]), origin="lower", cmap="magma", aspect="equal")
+    for geom in grid.geometry:
+        for poly in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom]):
+            xs, ys = poly.exterior.xy
+            ax[2].plot((np.asarray(xs) - x0) / gb, (np.asarray(ys) - y0) / gb, color="lime", lw=0.6)
+    ax[2].set_title("qc_mask polygon over density", fontsize=9)
+    for a in ax:
+        a.set_xticks([]); a.set_yticks([])
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "tissue_mask.svg"), bbox_inches="tight")
+    plt.close()
+
+
 def plot_segload(sdata, image_key, shapes_key, segmentation_key, out_dir):
     cs='global'
     # Subsetting for faster cropping

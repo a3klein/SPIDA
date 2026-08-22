@@ -48,6 +48,8 @@ def cli(ctx, config):
 @click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
 @click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
 @click.option("--naming-map", type=click.Path(exists=True), default=None, help="Path to naming_map.csv for human-readable labels (optional)")
+@click.option("--rho_min", type=float, default=5.0, help="rho_min the tissue-mask run used, for the mask QC panels (default: 5)")
+@click.option("--erode_sigma", type=float, default=1.0, help="erode_sigma the tissue-mask run used, for the mask QC panels (default: 1)")
 @click.pass_context
 def generate_load_qc_figs(
     ctx,
@@ -59,18 +61,22 @@ def generate_load_qc_figs(
     site_dir : str | Path = None,
     plot_decon : bool = False,
     naming_map : str | None = None,
+    rho_min : float = 5.0,
+    erode_sigma : float = 1.0,
 ):
     """
     Generate QC figures for a given experiment and region, and save them to the appropriate directory for the SPIDA website.
     """
     from spida.P.transcript_qc import _obs_to_grid_geodf
-    from spida.pl.site_figs import plot_load_images, plot_decon_images, plot_tz_qc, plot_tz_hex_qc
+    from spida.pl.site_figs import (plot_load_images, plot_decon_images, plot_tz_qc,
+                                    plot_tz_hex_qc, plot_tissue_mask)
 
     logger.info(f"Generating load QC figures for experiment {exp_name} region {reg_name}")
 
     sdata, img_dir, data_dir, keys, _ = _load_metadata(
         exp_name=exp_name,
         reg_name=reg_name,
+        prefix_name="default",
         lab=lab,
         brain_region=brain_region,
         zarr_store=zarr_store,
@@ -79,13 +85,13 @@ def generate_load_qc_figs(
     )
 
     image_key = keys[0]
+    points_key = keys[3]
     decon_image_key = "decon_image"
     tz_qc_key = "transcript_qc_shapes"
     tz_qc_table_key = "adata_hex_s30.0_o0.0_clustered"
+    tissue_mask_key = "qc_mask"
 
-    # Both inputs are optional: transcript_qc_shapes comes from `transcript-qc`
-    # and the clustered hex table only from `cluster-hexes`. A region processed
-    # without either still gets the rest of its figures.
+    # Both inputs are optional.
     grid = sdata[tz_qc_key].copy() if tz_qc_key in sdata.shapes else None
     if grid is None:
         logger.info("Key %s not found for %s / %s; skipping the transcript QC plot.",
@@ -96,16 +102,24 @@ def generate_load_qc_figs(
         adata_hex = sdata[tz_qc_table_key].copy()
         adata_hex.obs = _obs_to_grid_geodf(adata_hex.obs)
     else:
-        # plot_tz_hex_qc needs leiden / umap / leiden_colors, so the unclustered
-        # hex table is not a usable substitute.
+        # plot_tz_hex_qc needs leiden / umap / leiden_colors, so the unclustered hex table is not a usable substitute.
         logger.info("Key %s not found for %s / %s; skipping the hex cluster plot "
                     "(run `cluster-hexes` to get it).", tz_qc_table_key, exp_name, reg_name)
+
+    has_tissue_mask = tissue_mask_key in sdata.shapes
+    if not has_tissue_mask:
+        logger.info("Key %s not found for %s / %s; skipping the tissue mask plots "
+                    "(run `tissue-mask` to get them).", tissue_mask_key, exp_name, reg_name)
 
     cmap="RdYlGn_r"
 
     plot_load_images(sdata, image_key, img_dir)
     if plot_decon:
         plot_decon_images(sdata, decon_image_key, img_dir)
+    if has_tissue_mask:
+        plot_tissue_mask(sdata, points_key, img_dir,
+                         exp_name=exp_name, reg_name=reg_name,
+                         rho_min=rho_min, erode_sigma=erode_sigma)
     if grid is not None:
         plot_tz_qc(grid, img_dir, cmap=cmap)
     if adata_hex is not None:
