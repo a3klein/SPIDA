@@ -61,6 +61,26 @@ def _load_mask(mask):
     return mask
 
 
+def _tile_rowcol(tile_info_entry) -> tuple[int, int, int, int]:
+    """
+    Returns ``(r0, c0, r1, c1)`` from a 2D ``(row, col)`` or 3D ``(z, row, col)`` position.
+
+    ``tile_image_with_overlap`` branches on ``len(shape)``: the 2D path emits
+    ``(row, col)`` positions, the 3D path emits ``(d, row, col)``. ``decon_image``
+    passes the full ``(z, H, W)`` volume, so 3D deconvolution always produces
+    3-element positions. 
+    """
+    pos, end = tile_info_entry["position"], tile_info_entry["end_position"]
+    if len(pos) == 3:
+        return pos[1], pos[2], end[1], end[2]
+    if len(pos) == 2:
+        return pos[0], pos[1], end[0], end[1]
+    raise ValueError(
+        f"tile position must have 2 (row, col) or 3 (z, row, col) elements, "
+        f"got {len(pos)}: {pos!r}"
+    )
+
+
 def tissue_mask_tile_filter(tiles, tile_info, mask_tif):
     """Keep a tile if it overlaps any tissue pixel of the (pixel-aligned) tissue mask.
 
@@ -71,7 +91,7 @@ def tissue_mask_tile_filter(tiles, tile_info, mask_tif):
     mask = _load_mask(mask_tif)
     tile_maxes = _record_tile_maxes(tiles, tile_info)  # for the plot_thr histogram/grid
     for _ti in tile_info:
-        (r0, c0), (r1, c1) = _ti["position"], _ti["end_position"]
+        r0, c0, r1, c1 = _tile_rowcol(_ti)
         _ti["thresholded"] = bool(np.any(mask[r0:r1, c0:c1]))
     ret = [(t, ti) for t, ti in zip(tiles, tile_info) if ti["thresholded"]]
     kept_tiles = [t for t, _ in ret]
