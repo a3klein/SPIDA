@@ -211,6 +211,40 @@ def _parse_list(arg: str) -> list:
          "deconvolved image (.decon.tif). Use for 3D experiments (PSC-01, MTC_REPEAT) "
          "where segmentation should stay consistent with 2D brain regions.",
 )
+# --- deconvolution (step 2) -------------------------------------------------
+# These were hardcoded in the templates as `--filter_args tilesize 1000`, with the
+# iteration count not reachable at all. Passing them explicitly follows the same rule
+# the segmentation options already do: a run should be reproducible from the generated
+# script rather than from whatever a default happened to be at submission time.
+@click.option(
+    "--decon_iter",
+    type=int,
+    default=100,
+    show_default=True,
+    help="deconwolf Richardson-Lucy iterations. NOTE: 100 is the long-standing "
+         "production value and is deep in the RL 'night sky' regime -- measured "
+         "fragmentation at iter=100 is ~24x worse than not deconvolving at all. "
+         "Lower values are under evaluation; see dark_staining/docs/PRODUCTION_PLAN.md.",
+)
+@click.option(
+    "--decon_tilesize",
+    type=int,
+    default=1000,
+    show_default=True,
+    help="deconwolf's INTERNAL tile size, applied inside each SPIDA --tile_size tile. "
+         "0 disables it (untiled). Untiled is ~3x faster at a 2960px tile (measured: "
+         "47.5s fixed overhead tiled vs 14.3s untiled) but raises peak VRAM from "
+         "~2.5 GB to ~12 GB, so it needs a GPU with headroom.",
+)
+@click.option(
+    "--decon_psigma",
+    type=float,
+    default=None,
+    help="deconwolf --psigma, its Anscombe-domain regulariser for the RL sparsity "
+         "artifact. REQUIRES --decon_tilesize 0: deconwolf silently ignores psigma "
+         "whenever a tilesize is set (verified -- tiled psigma 0.5 and 1.5 give "
+         "bit-identical output).",
+)
 @click.option(
     "--seg_mode",
     type=click.Choice(["2d", "3d_stitched", "3d_true"], case_sensitive=False),
@@ -291,6 +325,9 @@ def config_templates_aws(
     reg_n: str | None,
     steps: list,
     force_2d_segmentation: bool,
+    decon_iter: int,
+    decon_tilesize: int,
+    decon_psigma: float | None,
     seg_mode: str,
     cellpose_model: str,
     gpu_tile_size: str,
@@ -312,6 +349,20 @@ def config_templates_aws(
             err=True,
         )
         sys.exit(1)
+
+    # Caught at generation time, not just at runtime: deconwolf silently ignores
+    # --psigma whenever a tilesize is set, so this combination would produce a script
+    # that runs for hours and quietly does not do what was asked. Warning rather than
+    # error, matching decon_image: dropping tilesize is the more dangerous fix, since
+    # tilesize is what bounds VRAM.
+    if decon_psigma is not None and decon_tilesize and decon_tilesize > 0:
+        click.echo(
+            f"  WARNING: --decon_psigma {decon_psigma} will be IGNORED because "
+            f"--decon_tilesize is {decon_tilesize}. deconwolf drops psigma whenever "
+            f"tiling is on. Pass --decon_tilesize 0 to use psigma (peak VRAM rises "
+            f"from ~2.5 GB to ~12 GB at a 2960px tile).",
+            err=True,
+        )
 
     # Resolve template directory: explicit --template_dir overrides --template_type default
     if template_dir is None:
@@ -466,6 +517,16 @@ def config_templates_aws(
             if use_tissue_mask else ""
         )
 
+        # Deconvolution args, one `--filter_args KEY VALUE` per pair (the CLI option is
+        # multiple=True). Trailing space: the template appends a line continuation.
+        _decon_pairs = [("iter", decon_iter)]
+        if decon_tilesize and decon_tilesize > 0:
+            _decon_pairs.append(("tilesize", decon_tilesize))
+        if decon_psigma is not None:
+            _decon_pairs.append(("psigma", decon_psigma))
+        decon_filter_args = "".join(
+            f"--filter_args {k} {v} " for k, v in _decon_pairs)
+
         # Create job output directory
         job_dir = output_dir / brain_region / exp_n / current_reg_n
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -502,6 +563,7 @@ def config_templates_aws(
                     CELLPOSE_MODEL=cellpose_model,
                     SEG_EXTRA_ARGS=seg_extra_args,
                     TISSUE_MASK_ARG=tissue_mask_arg,
+                    DECON_FILTER_ARGS=decon_filter_args,
                     TISSUE_RHO_MIN=tissue_rho_min,
                     GPU_PARTITION=gpu_partition,
                     GPU_CONSTRAINT=gpu_constraint,

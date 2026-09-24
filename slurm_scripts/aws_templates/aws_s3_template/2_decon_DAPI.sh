@@ -66,13 +66,13 @@ pixi run --frozen -e preprocessing-gpu \
     decon_image \
     -i {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {ROOT_DIR}/{EXPERIMENT}/out/dataorganization.csv \
-    -o {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images \
+    --tile_dir {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images \
     --channels DAPI \
     --tile_size 2960 \
     --overlap 400 \
     --z_step 1.5 \
     --filter deconwolf \
-    --filter_args tilesize 1000 \
+    {DECON_FILTER_ARGS}\
     --gpu \
     --plot_thr
 
