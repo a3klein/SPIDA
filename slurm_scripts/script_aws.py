@@ -212,7 +212,7 @@ def _parse_list(arg: str) -> list:
          "where segmentation should stay consistent with 2D brain regions.",
 )
 # --- deconvolution (step 2) -------------------------------------------------
-# These were hardcoded in the templates as `--filter_args tilesize 1000`, with the
+# These were hardcoded in the templates as `--transform_args tilesize 1000`, with the
 # iteration count not reachable at all. Passing them explicitly follows the same rule
 # the segmentation options already do: a run should be reproducible from the generated
 # script rather than from whatever a default happened to be at submission time.
@@ -517,7 +517,7 @@ def config_templates_aws(
             if use_tissue_mask else ""
         )
 
-        # Deconvolution args, one `--filter_args KEY VALUE` per pair (the CLI option is
+        # Deconvolution args, one `--transform_args KEY VALUE` per pair (the CLI option is
         # multiple=True). Trailing space: the template appends a line continuation.
         _decon_pairs = [("iter", decon_iter)]
         if decon_tilesize and decon_tilesize > 0:
@@ -525,7 +525,7 @@ def config_templates_aws(
         if decon_psigma is not None:
             _decon_pairs.append(("psigma", decon_psigma))
         decon_filter_args = "".join(
-            f"--filter_args {k} {v} " for k, v in _decon_pairs)
+            f"--transform_args {k} {v} " for k, v in _decon_pairs)
 
         # Create job output directory
         job_dir = output_dir / brain_region / exp_n / current_reg_n

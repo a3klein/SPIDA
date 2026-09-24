@@ -5,6 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 import multiprocessing as mp
+from dataclasses import replace
 from functools import partial
 
 import matplotlib.pyplot as plt
@@ -29,82 +30,14 @@ from spida.utilities.tiling import (
 
 # from spida.utilities.script_utils import parse_path, parse_list, parse_dict
 from spida.utilities.read_raw import read_info
-from spida.S.filters import dark_sectioning, deconwolf
-from spida.S.filters.mask import select_tiles
+from spida.S.image_prep.tile_io import project_down_2D, project_to_3D, write_tiff
+from spida.S.image_prep.tile_selection import select_tiles
+from spida.S.image_prep.transforms import TileContext, resolve_transform
 
 load_dotenv()
 logger = logging.getLogger(__package__)
 
 from spida.pl.decon_plots import save_threshold_plots_pdf
-
-BIGTIFF_BYTE_THRESHOLD = (2**32) - 1
-
-
-def write_tiff(
-    output_path: str | Path,
-    image: np.ndarray,
-    *,
-    bigtiff_threshold: int = BIGTIFF_BYTE_THRESHOLD,
-):
-    """Write a TIFF, using BigTIFF when the payload exceeds 4GB."""
-    output_path = Path(output_path)
-    bigtiff = image.nbytes > bigtiff_threshold
-    tifffile.imwrite(output_path, image, bigtiff=bigtiff)
-
-
-def project_down_2D(input_file, output_file: str | Path = None):
-    """
-    Project a 3D image to 2D by taking the maximum projection along the z-axis.
-    """
-    if output_file is None:
-        output_file = input_file.with_suffix(".2d.tif")
-    decon_img = iio.imread(input_file)
-
-    if decon_img.ndim == 3 and decon_img.shape[0] > 1:
-        # Remove first and last z slices if there are multiple z-slices
-        if decon_img.shape[0] > 2:
-            decon_img = decon_img[1:-1]
-        # Z-project to 2D using max projection
-        decon_img_2d = decon_img.max(axis=0)
-    else:
-        decon_img_2d = decon_img.squeeze()
-
-    # Save the 2D projected tile
-    iio.imwrite(output_file, decon_img_2d)
-
-def project_to_3D(input_file, output_file: str | Path = None):
-    """
-    Project a 3D padded image (so with repetitive edge slices) to 3D by taking the middle {z_stack_size} slices along the z-axis.
-    """
-    if output_file is None:
-        output_file = input_file.with_suffix(".3d.tif")
-    # Read only the needed pages one at a time to avoid loading the full padded volume.
-    try:
-        with tifffile.TiffFile(input_file) as tf:
-            n_slices = len(tf.pages)
-            start = (n_slices - z_stack_size) // 2
-            end = start + z_stack_size
-            if start < 0 or end > n_slices:
-                raise ValueError(
-                    f"TIFF has {n_slices} pages but z_stack_size={z_stack_size}"
-                )
-            decon_img_3d = np.stack([tf.pages[i].asarray() for i in range(start, end)])
-    except Exception:
-        logger.warning(
-            "project_to_3D: page-level read failed for %s — falling back to full load",
-            input_file,
-        )
-        decon_img = iio.imread(input_file)
-        if decon_img.ndim == 3:
-            start = (decon_img.shape[0] - z_stack_size) // 2
-            end = start + z_stack_size
-            decon_img_3d = decon_img[start:end].copy()
-            del decon_img
-        else:
-            decon_img_3d = decon_img.squeeze()
-
-    # Save the 3D projected tile
-    iio.imwrite(output_file, decon_img_3d)
 
 
 # unknown output location fails at startup.
@@ -116,20 +49,11 @@ def _stitch_dir(channel_image_path: Path, stitched_dir: str | Path | None) -> Pa
     d.mkdir(parents=True, exist_ok=True)
     return d
 
-FILTERS = {"deconwolf": deconwolf, "dark_sectioning": dark_sectioning}
-def resolve_filter(name: str):
-    """Look up a `--filter` name, or fail with the list of what exists."""
-    try:
-        return FILTERS[name]
-    except KeyError:
-        raise ValueError(
-            f"unknown filter {name!r}; available: {sorted(FILTERS)}"
-        ) from None
-
-def continue_stalled_run(_file, _filter=deconwolf, **filter_args):
+def continue_stalled_run(_file, _transform_name=None, _ctx=None, **transform_args):
     """
     Continue processing stalled runs by checking for existing files.
     """
+    _transform = resolve_transform(_transform_name)
     decon_file = _file.with_suffix(".decon.tif")
     if is_3d and _zstackexpand:
         projected_file = _file.with_suffix(".decon.3d.tif")
@@ -145,8 +69,8 @@ def continue_stalled_run(_file, _filter=deconwolf, **filter_args):
         pass
 
     else:
-        logger.info(f"Deconvolving {_file}")
-        decon_file = _filter(_file, decon_path=decon_file, **filter_args)
+        logger.info(f"Transforming {_file}")
+        decon_file = _transform.run(_file, decon_file, _ctx, **transform_args)
 
     # Project to 2D and save immediately to avoid memory overhead
     if not is_3d: 
@@ -154,20 +78,21 @@ def continue_stalled_run(_file, _filter=deconwolf, **filter_args):
         logger.info(f"Saved 2D projected tile to {projected_file}")
 
     if is_3d and _zstackexpand:
-        project_to_3D(decon_file, projected_file)
+        project_to_3D(decon_file, projected_file, z_stack_size=z_stack_size)
         decon_file.unlink()  # Padded decon tile no longer needed — free disk space immediately.
         logger.info(f"Saved 3D projected tile to {projected_file}")
 
     return projected_file
 
 
-def fresh_run(_file, _filter=deconwolf, **filter_args):
+def fresh_run(_file, _transform_name=None, _ctx=None, **transform_args):
     """
-    Perform a fresh run of deconvolution and projection for a given file.
+    Perform a fresh run of the transform and projection for a given file.
     """
+    _transform = resolve_transform(_transform_name)
     decon_file = _file.with_suffix(".decon.tif")
-    
-    decon_file = _filter(_file, decon_path=decon_file, **filter_args)
+
+    decon_file = _transform.run(_file, decon_file, _ctx, **transform_args)
 
     if not is_3d:
         # Project to 2D and save immediately to avoid memory overhead
@@ -177,22 +102,22 @@ def fresh_run(_file, _filter=deconwolf, **filter_args):
 
     if is_3d and _zstackexpand:
         projected_file = _file.with_suffix(".decon.3d.tif")
-        project_to_3D(decon_file, projected_file)
+        project_to_3D(decon_file, projected_file, z_stack_size=z_stack_size)
         decon_file.unlink()  # Padded decon tile no longer needed — free disk space immediately.
         logger.info(f"Saved 3D projected tile to {projected_file}")
 
     return projected_file
 
 
-def decon_image(
+def transform_image(
     image_path: str | Path,
     data_org_path: str | Path = "{input}/dataorganization.csv",
     channels: str | list[str] = "DAPI",
     tile_size: int | tuple = 2960,
     overlap: int | tuple = 100,
     output_dir: str | Path = "tiles_output",
-    filter_args: dict = None,
-    filter: str = "deconwolf",
+    transform_args: dict = None,
+    transform: str = "deconwolf",
     gpu: bool = True,
     z_step: float = 1.5,
     z_stack_expand: bool = True,
@@ -203,22 +128,21 @@ def decon_image(
     match_pre: bool = False,
     image_store: str | Path | None = None,
     clear_tiles : bool = True,
-    image_filter: str | None = None,
+    select_tiles_method: str | None = None,
     mask_path: str | Path | None = None,
     stitched_dir: str | Path | None = None,
     **kwargs,
 ):
     """
-    Deconvolve a large image by tiling it into smaller sections.
+    Apply a per-tile transform to a large image by tiling it into smaller sections.
 
     stitched_dir
         Where the stitched `*_z{n}.decon.tif` outputs go. Default None next to image_path
     """
-    
-    logger.info(f"Starting deconvolution of image: {image_path}")
 
-    # Get the filter function (deconwold / dark-sectioning)
-    _filter_fn = resolve_filter(filter)
+    logger.info(f"Starting {transform} on image: {image_path}")
+
+    _transform_fn = resolve_transform(transform)
 
     if image_store is None:
         image_store = Path(output_dir)
@@ -285,9 +209,9 @@ def decon_image(
             f"Tiled image into {len(tiles)} tiles with tile_size: {tile_size}, overlap: {overlap}"
         )
 
-        ### Filtering the Tiles to remove empty tiles (strategy dispatch; see S.filters.mask)
-        # image_filter overrides thr_tiles (kept for backwards compatibility: True->otsu, False->none)
-        method = image_filter or ("otsu" if thr_tiles else "none")
+        ### Drop empty tiles (strategy dispatch; see image_prep.tile_selection)
+        # select_tiles_method overrides thr_tiles (backwards compatible: True->otsu, False->none)
+        method = select_tiles_method or ("otsu" if thr_tiles else "none")
         select_kw = {}
         if method == "tissue_mask":
             mask_tif = Path(mask_path) if mask_path else Path(image_path) / "tissue_mask.tif"
@@ -356,31 +280,29 @@ def decon_image(
         if is_3d:
             del large_img  # Release the full 3D volume (z_stack_size × FOV) during deconvolution.
 
-        logger.info(f"Applying {filter} filter")
-        # Setting the deconwolf args
-        filter_args = filter_args if filter_args else {}
-        filter_args["colors"] = channels["color"].values
-        filter_args["z_step"] = z_step
-        filter_args.setdefault("iter", 100)
-        filter_args["gpu"] = gpu
+        logger.info(f"Applying {transform} transform")
+        # Defaults and validation belong to the transform, not here: it is the only
+        # thing that knows which parameters it accepts and how they interact.
+        _params = {**_transform_fn.DEFAULTS, **(transform_args or {})}
+        _params = _transform_fn.validate(_params)
 
-        if filter_args.get("psigma") is not None and filter_args.get("tilesize"):
-            logger.warning(
-                f"deconwolf ignores --psigma when --tilesize is set: dropping psigma={filter_args['psigma']},"
-                f"keeping tilesize={filter_args['tilesize']}. To use psigma, omit tilesize."
-            )
-            filter_args.pop("psigma")
-
-        # l = mp.Lock() # for locking the deconwolf subprocesses
+        _ctx = TileContext(
+            channel=_channel,
+            colors=channels["color"].values,
+            z_step_um=z_step,
+            gpu=gpu,
+        )
 
         if continue_stalled:
             logger.info("Continuing stalled run...")
 
             with mp.Manager() as manager:
-                lock = manager.Lock()
-                filter_args["lock"] = lock
-                # Deconvolve each tile
-                parallel_func = partial(continue_stalled_run, _filter=_filter_fn, **filter_args)
+                # Only GPU transforms take the lock; CPU ones run the pool in parallel.
+                ctx = (replace(_ctx, gpu_lock=manager.Lock())
+                       if _transform_fn.USES_GPU else _ctx)
+                # Transform each tile
+                parallel_func = partial(continue_stalled_run,
+                                        _transform_name=transform, _ctx=ctx, **_params)
                 with mp.Pool(mp.cpu_count()) as pool:
                     deconed_paths = list(  # noqa: F841
                         tqdm(
@@ -389,16 +311,16 @@ def decon_image(
                         )
                     )
 
-            # continue_stalled_run(saved_files, **filter_args)
         else:
-            logger.info("Starting new deconvolution run...")
+            logger.info("Starting new run...")
 
             with mp.Manager() as manager:
-                lock = manager.Lock()
-                filter_args["lock"] = lock
+                ctx = (replace(_ctx, gpu_lock=manager.Lock())
+                       if _transform_fn.USES_GPU else _ctx)
 
-                # Deconvolve each tile
-                parallel_func = partial(fresh_run, _filter=_filter_fn, **filter_args)
+                # Transform each tile
+                parallel_func = partial(fresh_run,
+                                        _transform_name=transform, _ctx=ctx, **_params)
                 # with mp.Pool(mp.cpu_count(), initializer=init, initargs=(l, )) as pool:
                 with mp.Pool(mp.cpu_count()) as pool:
                     deconed_paths = list( # noqa: F841

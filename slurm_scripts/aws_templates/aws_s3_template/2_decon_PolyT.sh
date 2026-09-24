@@ -63,15 +63,16 @@ mkdir -p /scratch/images
 echo -e "\nRunning whole image deconvolution - PolyT - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing-gpu \
     spida-S --config {CONFIG_PATH} \
-    decon_image \
+    transform-image \
     -i {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {ROOT_DIR}/{EXPERIMENT}/out/dataorganization.csv \
     --tile_dir {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images \
+    --stitched_dir {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --channels PolyT \
     --tile_size 2960 \
     --overlap 400 \
     --z_step 1.5 \
-    --filter deconwolf \
+    --transform deconwolf \
     {DECON_FILTER_ARGS}\
     --gpu \
     --plot_thr

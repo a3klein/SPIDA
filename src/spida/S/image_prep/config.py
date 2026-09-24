@@ -1,12 +1,13 @@
-import os
-from dotenv import load_dotenv  # type: ignore
+"""Shared imaging config: the deconwolf ini and the optics it declares.
 
+Read by every transform that needs physical parameters, so NA / pixel size /
+wavelength have one source rather than one per filter.
+"""
 import configparser
-import subprocess
+import os
 from pathlib import Path
 
-import numpy as np
-import imageio.v3 as iio
+from dotenv import load_dotenv  # type: ignore
 
 from spida._constants import OPTICS_DEFAULTS
 
@@ -70,75 +71,3 @@ def get_optics(channel: str | None = None) -> dict:
                 optics["emission_nm"] = config.getfloat(
                     "Optics", f"emission_nm_{channel}")
     return optics
-
-
-def deconwolf(
-    img_path: str | Path,
-    colors: list | np.ndarray | int,  # TODO: This runs on only one color at a time.
-    decon_path: str | Path = None,
-    z_step: float = 0.6,
-    iter: int = 100,
-    gpu: bool = False,
-    tilesize: int = None,
-    psigma: float = None,
-    lock=None,
-    **kwargs,
-) -> np.ndarray:
-    """Deconwolf deconvolution.
-
-    Parameters
-    ----------
-    img
-        A (Z,X,Y) or (C,Z,X,Y) image.
-    colors
-        A list of channel colors. Must be the same length as the number of channels in the image.
-    z_step
-        Z step size in microns.
-    iter
-        Number of iterations.
-    gpu
-        Whether to use the GPU.
-    tilesize
-        Size of tiles. If None, no tiling is used.
-    psigma
-        Deconwolf's regulariser. Ignored whenever `tilesize` is set. 
-
-    Returns
-    -------
-    filtered
-        a numpy array of the same shape and dtype as the input image.
-    """
-    # Setup
-    dw_path, psf_path = _configure_deconwolf()
-    if isinstance(img_path, str):
-        img_path = Path(img_path)
-    img = iio.imread(img_path)
-    if decon_path is None:
-        decon_path = img_path.with_suffix(".decon.tif")
-
-    has_channels = len(img.shape) == 4
-    if not has_channels:
-        img = np.expand_dims(img, axis=0)
-
-    if isinstance(colors, int):
-        colors = [colors]
-    # Run deconwolf on each channel
-    gpu = "--gpu" if gpu else ""
-    tile = f"--tilesize {tilesize}" if tilesize else ""
-    ps = f"--psigma {psigma}" if psigma is not None else ""
-    for i, color in enumerate(colors):
-        color_psf = psf_path / f"{color}_z{int(z_step * 1000)}_psf.tiff"
-        if not color_psf.exists():
-            raise FileNotFoundError(
-                f"PSF for color {color} and z_step {z_step} not found at {color_psf}."
-            )
-
-        command = f"{dw_path} --out {decon_path} --iter {iter} {tile} {ps} {gpu} {img_path} {color_psf} --verbose 0"
-        # if "lock" in globals():
-        if lock is not None:
-            with lock:
-                subprocess.run(command, check=True, shell=True)
-        else:
-            subprocess.run(command, check=True, shell=True)
-
-    return decon_path

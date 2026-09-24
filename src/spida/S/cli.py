@@ -594,10 +594,10 @@ def align_geometries(
 
 
 @cli.command(
-    name="decon-image",
-    aliases=["decon_image"],
+    name="transform-image",
+    aliases=["transform_image", "decon-image", "decon_image"],
     cls=RichCommand,
-    help="['decon_image', 'decon-image'] - Deconvolve an image  using Deconwolf.",
+    help="['transform_image', 'decon_image'] - Apply a per-tile transform (deconwolf or dark_sectioning) to a large image.",
 )
 @click.option("image_path", "--image_path", "-i", default=None, type=click.Path(exists=True, dir_okay=True), help="Path to the image file to be deconvolved (default: None, throws an error if not provided)")
 @click.option("data_org_path", "--data_org_path", default="{input}/dataorganization.csv", type=click.Path(), help="Path to the data organization CSV file (default: {input}/dataorganization.csv)")
@@ -606,8 +606,8 @@ def align_geometries(
 @click.option("overlap", "--overlap", default=100, type=int, help="Overlap size between tiles (default: 100)")
 @click.option("output_dir", "--tile_dir", "--output_dir", '-o', default="tiles_output", type=click.Path(), help="WORKING directory for per-tile intermediates: the split tiles, each tile's .decon.tif, and each tile's .decon.3d.tif projection. All of it is deleted after stitching unless --no_clear_tiles. Effectively scratch space. --output_dir/-o are kept as aliases and will be depreceated soon; --tile_dir is the accurate name. The stitched full-mosaic planes go to --stitched_dir.")
 @click.option("stitched_dir", "--stitched_dir", default=None, type=click.Path(), help="Directory for the stitched *_z{n}.decon.tif outputs. Default writes within the directory of image_path and overwrites any existing deconvolution.")
-@click.option("filter_args", "--filter_args", default=None, type=(str,str), multiple=True, help="Additional filter arguments, as repeated `--filter_args KEY VALUE` pairs. Values are passed through literal-eval (`iter 50`, `psigma 1.5`, `gpu True`); anything unparseable is kept as a string.")
-@click.option("filter", "--filter", default="deconwolf", type=str, help="Filter to use for deconvolution (default: deconwolf)")
+@click.option("transform_args", "--transform_args", "--filter_args", default=None, type=(str,str), multiple=True, help="Arguments for the chosen transform, as repeated `--transform_args KEY VALUE` pairs. Values are passed through literal-eval (`iter 50`, `psigma 1.5`, `gpu True`); anything unparseable is kept as a string.")
+@click.option("transform", "--transform", "--filter", default="deconwolf", type=click.Choice(["deconwolf", "dark_sectioning"]), help="Per-tile transform to apply (default: deconwolf)")
 @click.option("gpu", "--gpu", is_flag=True, default=True, help="Whether to use GPU for deconvolution (default: True)")
 @click.option("z_step", "--z_step", default=1.5, type=float, help="Z-step size for 3D images (default: 1.5)")
 @click.option("z_stack_expand", "--z_stack_expand", is_flag=True, default=True, help="Whether to expand z-stack in 3D case (default: True)")
@@ -615,12 +615,12 @@ def align_geometries(
 @click.option("continue_stalled", "--continue_stalled", is_flag=True, default=False, help="Whether to continue stalled processes (default: False)")
 @click.option("thr_tiles", "--thr_tiles/--no_thr_tiles", is_flag=True, default=True, help="Whether to threshold tiles after deconvolution (default: True)")
 @click.option("plot_thr", "--plot_thr/--no_plot_thr", is_flag=True, default=False, help="Whether to plot the thresholding intermediary (default: False)")
-@click.option("image_filter", "--image-filter", "--image_filter", default=None, type=click.Choice(["otsu", "tissue_mask", "none"]), help="Tile-filter strategy; overrides --thr_tiles (default: None -> otsu if thr_tiles else none)")
+@click.option("select_tiles_method", "--select-tiles", "--select_tiles", "--image-filter", "--image_filter", default=None, type=click.Choice(["otsu", "tissue_mask", "none"]), help="Tile-selection strategy; overrides --thr_tiles (default: None -> otsu if thr_tiles else none)")
 @click.option("mask_path", "--mask_path", default=None, type=click.Path(), help="Path to tissue_mask.tif for --image-filter tissue_mask (default: <image_path>/tissue_mask.tif)")
 @click.option("match_pre", "--match_pre", is_flag=True, default=False, help="Whether to match pre-existing tiles histogram distribution (default: False)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
 @click.pass_context
-def decon_image(
+def transform_image(
     ctx,
     image_path: str | Path | None = None,
     data_org_path: str | Path = "{input}/dataorganization.csv",
@@ -629,8 +629,8 @@ def decon_image(
     overlap: int | tuple = 100,
     output_dir: str | Path = "tiles_output",
     stitched_dir: str | Path | None = None,
-    filter_args: dict = None,
-    filter: str = "deconwolf",
+    transform_args: dict = None,
+    transform: str = "deconwolf",
     gpu: bool = True,
     z_step: float = 1.5,
     z_stack_expand: bool = True,
@@ -638,7 +638,7 @@ def decon_image(
     continue_stalled: bool = False,
     thr_tiles: bool = True,
     plot_thr: bool = False,
-    image_filter: str | None = None,
+    select_tiles_method: str | None = None,
     mask_path: str | Path | None = None,
     match_pre: bool = False,
     image_store: str | Path | None = None,
@@ -650,17 +650,17 @@ def decon_image(
     if image_path is None:
         raise ValueError("image_path must be provided.")
         
-    filter_args = (
-        {k: parse_literal(v) for k, v in dict(filter_args).items()}
-        if filter_args is not None
+    transform_args = (
+        {k: parse_literal(v) for k, v in dict(transform_args).items()}
+        if transform_args is not None
         else None
     )
-    logger.info(f"Running decon_image")
+    logger.info(f"Running transform_image")
     for key, value in ctx.params.items():
         logger.info(f"{key}: {value} ({type(value)})")
 
 
-    from .decon_script import decon_image as func
+    from spida.S.image_prep.orchestrator import transform_image as func
     func(
         image_path=image_path,
         data_org_path=data_org_path,
@@ -668,8 +668,8 @@ def decon_image(
         tile_size=tile_size,
         overlap=overlap,
         output_dir=output_dir,
-        filter_args=filter_args,
-        filter=filter,
+        transform_args=transform_args,
+        transform=transform,
         gpu=gpu,
         z_step=z_step,
         z_stack_expand=z_stack_expand,
@@ -677,7 +677,7 @@ def decon_image(
         continue_stalled=continue_stalled,
         thr_tiles=thr_tiles,
         plot_thr=plot_thr,
-        image_filter=image_filter,
+        select_tiles_method=select_tiles_method,
         mask_path=mask_path,
         stitched_dir=stitched_dir,
         match_pre=match_pre,
@@ -694,7 +694,7 @@ cli.add_command(load_deconvolution_region)
 cli.add_command(run_segmentation)
 cli.add_command(filt_to_ids)
 cli.add_command(align_geometries)
-cli.add_command(decon_image)
+cli.add_command(transform_image)
 
 if __name__ == "__main__":
     

@@ -12,12 +12,14 @@ entry point writes a readable uint16 tile.
 import numpy as np
 import pytest
 
-from spida.S.filters.dark_sectioning import (
+from spida.S.image_prep.transforms import TileContext
+from spida.S.image_prep.transforms import dark_sectioning as ds
+from spida.S.image_prep.transforms.dark_sectioning import (
     DS_DEFAULTS,
-    dark_sectioning,
     dark_sectioning_stack,
     get_atmosphere,
     get_dark_channel,
+    run as dark_sectioning,
 )
 
 EM, NA, PX = 405.0, 1.4, 106.0
@@ -108,13 +110,6 @@ def test_injected_input_range_changes_result_and_is_used():
 
 
 def test_injected_atmosphere_bounds_bypass_local_estimate(monkeypatch):
-    # importlib, not `import spida.S.filters.dark_sectioning as ds`: the package
-    # __init__ does `from .dark_sectioning import dark_sectioning`, which rebinds the
-    # package attribute to the FUNCTION and shadows the submodule of the same name.
-    # sys.modules still holds the module, which is what import_module returns.
-    # (`deconwolf` has the identical module/function name collision.)
-    import importlib
-    ds = importlib.import_module("spida.S.filters.dark_sectioning")
     calls = []
     real = ds.get_atmosphere
     monkeypatch.setattr(
@@ -147,16 +142,19 @@ def test_dark_channel_is_a_local_minimum():
     assert dc[0, 0] == 100.0          # outside it
 
 
+def _ctx(channel="DAPI", colors=(405,)):
+    return TileContext(channel=channel, colors=list(colors), z_step_um=1.5)
+
+
 def test_pipeline_entry_writes_uint16_tile(tmp_path):
-    """The tile loop calls filters as path-in/path-out and only ever reads the file
-    back, so a writable uint16 with no negative wrap is the real contract."""
+    """The tile loop is path-in/path-out and only reads the file back, so a writable
+    uint16 with no negative wrap is the real contract."""
     import imageio.v3 as iio
     src = tmp_path / "tile_colDAPI.tif"
     iio.imwrite(src, _synthetic(nz=3).astype(np.uint16))
     dst = tmp_path / "tile_colDAPI.decon.tif"
 
-    ret = dark_sectioning(src, colors=[405], decon_path=dst,
-                          na=NA, pixel_size=PX, emwavelength=EM)
+    ret = dark_sectioning(src, dst, _ctx(), na=NA, pixel_size=PX, emwavelength=EM)
     assert str(ret) == str(dst) and dst.exists()
     out = iio.imread(dst)
     assert out.dtype == np.uint16
@@ -164,16 +162,10 @@ def test_pipeline_entry_writes_uint16_tile(tmp_path):
     assert out.max() > 0
 
 
-def test_pipeline_entry_ignores_deconwolf_only_kwargs(tmp_path):
-    """One kwargs dict is shared by whichever filter --filter selects, so the
-    deconwolf-specific keys must not raise here."""
-    import imageio.v3 as iio
-    src = tmp_path / "t_colDAPI.tif"
-    iio.imwrite(src, _synthetic(nz=1).astype(np.uint16))
-    dark_sectioning(src, colors=[405], decon_path=tmp_path / "o.tif",
-                    na=NA, pixel_size=PX, emwavelength=EM,
-                    iter=50, psigma=1.5, tilesize=1000, gpu=True,
-                    z_step=1.5, lock=None)
+def test_validate_rejects_another_transforms_params():
+    """Params are no longer a shared dict every transform must tolerate."""
+    with pytest.raises(ValueError, match="does not accept"):
+        ds.validate({"iter": 50, "psigma": 1.5})
 
 
 def test_pipeline_entry_rejects_4d(tmp_path):
@@ -181,11 +173,12 @@ def test_pipeline_entry_rejects_4d(tmp_path):
     src = tmp_path / "t_colDAPI.tif"
     iio.imwrite(src, np.zeros((2, 3, 32, 32), np.uint16))
     with pytest.raises(ValueError, match="expects"):
-        dark_sectioning(src, colors=[405], decon_path=tmp_path / "o.tif",
+        dark_sectioning(src, tmp_path / "o.tif", _ctx(),
                         na=NA, pixel_size=PX, emwavelength=EM)
 
 
-def test_registered_in_filter_dispatch():
-    from spida.S.decon_script import FILTERS, resolve_filter
-    assert "dark_sectioning" in FILTERS
-    assert resolve_filter("dark_sectioning") is dark_sectioning
+def test_registered_in_transform_dispatch():
+    from spida.S.image_prep.transforms import TRANSFORMS, resolve_transform
+    assert "dark_sectioning" in TRANSFORMS
+    assert resolve_transform("dark_sectioning") is ds
+    assert ds.USES_GPU is False

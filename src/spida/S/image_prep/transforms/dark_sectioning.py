@@ -24,6 +24,8 @@ import numpy as np
 from scipy.ndimage import minimum_filter, uniform_filter
 from scipy.special import j1
 
+from spida.S.image_prep.transforms.base import TileContext, check_params
+
 logger = logging.getLogger(__package__)
 
 # `background` presets from dark_sectioning.m. 0 is the default single pass;
@@ -416,42 +418,54 @@ def derived_parameters(shape, emwavelength, na, pixel_size, factor,
 # Pipeline entry point
 # ---------------------------------------------------------------------------
 
+NAME = "dark_sectioning"
+USES_GPU = False
+
 # `dep=1` rather than the upstream 3, which sits above its own annotated range
 # (`% 0.7-2`) and hollows out nuclei. The rest are as shipped.
 # See dev_notebooks/cellpose_3d_test/dark_staining/README.md
 DS_DEFAULTS = {"dep": 1.0, "factor": 1.0, "hl": 1.0,
                "thres": 50.0, "thres_mode": "abs", "background": 0}
+DEFAULTS = dict(DS_DEFAULTS)
 
 
-def dark_sectioning(
-    img_path: str | Path,
-    colors: list | np.ndarray | int,
-    decon_path: str | Path = None,
-    channel: str | None = None,
+def validate(params: dict) -> dict:
+    return check_params(run, params, NAME)
+
+
+def run(
+    src: Path,
+    dst: Path,
+    ctx: TileContext,
+    dep: float = 1.0,
+    factor: float = 1.0,
+    hl: float = 1.0,
+    thres: float = 50.0,
+    thres_mode: str = "abs",
+    background: int = 0,
     emwavelength: float | None = None,
     na: float | None = None,
     pixel_size: float | None = None,
     workers: int = 1,
-    lock=None,
-    **kwargs,
+    input_range=None,
+    atmosphere_bounds=None,
+    output_max=None,
 ):
-    """Dark-section one tile to `decon_path`, returning that path.
+    """Dark-section one tile to `dst`, returning that path.
 
-    Signature mirrors `deconwolf` so the tile loop can call either. Optics default to
-    the `[Optics]` config section; `emwavelength` falls back to `channel`.
-    Deconwolf-only kwargs and `lock` are accepted and ignored — the tile loop passes
-    one kwargs dict to whichever filter is selected, and this filter is CPU-only.
+    Optics default to the `[Optics]` config section; `emwavelength` falls back to the
+    channel. `input_range` / `atmosphere_bounds` / `output_max` take whole-mosaic
+    values; None derives them per tile.
     """
-    from .deconwolf import get_optics
+    from spida.S.image_prep.config import get_optics
 
-    img_path = Path(img_path)
-    if decon_path is None:
-        decon_path = img_path.with_suffix(".decon.tif")
+    img_path, decon_path = Path(src), Path(dst)
+    channel = ctx.channel
 
     # `colors` carries either a wavelength (405/488, as in the PSF filenames) or a
     # channel name.
-    if emwavelength is None and channel is None and colors is not None:
-        c = colors[0] if isinstance(colors, (list, np.ndarray)) else colors
+    if emwavelength is None and ctx.colors is not None:
+        c = ctx.colors[0] if isinstance(ctx.colors, (list, np.ndarray)) else ctx.colors
         try:
             emwavelength = float(c)
         except (TypeError, ValueError):
@@ -469,10 +483,12 @@ def dark_sectioning(
     pixel_size = float(pixel_size if pixel_size is not None
                        else optics["pixel_size_nm"])
 
-    params = {k: kwargs.pop(k, v) for k, v in DS_DEFAULTS.items()}
+    params = {"dep": dep, "factor": factor, "hl": hl,
+              "thres": thres, "thres_mode": thres_mode, "background": background}
     # Whole-mosaic overrides; None derives them per tile. See dark_sectioning_stack.
-    globals_ = {k: kwargs.pop(k, None)
-                for k in ("input_range", "atmosphere_bounds", "output_max")}
+    globals_ = {"input_range": input_range,
+                "atmosphere_bounds": atmosphere_bounds,
+                "output_max": output_max}
 
     stack = iio.imread(img_path)
     if stack.ndim == 4:

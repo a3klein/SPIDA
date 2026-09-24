@@ -11,7 +11,7 @@ from spida.utilities.tiling import (
     save_tiles,
     reconstruct_image_from_tile_files,
 )
-from spida.S.decon_script import write_tiff
+from spida.S.image_prep.tile_io import write_tiff
 from spida.pl.decon_plots import save_threshold_plots_pdf
 
 

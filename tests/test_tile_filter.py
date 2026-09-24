@@ -1,4 +1,4 @@
-"""Tests for the extracted tile-filter strategies (spida.S.filters.mask).
+"""Tests for the tile-selection strategies (spida.S.image_prep.tile_selection).
 
 The otsu test is a GOLDEN regression: the extracted function must reproduce the old inline
 decon formula (threshold_otsu(maxes)/2, keep if max>thr) exactly.
@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import skimage as ski
 
-from spida.S.filters.mask import (
+from spida.S.image_prep.tile_selection import (
     otsu_tile_filter,
     no_tile_filter,
     tissue_mask_tile_filter,
@@ -144,7 +144,7 @@ def test_tissue_mask_2d_and_3d_agree():
 
 def test_tile_rowcol_rejects_unexpected_shape():
     """A malformed position must name the shape, not mis-unpack silently."""
-    from spida.S.filters.mask import _tile_rowcol
+    from spida.S.image_prep.tile_selection import _tile_rowcol
     with pytest.raises(ValueError, match="2 .* or 3 .* elements"):
         _tile_rowcol({"position": (0, 1, 2, 3), "end_position": (4, 5, 6, 7)})
 

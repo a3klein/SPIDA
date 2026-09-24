@@ -78,7 +78,7 @@ PROSEG_PRESET = {
 
 # Imaging optics defaults for MERFISH ULTRA experiments
 # Fallback for the [Optics] section of the deconwolf ini. 
-# Use spida.S.filters.get_optics to honor the config. 
+# Use spida.S.image_prep.get_optics to honor the config.
 OPTICS_DEFAULTS = {
     "na": 1.4,
     "ni": 1.518,

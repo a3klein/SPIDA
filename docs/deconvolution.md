@@ -109,7 +109,7 @@ EOF
 
 ### `[Optics]`
 
-Optional. Physical parameters read by `spida.S.filters.get_optics()`, so anything
+Optional. Physical parameters read by `spida.S.image_prep.get_optics()`, so anything
 needing them — deconvolution, PSF generation, dark sectioning — takes one value
 rather than each hardcoding its own. Missing keys fall back to `OPTICS_DEFAULTS` in
 `spida/_constants.py`, and a missing section is not an error, so an existing ini
@@ -135,7 +135,30 @@ DECONWOLF_CONFIG=/home/user/config/deconwolf.ini
 
 ### Basic Usage
 
-TODO
+```bash
+spida-S --config <config.json> transform-image \
+    -i <experiment>/out/<region>/images \
+    --data_org_path <experiment>/out/dataorganization.csv \
+    --tile_dir <scratch>/<region>/tile_images \
+    --stitched_dir <experiment>/out/<region>/images \
+    --channels DAPI \
+    --tile_size 2960 --overlap 400 --z_step 1.5 \
+    --transform deconwolf \
+    --transform_args iter 100 --transform_args tilesize 1000 \
+    --gpu
+```
+
+`--tile_dir` holds per-tile intermediates and is deleted after stitching;
+`--stitched_dir` is where the full-mosaic planes land. Defaulting `--stitched_dir`
+writes them next to the input mosaic, overwriting any previous deconvolution.
+
+`--transform` selects the per-tile operation (`deconwolf` or `dark_sectioning`);
+`--transform_args KEY VALUE` are that transform's own parameters. `--select-tiles`
+chooses which tiles are processed (`otsu`, `tissue_mask`, `none`); `tissue_mask`
+needs `--mask_path`.
+
+The command was `decon-image`, with `--filter`, `--filter_args`, `--image-filter`
+and `--output_dir`. Those all still work as aliases.
 
 ## Troubleshooting
 
