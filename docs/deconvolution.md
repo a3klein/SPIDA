@@ -56,9 +56,9 @@ cd ~/microscope_psfs/my_setup
 Generate PSF for each wavelength:
 
 ```bash
-# Example: NA=1.4, 100nm/pixel, 1.5um z-step, 405nm DAPI
+# Example: NA=1.4, 106nm/pixel, 1.5um z-step, 405nm DAPI
 dw_bw \
-    --resxy 100 \
+    --resxy 106 \
     --resz 1500 \
     --lambda 405 \
     --NA 1.4 \
@@ -67,7 +67,7 @@ dw_bw \
     psf_dir/405_z1500_psf.tiff 
 
 # Repeat for other wavelengths
-dw_bw --resxy 100 --resz 1500 --lambda 488 --NA 1.4 --ni 1.518 --nslice 29 psf_dir/488_z1500_psf.tiff 
+dw_bw --resxy 106 --resz 1500 --lambda 488 --NA 1.4 --ni 1.518 --nslice 29 psf_dir/488_z1500_psf.tiff 
 ```
 
 **PSF File Naming Convention:**
@@ -96,8 +96,29 @@ cat > ~/config/deconwolf.ini << 'EOF'
 [Paths]
 dw_path = /path/to/dw
 dw_psf_path = /home/user/microscope_psfs/my_setup
+
+[Optics]
+na = 1.4
+ni = 1.518
+pixel_size_nm = 106.0
+z_step_nm = 1500
+emission_nm_DAPI = 405
+emission_nm_PolyT = 488
 EOF
 ```
+
+### `[Optics]`
+
+Optional. Physical parameters read by `spida.S.filters.get_optics()`, so anything
+needing them — deconvolution, PSF generation, dark sectioning — takes one value
+rather than each hardcoding its own. Missing keys fall back to `OPTICS_DEFAULTS` in
+`spida/_constants.py`, and a missing section is not an error, so an existing ini
+keeps working.
+
+`pixel_size_nm` should be the true mosaic pixel from the micron-to-mosaic transform.
+
+Optics belong to the microscope, so a config shared across experiments from different
+instruments needs one ini per instrument.
 
 ## Configure SPIDA
 

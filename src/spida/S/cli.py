@@ -10,9 +10,10 @@ import logging
 # from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
-from spida.utilities.script_utils import parse_click_kwargs, JSONParam
+from spida.utilities.script_utils import parse_click_kwargs, parse_literal, JSONParam
 
 logger = logging.getLogger(__name__)
+
 # warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
 
 
@@ -603,8 +604,9 @@ def align_geometries(
 @click.option("channels", "--channels", default="DAPI", type=str, help="Channels to use for deconvolution, comma-separated if multiple (default: DAPI)")
 @click.option("tile_size", "--tile_size", default=2960, type=int, help="Tile size for processing (default: 2960)")
 @click.option("overlap", "--overlap", default=100, type=int, help="Overlap size between tiles (default: 100)")
-@click.option("output_dir", "--output_dir", '-o', default="tiles_output", type=click.Path(), help="Directory to save the output tiles (default: tiles_output)")
-@click.option("filter_args", "--filter_args", default=None, type=(str,int), multiple=True, help="Additional filter arguments as a JSON string (default: None)")
+@click.option("output_dir", "--tile_dir", "--output_dir", '-o', default="tiles_output", type=click.Path(), help="WORKING directory for per-tile intermediates: the split tiles, each tile's .decon.tif, and each tile's .decon.3d.tif projection. All of it is deleted after stitching unless --no_clear_tiles. Effectively scratch space. --output_dir/-o are kept as aliases and will be depreceated soon; --tile_dir is the accurate name. The stitched full-mosaic planes go to --stitched_dir.")
+@click.option("stitched_dir", "--stitched_dir", default=None, type=click.Path(), help="Directory for the stitched *_z{n}.decon.tif outputs. Default writes within the directory of image_path and overwrites any existing deconvolution.")
+@click.option("filter_args", "--filter_args", default=None, type=(str,str), multiple=True, help="Additional filter arguments, as repeated `--filter_args KEY VALUE` pairs. Values are passed through literal-eval (`iter 50`, `psigma 1.5`, `gpu True`); anything unparseable is kept as a string.")
 @click.option("filter", "--filter", default="deconwolf", type=str, help="Filter to use for deconvolution (default: deconwolf)")
 @click.option("gpu", "--gpu", is_flag=True, default=True, help="Whether to use GPU for deconvolution (default: True)")
 @click.option("z_step", "--z_step", default=1.5, type=float, help="Z-step size for 3D images (default: 1.5)")
@@ -626,6 +628,7 @@ def decon_image(
     tile_size: int | tuple = 2960,
     overlap: int | tuple = 100,
     output_dir: str | Path = "tiles_output",
+    stitched_dir: str | Path | None = None,
     filter_args: dict = None,
     filter: str = "deconwolf",
     gpu: bool = True,
@@ -647,7 +650,11 @@ def decon_image(
     if image_path is None:
         raise ValueError("image_path must be provided.")
         
-    filter_args = dict(filter_args) if filter_args is not None else None
+    filter_args = (
+        {k: parse_literal(v) for k, v in dict(filter_args).items()}
+        if filter_args is not None
+        else None
+    )
     logger.info(f"Running decon_image")
     for key, value in ctx.params.items():
         logger.info(f"{key}: {value} ({type(value)})")
@@ -672,6 +679,7 @@ def decon_image(
         plot_thr=plot_thr,
         image_filter=image_filter,
         mask_path=mask_path,
+        stitched_dir=stitched_dir,
         match_pre=match_pre,
         image_store=image_store,
         **kwargs,

@@ -76,6 +76,17 @@ PROSEG_PRESET = {
 }
 
 
+# Imaging optics defaults for MERFISH ULTRA experiments
+# Fallback for the [Optics] section of the deconwolf ini. 
+# Use spida.S.filters.get_optics to honor the config. 
+OPTICS_DEFAULTS = {
+    "na": 1.4,
+    "ni": 1.518,
+    "pixel_size_nm": 106.0,
+    "z_step_nm": 1500.0,
+}
+
+# TODO: These do not belong in this package. They should be my own helpers outside of the package! 
 def rename_exp_salk(x):
     exp_n = x.split("_")[1]
     temp = exp_n.split("-")[-2]

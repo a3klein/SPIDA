@@ -19,6 +19,20 @@ def parse_dict(arg: str) -> dict:
     }
 
 
+def parse_literal(arg: str):
+    """Parse a single scalar, keeping its type: ints, floats and bools survive.
+
+    For options whose values arrive as strings because the pair is untyped, e.g.
+    click's `type=(str, str)` multi-value options.
+    """
+    if arg is None:
+        return None
+    try:
+        return ast.literal_eval(arg)
+    except (ValueError, SyntaxError):
+        return arg
+
+
 def parse_list(arg: str) -> list:
     """Parse list input separated by commas"""
     if arg is None:

@@ -29,7 +29,7 @@ from spida.utilities.tiling import (
 
 # from spida.utilities.script_utils import parse_path, parse_list, parse_dict
 from spida.utilities.read_raw import read_info
-from spida.S.filters import deconwolf
+from spida.S.filters import dark_sectioning, deconwolf
 from spida.S.filters.mask import select_tiles
 
 load_dotenv()
@@ -107,7 +107,26 @@ def project_to_3D(input_file, output_file: str | Path = None):
     iio.imwrite(output_file, decon_img_3d)
 
 
-def continue_stalled_run(_file, **filter_args):
+# unknown output location fails at startup.
+def _stitch_dir(channel_image_path: Path, stitched_dir: str | Path | None) -> Path:
+    """Where stitched output goes: alongside the input by default, or an explicit directory."""
+    if stitched_dir is None:
+        return channel_image_path.parent
+    d = Path(stitched_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+FILTERS = {"deconwolf": deconwolf, "dark_sectioning": dark_sectioning}
+def resolve_filter(name: str):
+    """Look up a `--filter` name, or fail with the list of what exists."""
+    try:
+        return FILTERS[name]
+    except KeyError:
+        raise ValueError(
+            f"unknown filter {name!r}; available: {sorted(FILTERS)}"
+        ) from None
+
+def continue_stalled_run(_file, _filter=deconwolf, **filter_args):
     """
     Continue processing stalled runs by checking for existing files.
     """
@@ -127,7 +146,7 @@ def continue_stalled_run(_file, **filter_args):
 
     else:
         logger.info(f"Deconvolving {_file}")
-        decon_file = deconwolf(_file, decon_path=decon_file, **filter_args)
+        decon_file = _filter(_file, decon_path=decon_file, **filter_args)
 
     # Project to 2D and save immediately to avoid memory overhead
     if not is_3d: 
@@ -142,13 +161,13 @@ def continue_stalled_run(_file, **filter_args):
     return projected_file
 
 
-def fresh_run(_file, **filter_args):
+def fresh_run(_file, _filter=deconwolf, **filter_args):
     """
     Perform a fresh run of deconvolution and projection for a given file.
     """
     decon_file = _file.with_suffix(".decon.tif")
     
-    decon_file = deconwolf(_file, decon_path=decon_file, **filter_args)
+    decon_file = _filter(_file, decon_path=decon_file, **filter_args)
 
     if not is_3d:
         # Project to 2D and save immediately to avoid memory overhead
@@ -186,13 +205,20 @@ def decon_image(
     clear_tiles : bool = True,
     image_filter: str | None = None,
     mask_path: str | Path | None = None,
+    stitched_dir: str | Path | None = None,
     **kwargs,
 ):
     """
     Deconvolve a large image by tiling it into smaller sections.
+
+    stitched_dir
+        Where the stitched `*_z{n}.decon.tif` outputs go. Default None next to image_path
     """
     
     logger.info(f"Starting deconvolution of image: {image_path}")
+
+    # Get the filter function (deconwold / dark-sectioning)
+    _filter_fn = resolve_filter(filter)
 
     if image_store is None:
         image_store = Path(output_dir)
@@ -335,8 +361,15 @@ def decon_image(
         filter_args = filter_args if filter_args else {}
         filter_args["colors"] = channels["color"].values
         filter_args["z_step"] = z_step
-        filter_args["iter"] = 100
+        filter_args.setdefault("iter", 100)
         filter_args["gpu"] = gpu
+
+        if filter_args.get("psigma") is not None and filter_args.get("tilesize"):
+            logger.warning(
+                f"deconwolf ignores --psigma when --tilesize is set: dropping psigma={filter_args['psigma']},"
+                f"keeping tilesize={filter_args['tilesize']}. To use psigma, omit tilesize."
+            )
+            filter_args.pop("psigma")
 
         # l = mp.Lock() # for locking the deconwolf subprocesses
 
@@ -347,7 +380,7 @@ def decon_image(
                 lock = manager.Lock()
                 filter_args["lock"] = lock
                 # Deconvolve each tile
-                parallel_func = partial(continue_stalled_run, **filter_args)
+                parallel_func = partial(continue_stalled_run, _filter=_filter_fn, **filter_args)
                 with mp.Pool(mp.cpu_count()) as pool:
                     deconed_paths = list(  # noqa: F841
                         tqdm(
@@ -365,7 +398,7 @@ def decon_image(
                 filter_args["lock"] = lock
 
                 # Deconvolve each tile
-                parallel_func = partial(fresh_run, **filter_args)
+                parallel_func = partial(fresh_run, _filter=_filter_fn, **filter_args)
                 # with mp.Pool(mp.cpu_count(), initializer=init, initargs=(l, )) as pool:
                 with mp.Pool(mp.cpu_count()) as pool:
                     deconed_paths = list( # noqa: F841
@@ -394,14 +427,15 @@ def decon_image(
                     z_index=z,
                 )
                 out_path = (
-                    channel_image_path.parent
-                    / f"{channel_image_path.stem}_z{z:01d}.decon.tif"
+                    _stitch_dir(channel_image_path, stitched_dir) / f"{channel_image_path.stem}_z{z:01d}.decon.tif"
                 )
                 write_tiff(out_path, z_slice)
                 written.append(out_path)
                 del z_slice
 
-            logger.info(f"Saved {len(written)} stitched z-slices under {channel_image_path.parent}")
+            logger.info(
+                f"Saved {len(written)} stitched z-slices under {_stitch_dir(channel_image_path, stitched_dir)}"
+            )
             
             # Optionally clear tile files after stitching to free up space
             if clear_tiles: 
@@ -422,9 +456,12 @@ def decon_image(
         )
         logger.info(f"Reconstructed deconvolved image with shape: {deconed_image.shape}")
 
-        with tifffile.TiffWriter(channel_image_path.with_suffix(".decon.tif"), bigtiff=True) as tiff_writer:
+        _out_2d = (
+            _stitch_dir(channel_image_path, stitched_dir) / f"{channel_image_path.stem}.decon.tif"
+        )
+        with tifffile.TiffWriter(_out_2d, bigtiff=True) as tiff_writer:
             tiff_writer.write(deconed_image)
-        logger.info(f"Saved deconvolved image to {channel_image_path.with_suffix('.decon.tif')}")
+        logger.info(f"Saved deconvolved image to {_out_2d}")
 
         # Optionally clear tile files after stitching to free up space
         if clear_tiles: 

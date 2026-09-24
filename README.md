@@ -86,6 +86,19 @@ To run deconvolution (highly recommended for high confidence nuclear segmentatio
 [Paths]
 dw_path = {Path to dw binary}
 dw_psf_path = {path to directory containing your generated psf files}
+
+[Optics]
+na = 1.4
+ni = 1.518
+pixel_size_nm = 106.0
+z_step_nm = 1500
+emission_nm_DAPI = 405
+emission_nm_PolyT = 488
 ```
 
 generated psfs are stored as follows: {wavelength}_z{z-step-size}_psf.tif
+
+`[Optics]` is optional and holds the imaging parameters for the setup those PSFs were
+built for, so filters needing NA / pixel size / wavelength read one value instead of
+hardcoding their own. Missing keys fall back to `OPTICS_DEFAULTS` in
+`spida/_constants.py`. See `docs/deconvolution.md`.

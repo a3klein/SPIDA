@@ -8,6 +8,8 @@ from pathlib import Path
 import numpy as np
 import imageio.v3 as iio
 
+from spida._constants import OPTICS_DEFAULTS
+
 load_dotenv()
 
 
@@ -39,6 +41,37 @@ def _configure_deconwolf():
     return dw_path, psf_path
 
 
+def get_optics(channel: str | None = None) -> dict:
+    """Imaging optics from the [Optics] section of the deconwolf ini.
+
+    Any consumer needing physical parameters -- deconvolution, PSF generation, or a
+    background-removal filter that takes wavelength/NA/pixel size -- should read them
+    from here rather than hardcoding, so there is a single value to correct when one
+    is wrong. Missing keys fall back to `OPTICS_DEFAULTS`; a missing section is not an
+    error, so this does not break an existing deployment whose ini predates it.
+
+    `channel` adds `emission_nm` for that channel when the ini declares it.
+
+    Lives here rather than in `spida.config` because it reads the SAME file, via the
+    same `DECONWOLF_CONFIG` env var, as `_configure_deconwolf` above -- `spida.config`
+    handles SPIDA's own JSON config, a different file with a different format. The
+    defaults themselves are in `spida._constants`, which holds no I/O.
+    """
+    config = configparser.ConfigParser()
+    config_path = Path(os.getenv("DECONWOLF_CONFIG", ""))
+    optics = dict(OPTICS_DEFAULTS)
+    if config_path.exists():
+        config.read(str(config_path))
+        if config.has_section("Optics"):
+            for k in OPTICS_DEFAULTS:
+                if config.has_option("Optics", k):
+                    optics[k] = config.getfloat("Optics", k)
+            if channel and config.has_option("Optics", f"emission_nm_{channel}"):
+                optics["emission_nm"] = config.getfloat(
+                    "Optics", f"emission_nm_{channel}")
+    return optics
+
+
 def deconwolf(
     img_path: str | Path,
     colors: list | np.ndarray | int,  # TODO: This runs on only one color at a time.
@@ -47,6 +80,7 @@ def deconwolf(
     iter: int = 100,
     gpu: bool = False,
     tilesize: int = None,
+    psigma: float = None,
     lock=None,
     **kwargs,
 ) -> np.ndarray:
@@ -66,6 +100,8 @@ def deconwolf(
         Whether to use the GPU.
     tilesize
         Size of tiles. If None, no tiling is used.
+    psigma
+        Deconwolf's regulariser. Ignored whenever `tilesize` is set. 
 
     Returns
     -------
@@ -89,6 +125,7 @@ def deconwolf(
     # Run deconwolf on each channel
     gpu = "--gpu" if gpu else ""
     tile = f"--tilesize {tilesize}" if tilesize else ""
+    ps = f"--psigma {psigma}" if psigma is not None else ""
     for i, color in enumerate(colors):
         color_psf = psf_path / f"{color}_z{int(z_step * 1000)}_psf.tiff"
         if not color_psf.exists():
@@ -96,7 +133,7 @@ def deconwolf(
                 f"PSF for color {color} and z_step {z_step} not found at {color_psf}."
             )
 
-        command = f"{dw_path} --out {decon_path} --iter {iter} {tile} {gpu} {img_path} {color_psf} --verbose 0"
+        command = f"{dw_path} --out {decon_path} --iter {iter} {tile} {ps} {gpu} {img_path} {color_psf} --verbose 0"
         # if "lock" in globals():
         if lock is not None:
             with lock:
