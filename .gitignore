@@ -9,6 +9,7 @@ CLAUDE.md
 .claude/settings.local.json
 design_decisions.md
 docs/cellpose_tiling_handoff.md
+docs/io_redesign.md
 
 # pixi environments
 .pixi
