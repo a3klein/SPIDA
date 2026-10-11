@@ -101,7 +101,7 @@ def plot_points(
     import spatialdata_plot  # noqa: F401
 
     fig, axes = plt.subplots(1, 3, figsize=(20, 8))
-    genes = list(sdata[POINTS_KEY]["gene"].unique())
+    genes = list(sdata[POINTS_KEY]["gene"].unique().compute())
     for i in range(3):
         gene_ex = genes[i]
         sdata.pl.render_points(
