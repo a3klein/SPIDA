@@ -1,13 +1,14 @@
 import os
 import json
-import click 
+import click
 from rich_click import RichCommand, RichGroup, echo as rich_echo # type: ignore
+from dataclasses import dataclass
 from pathlib import Path
 from spida.utilities.script_utils import parse_click_kwargs
-from dotenv import load_dotenv  # type: ignore
 
 
-RENAME_CONFIG_KEYS = {
+# config key -> field name
+CONFIG_KEY_TO_FIELD = {
     "RUST_BIN_PATH" : "rust_bin_path",
     "VPT_BIN_PATH": "vpt_bin_path",
     "DECONWOLF_CONFIG": "deconwolf_config_file",
@@ -20,6 +21,8 @@ RENAME_CONFIG_KEYS = {
     "IMAGE_STORE_PATH": "image_store",
     "CUTOFFS_PATH": "cutoffs_path",
     "SPIDA_SITE_DIR": "site_dir",
+    "MMC_DIR": "mmc_store_path",
+    "GENE_PANEL_PATH": "gene_panel_path",
 }
 
 DEFAULT_CONFIG = {
@@ -34,26 +37,12 @@ DEFAULT_CONFIG = {
     "IMAGE_STORE_PATH": "/path/to/image/store",
     "CUTOFFS_PATH": "/path/to/cutoffs.json",
     "SPIDA_SITE_DIR": "/path/to/spida/site",
-    # Optional. Unlike the keys above, this default is a real usable location
-    # rather than a placeholder: cellpose caches its weights there by default,
-    # so leaving the key unset is a valid configuration.
-    "CELLPOSE_MODEL_PATH": "~/.cellpose/models",
-}
-
-#: Config keys that are consumed via ``os.getenv`` at the call site rather than
-#: as a Click option, and therefore have to be exported to the process
-#: environment for a ``--config`` file to have any effect. Keep this list
-#: minimal: every entry becomes a process-global (and subprocess-inherited)
-#: variable. Keys that map to a Click option through ``RENAME_CONFIG_KEYS``
-#: must NOT be listed here — they already reach their command as an argument,
-#: and exporting them would additionally override the ``.env`` values that the
-#: 100+ ``os.getenv`` fallbacks currently read.
-ENV_ONLY_CONFIG_KEYS = ("CELLPOSE_MODEL_PATH",)
-
-#: SPIDA config key -> environment variables a third-party library reads for the
-#: same setting. Populated only if not already set, so an explicit user value wins.
-THIRD_PARTY_ENV_ALIASES = {
-    "CELLPOSE_MODEL_PATH": ("CELLPOSE_LOCAL_MODELS_PATH",),
+    # Optional.
+    "MMC_DIR": "",
+    "GENE_PANEL_PATH": "",
+    # Optional. Unset -> CELLPOSE_LOCAL_MODELS_PATH, else cellpose's ~/.cellpose/models
+    # (resolved in backends/cellpose_config.resolve_model_dir).
+    "CELLPOSE_MODEL_PATH": "",
 }
 
 CONFIG_DESCRIPTIONS = {
@@ -68,10 +57,12 @@ CONFIG_DESCRIPTIONS = {
     "IMAGE_STORE_PATH": "Directory for image outputs/exports.",
     "CUTOFFS_PATH": "Path to QC/cutoffs configuration file.",
     "SPIDA_SITE_DIR": "Path to the SPIDA website directory.",
+    "MMC_DIR": "Optional. Root of the MapMyCells reference stores.",
+    "GENE_PANEL_PATH": "Optional. Directory of gene-panel name mappings used by MapMyCells.",
     "CELLPOSE_MODEL_PATH": (
-        "Optional. Directory holding cellpose model weights. Defaults to "
-        "cellpose's own cache (~/.cellpose/models). Override per-run with "
-        "`segment-region cellpose ... --model_dir=<path>`."
+        "Optional. Directory holding cellpose model weights (downloads land here too). "
+        "Defaults to CELLPOSE_LOCAL_MODELS_PATH, else ~/.cellpose/models. Override "
+        "per-run with `segment-region cellpose ... --model_dir=<path>`."
     ),
 }
 
@@ -102,10 +93,9 @@ def resolve_config(
 ) -> dict:
     """
     Resolve configuration with precedence:
-    CLI options > config file > environment variables > defaults.
+    config file > environment variables > defaults (placeholders, i.e. unset).
 
-    The CLI layer is handled by Click automatically via default_map; this
-    function resolves defaults, env, and config file values only.
+    CLI options are applied on top per command, by ``spida.io.options.run_config``.
     """
     base_defaults = defaults or DEFAULT_CONFIG
     resolved = _config_from_env(base_defaults)
@@ -124,6 +114,55 @@ def _default_for(key: str) -> str:
     return resolved.get(key, DEFAULT_CONFIG.get(key, ""))
 
 
+def field_for(key: str) -> str:
+    return CONFIG_KEY_TO_FIELD.get(key, key.lower())
+
+
+@dataclass(frozen=True)
+class SpidaConfig:
+    """Resolved global settings (locations and binaries) for one run. Unset paths are None."""
+    zarr_store: Path | None = None
+    root_path: Path | None = None
+    segmentation_store: Path | None = None
+    anndata_store: Path | None = None
+    annotation_store: Path | None = None
+    image_store: Path | None = None
+    cutoffs_path: Path | None = None
+    site_dir: Path | None = None
+    mmc_store_path: Path | None = None
+    gene_panel_path: Path | None = None
+    rust_bin_path: Path | None = None
+    vpt_bin_path: Path | None = None
+    deconwolf_config_file: Path | None = None
+    cellpose_model_path: Path | None = None
+
+    def require(self, name: str) -> Path:
+        """Return a path setting, or raise naming the config key that sets it."""
+        value = getattr(self, name)
+        if value is None:
+            key = next(k for k in DEFAULT_CONFIG if field_for(k) == name)
+            raise ValueError(f"{name} is not configured; set {key} in the --config JSON or the environment")
+        return value
+
+
+def _as_path(value) -> Path | None:
+    if value is None or str(value).strip() == "" or str(value).startswith("/path/to/"):
+        return None
+    return Path(os.path.expanduser(str(value)))
+
+
+def load(config_path: str | Path | None = None, resolved: dict | None = None, **overrides) -> SpidaConfig:
+    """
+    SpidaConfig from ``resolve_config`` (config file > environment > defaults), then overrides.
+
+    ``resolved`` reuses an already-resolved dict. Overrides use field names; None values are ignored.
+    """
+    resolved = resolve_config(config_path=config_path) if resolved is None else resolved
+    values = {field_for(k): _as_path(resolved.get(k)) for k in DEFAULT_CONFIG}
+    values.update({k: _as_path(v) for k, v in overrides.items() if v is not None and k in values})
+    return SpidaConfig(**values)
+
+
 @click.group(cls=RichGroup, help="Configuration management commands for SPIDA.")
 @click.pass_context
 def config_manager(ctx):
@@ -131,138 +170,22 @@ def config_manager(ctx):
     pass
     
 
-try: 
-    load_dotenv()
-except Exception as e:
-    click.echo(f"Error loading .env file: {e}")
-    raise RuntimeError("Failed to load .env file. Please ensure it exists and is correctly formatted.")
-
-@click.command(cls=RichCommand, help="Set up a configuration file with specified or default values.")
-@click.option(
-    "config_store_path",
-    "--config_store_path",
-    default=".env",
-    prompt=True,
-    type=click.Path(), 
-    help="Path to the configuration store file (default: .env)"
-)
-@click.option(
-    "rust_bin_path",
-    "--rust_bin_path",
-    default=lambda: _default_for("RUST_BIN_PATH"),
-    show_default="RUST_BIN_PATH in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Path to the Rust binary (default: None, uses RUST_BIN_PATH in .env)"
-)
-@click.option(
-    "vpt_bin_path",
-    "--vpt_bin_path",
-    default=lambda: _default_for("VPT_BIN_PATH"),
-    show_default="VPT_BIN_PATH in .env",
-    prompt=True,
-    type=click.Path(), 
-    help="Path to the VPT binary (default: None, uses VPT_BIN_PATH in .env)"
-)
-@click.option(
-    "deconwolf_config_file",
-    "--deconwolf_config_file",
-    default=lambda: _default_for("DECONWOLF_CONFIG"),
-    show_default="DECONWOLF_CONFIG in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Path to the Deconwolf configuration file (default: None, uses DECONWOLF_CONFIG in .env)"
-)
-@click.option(
-    "zarr_storage_path",
-    "--zarr_storage_path",
-    default=lambda: _default_for("ZARR_STORAGE_PATH"),
-    show_default="ZARR_STORAGE_PATH in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Path to the Zarr storage (default: None, uses ZARR_STORAGE_PATH in .env)"
-)
-@click.option(
-    "root_path",
-    "--root_path",
-    default=lambda: _default_for("PROCESSED_ROOT_PATH"),
-    show_default="PROCESSED_ROOT_PATH in .env",
-    prompt=True, 
-    type=click.Path(),
-    help="Root path for processed data (default: None, uses PROCESSED_ROOT_PATH in .env)"
-)
-@click.option(
-    "segmentation_output_dir",
-    "--segmentation_output_dir",
-    default=lambda: _default_for("SEGMENTATION_OUT_PATH"),
-    show_default="SEGMENTATION_OUT_PATH in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Directory for segmentation outputs (default: None, uses SEGMENTATION_OUT_PATH in .env)"
-)
-@click.option(
-    "anndata_store_dir",
-    "--anndata_store_dir",
-    default=lambda: _default_for("ANNDATA_STORE_PATH"),
-    show_default="ANNDATA_STORE_PATH in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Directory for AnnData storage (default: None, uses ANNDATA_STORE_PATH in .env)"
-)
-@click.option(
-    "annotation_store_dir",
-    "--annotation_store_dir",
-    default=lambda: _default_for("ANNOTATION_STORE_PATH"),
-    show_default="ANNOTATION_STORE_PATH in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Directory for annotation storage (default: None, uses ANNOTATION_STORE_PATH in .env)"
-)
-@click.option(
-    "image_store_path",
-    "--image_store_path",
-    default=lambda: _default_for("IMAGE_STORE_PATH"),
-    show_default="IMAGE_STORE_PATH in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Path to the image storage (default: None, uses IMAGE_STORE_PATH in .env)"
-)
-@click.option(
-    "cutoffs_path",
-    "--cutoffs_path",
-    default=lambda: _default_for("CUTOFFS_PATH"),
-    show_default="CUTOFFS_PATH in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Path to the cutoffs file (default: None, uses CUTOFFS_PATH in .env)"
-)
-@click.option(
-    "spida_site_dir",
-    "--spida_site_dir",
-    default=lambda: _default_for("SPIDA_SITE_DIR"),
-    show_default="SPIDA_SITE_DIR in .env",
-    prompt=True,
-    type=click.Path(),
-    help="Path to the SPIDA website directory (default: None, uses SPIDA_SITE_DIR in .env)"
-)
-@click.option(
-    "overwrite",
-    "--overwrite",
-    is_flag=True,
-    default=False,
-    prompt=True,
-    help="Overwrite existing configuration file if it exists."
-)
-@click.option(
-    "ext_type",
-    "--ext_type",
-    default="env",
-    prompt=True,
-    type=click.Choice(["env", "json"]),
-    help="File extension type for the configuration file (default: env)."
-)
+@click.command(cls=RichCommand, help="Write a JSON config file from given values, else the environment.")
+@click.option("config_store_path", "--config_store_path", default="spida_config.json", prompt=True, type=click.Path(), help="JSON file to write (default: spida_config.json)")
+@click.option("rust_bin_path", "--rust_bin_path", default=lambda: _default_for("RUST_BIN_PATH"), show_default="RUST_BIN_PATH from the environment", prompt=True, type=click.Path(), help="Path to the Rust binary (default: RUST_BIN_PATH from the environment)")
+@click.option("vpt_bin_path", "--vpt_bin_path", default=lambda: _default_for("VPT_BIN_PATH"), show_default="VPT_BIN_PATH from the environment", prompt=True, type=click.Path(), help="Path to the VPT binary (default: VPT_BIN_PATH from the environment)")
+@click.option("deconwolf_config_file", "--deconwolf_config_file", default=lambda: _default_for("DECONWOLF_CONFIG"), show_default="DECONWOLF_CONFIG from the environment", prompt=True, type=click.Path(), help="Path to the Deconwolf configuration file (default: DECONWOLF_CONFIG from the environment)")
+@click.option("zarr_storage_path", "--zarr_storage_path", default=lambda: _default_for("ZARR_STORAGE_PATH"), show_default="ZARR_STORAGE_PATH from the environment", prompt=True, type=click.Path(), help="Path to the Zarr storage (default: ZARR_STORAGE_PATH from the environment)")
+@click.option("root_path", "--root_path", default=lambda: _default_for("PROCESSED_ROOT_PATH"), show_default="PROCESSED_ROOT_PATH from the environment", prompt=True, type=click.Path(), help="Root path for processed data (default: PROCESSED_ROOT_PATH from the environment)")
+@click.option("segmentation_output_dir", "--segmentation_output_dir", default=lambda: _default_for("SEGMENTATION_OUT_PATH"), show_default="SEGMENTATION_OUT_PATH from the environment", prompt=True, type=click.Path(), help="Directory for segmentation outputs (default: SEGMENTATION_OUT_PATH from the environment)")
+@click.option("anndata_store_dir", "--anndata_store_dir", default=lambda: _default_for("ANNDATA_STORE_PATH"), show_default="ANNDATA_STORE_PATH from the environment", prompt=True, type=click.Path(), help="Directory for AnnData storage (default: ANNDATA_STORE_PATH from the environment)")
+@click.option("annotation_store_dir", "--annotation_store_dir", default=lambda: _default_for("ANNOTATION_STORE_PATH"), show_default="ANNOTATION_STORE_PATH from the environment", prompt=True, type=click.Path(), help="Directory for annotation storage (default: ANNOTATION_STORE_PATH from the environment)")
+@click.option("image_store_path", "--image_store_path", default=lambda: _default_for("IMAGE_STORE_PATH"), show_default="IMAGE_STORE_PATH from the environment", prompt=True, type=click.Path(), help="Path to the image storage (default: IMAGE_STORE_PATH from the environment)")
+@click.option("cutoffs_path", "--cutoffs_path", default=lambda: _default_for("CUTOFFS_PATH"), show_default="CUTOFFS_PATH from the environment", prompt=True, type=click.Path(), help="Path to the cutoffs file (default: CUTOFFS_PATH from the environment)")
+@click.option("spida_site_dir", "--spida_site_dir", default=lambda: _default_for("SPIDA_SITE_DIR"), show_default="SPIDA_SITE_DIR from the environment", prompt=True, type=click.Path(), help="Path to the SPIDA website directory (default: SPIDA_SITE_DIR from the environment)")
+@click.option("overwrite", "--overwrite", is_flag=True, default=False, prompt=True, help="Overwrite existing configuration file if it exists.")
 def setup_config(
-    config_store_path: str | Path = ".env",
+    config_store_path: str | Path = "spida_config.json",
     rust_bin_path: str | Path | None = None,
     vpt_bin_path: str | Path | None = None,
     deconwolf_config_file: str | Path | None = None,
@@ -275,140 +198,36 @@ def setup_config(
     cutoffs_path: str | Path | None = None,
     spida_site_dir: str | Path | None = None,
     overwrite: bool = False,
-    ext_type: str = "env",
 ):
-    """
-    Sets up the configuration file with provided or default values. 
-    This is for setting up different projects without having to modify the .env file manually.
-    """
-
-    config = resolve_config(
-        defaults=DEFAULT_CONFIG,
-        config_path=None,
-    )
-    # CLI provided values should override resolved defaults
-    config.update(
-        {
-            "RUST_BIN_PATH": rust_bin_path or config["RUST_BIN_PATH"],
-            "VPT_BIN_PATH": vpt_bin_path or config["VPT_BIN_PATH"],
-            "DECONWOLF_CONFIG": deconwolf_config_file or config["DECONWOLF_CONFIG"],
-            "ZARR_STORAGE_PATH": zarr_storage_path or config["ZARR_STORAGE_PATH"],
-            "PROCESSED_ROOT_PATH": root_path or config["PROCESSED_ROOT_PATH"],
-            "SEGMENTATION_OUT_PATH": segmentation_output_dir or config["SEGMENTATION_OUT_PATH"],
-            "ANNDATA_STORE_PATH": anndata_store_dir or config["ANNDATA_STORE_PATH"],
-            "ANNOTATION_STORE_PATH": annotation_store_dir or config["ANNOTATION_STORE_PATH"],
-            "IMAGE_STORE_PATH": image_store_path or config["IMAGE_STORE_PATH"],
-            "CUTOFFS_PATH": cutoffs_path or config["CUTOFFS_PATH"],
-            "SPIDA_SITE_DIR": spida_site_dir or config["SPIDA_SITE_DIR"],
-        }
-    )
+    """Write a project JSON config (pass it to any SPIDA command with --config)."""
+    config = resolve_config(defaults=DEFAULT_CONFIG, config_path=None)
+    given = {"RUST_BIN_PATH": rust_bin_path, "VPT_BIN_PATH": vpt_bin_path, "DECONWOLF_CONFIG": deconwolf_config_file, "ZARR_STORAGE_PATH": zarr_storage_path, "PROCESSED_ROOT_PATH": root_path, "SEGMENTATION_OUT_PATH": segmentation_output_dir, "ANNDATA_STORE_PATH": anndata_store_dir, "ANNOTATION_STORE_PATH": annotation_store_dir, "IMAGE_STORE_PATH": image_store_path, "CUTOFFS_PATH": cutoffs_path, "SPIDA_SITE_DIR": spida_site_dir}
+    config.update({k: v for k, v in given.items() if v})
 
     config_path = Path(config_store_path)
+    if config_path.suffix != ".json":
+        config_path = config_path.with_suffix(".json")
     if config_path.exists() and not overwrite:
         click.echo(f"Configuration file already exists at {config_path.resolve()}. Use --overwrite to replace it.")
         return
-    if ext_type == "env":
-        if not str(config_store_path).endswith(".env"):
-            config_store_path = f"{config_store_path}.env"
-        config_path = Path(config_store_path)
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with config_path.open("a") as f:
-            for key, value in config.items():
-                f.write(f"{key}={value}\n")
-    elif ext_type == "json":
-        if not str(config_store_path).endswith(".json"):
-            config_store_path = f"{config_store_path}.json"
-        config_path = Path(config_store_path)
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with config_path.open("a") as f:
-            json.dump(config, f, indent=4)
-    else: # TODO add yaml of .ini for peoples preferences
-        click.echo("Unsupported file extension type. Use 'env' or 'json'.")
-        return
-    
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with config_path.open("w") as f:
+        json.dump(config, f, indent=4)
     click.echo(f"Configuration file created at {config_path.resolve()}")
 
-def load_config(
-    config_path : str | Path  = ".env",
-): 
-    """
-    Loads the configuration from the specified CONFIG_PATH file and returns it as a dictionary. 
-    Parameters:
-    - config_path (str | Path): The path to the configuration file (default: ".env").
-    """
+def load_config(config_path: str | Path) -> dict:
+    """The JSON config file at ``config_path`` as a dict (UPPER_CASE keys)."""
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Configuration file not found at {config_path.resolve()}.")
-    
-    config = {}
-    if str(config_path).endswith(".env"):
-        with config_path.open("r") as f:
-            for line in f:
-                if line.strip() and not line.startswith("#"):
-                    key, value = line.strip().split("=", 1)
-                    config[key] = value
-    elif str(config_path).endswith(".json"):
-        with config_path.open("r") as f:
-            config = json.load(f)
-    else:
-        raise ValueError("Unsupported configuration file format. Use '.env' or '.json'.")
-    return config
-
-def load_config_into_env(config):
-    for key, value in config.items():
-        os.environ[key] = value
-
-
-def export_env_only_config(resolved: dict) -> dict:
-    """Export the few config keys that are read via ``os.getenv``, not Click.
-
-    Most config keys reach their command as an argument, because
-    ``RENAME_CONFIG_KEYS`` maps them onto a declared Click option and
-    ``ConfigDefaultGroup`` installs them as that option's default. A key with no
-    such option (currently only ``CELLPOSE_MODEL_PATH``) would otherwise be
-    silently dropped, which is exactly what used to happen.
-
-    This is deliberately narrow rather than exporting the whole resolved config:
-    a blanket export would also overwrite the ``.env`` values behind the 100+
-    ``os.getenv`` fallbacks elsewhere in SPIDA — and ``.env`` and the per-region
-    JSONs intentionally disagree (persistent ``/home`` paths vs ephemeral
-    ``/scratch`` ones) — as well as leak unresolved ``/path/to/...`` placeholders
-    into the environment of every subprocess SPIDA launches.
-
-    Returns the mapping that was exported, for logging/testing.
-    """
-    exported = {}
-    for key in ENV_ONLY_CONFIG_KEYS:
-        value = resolved.get(key)
-        if value is None:
-            continue
-        value = str(value)
-        os.environ[key] = value
-        exported[key] = value
-        for alias in THIRD_PARTY_ENV_ALIASES.get(key, ()):
-            existing = os.environ.get(alias)
-            if existing is None:
-                os.environ[alias] = value
-                exported[alias] = value
-            elif existing != value:
-                # An explicit user setting wins, but a silent disagreement about
-                # where models live is worth surfacing.
-                rich_echo(
-                    f"[warning] {alias}={existing} differs from {key}={value}; "
-                    f"keeping {alias}. Cellpose may download weights to a "
-                    f"different directory than SPIDA reads from."
-                )
-    return exported
+    if config_path.suffix != ".json":
+        raise ValueError(f"{config_path}: SPIDA config files are JSON (.env is no longer read).")
+    with config_path.open("r") as f:
+        return json.load(f)
 
 @click.command(cls=RichCommand, help="Display the current configuration settings.")
-@click.argument(
-    "config_path",
-    type=click.Path(exists=True),
-    default=".env"
-)
-def display_config(
-    config_path : str | Path = ".env",
-):
+@click.argument("config_path", type=click.Path(exists=True, dir_okay=False))
+def display_config(config_path: str | Path):
     """Displays the current configuration settings from CONFIG_PATH."""
     config = _normalize_config_keys(load_config(config_path))
     for key, value in config.items():
@@ -431,20 +250,6 @@ class ConfigDefaultGroup(RichGroup):
 
         resolved = resolve_config(config_path=config_path, defaults=DEFAULT_CONFIG)
 
-        # Keys with no Click option of their own reach their consumer only via
-        # the environment; export them before any backend module is imported
-        # (third-party libraries such as cellpose read their cache location at
-        # import time).
-        export_env_only_config(resolved)
-
-        defaults = {}
-        for key, value in resolved.items():
-            defaults[RENAME_CONFIG_KEYS.get(key, key.lower())] = value
-
-        # build a per-subcommand default_map so defaults apply to every command
-        mapping = {name: defaults.copy() for name in self.commands}
-        extra['default_map'] = mapping
-
         # create the context using the parent implementation
         ctx = super().make_context(info_name, args, parent=parent, **extra)
 
@@ -454,6 +259,7 @@ class ConfigDefaultGroup(RichGroup):
         except Exception:
             if ctx.obj is None:
                 ctx.obj = {}
+        ctx.obj["config"] = load(resolved=resolved)
 
         # Robust extraction of extra args: find the invoked subcommand in the original
         # argv (`args`) and take the tokens after it as the raw extra args. This avoids
