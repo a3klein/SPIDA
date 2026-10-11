@@ -47,20 +47,21 @@ def plot_allcools_spatial_annot(
     seg_name : str,
     donor : str,
     ref_cell_type_column : str = "Subclass",
+    annot_name : str = "allcools",
     pdf_file=None,
 ): 
     plt.rcParams['axes.facecolor'] = 'white'
 
     fig, ax = plt.subplots(2, 2, figsize=(8, 8), dpi=200)
 
-    plot_categorical(adata, cluster_col=f"allcools_{ref_cell_type_column}", coord_base='X_base_umap', text_anno=True, coding=True, show=False, ax=ax[0,0])
+    plot_categorical(adata, cluster_col=f"{annot_name}_{ref_cell_type_column}", coord_base='X_base_umap', text_anno=True, coding=True, show=False, ax=ax[0,0])
     ax[0,0].set_title("Subclass Annot")
-    plot_continuous(adata, color_by=f"allcools_{ref_cell_type_column}_transfer_score", coord_base='X_base_umap', show=False, ax=ax[0,1], cmap='viridis', hue_norm=[0, 1])
+    plot_continuous(adata, color_by=f"{annot_name}_{ref_cell_type_column}_transfer_score", coord_base='X_base_umap', show=False, ax=ax[0,1], cmap='viridis', hue_norm=[0, 1])
     ax[0,1].set_title("Subclass Transfer Score")
 
-    plot_categorical(adata, cluster_col=f"allcools_{ref_cell_type_column}", coord_base='spatial', show=False, ax=ax[1,0])
+    plot_categorical(adata, cluster_col=f"{annot_name}_{ref_cell_type_column}", coord_base='spatial', show=False, ax=ax[1,0])
     ax[1,0].set_title("Subclass Annot")
-    plot_continuous(adata, color_by=f"allcools_{ref_cell_type_column}_transfer_score", coord_base='spatial', show=False, ax=ax[1,1], cmap='viridis', hue_norm=[0, 1])
+    plot_continuous(adata, color_by=f"{annot_name}_{ref_cell_type_column}_transfer_score", coord_base='spatial', show=False, ax=ax[1,1], cmap='viridis', hue_norm=[0, 1])
     ax[1,1].set_title("Subclass Transfer Score")
     plt.suptitle(f"{exp_name} - {seg_name} - {donor}", fontsize=16)
 
@@ -73,7 +74,7 @@ def plot_allcools_spatial_annot(
 
 
     fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
-    sns.histplot(adata.obs[f'allcools_{ref_cell_type_column}_transfer_score'], bins=100, kde=True, ax=ax)
+    sns.histplot(adata.obs[f'{annot_name}_{ref_cell_type_column}_transfer_score'], bins=100, kde=True, ax=ax)
     ax.set_title("Subclass Transfer Score Distribution")
     if pdf_file:
         pdf_file.savefig(fig, dpi=300)
@@ -84,8 +85,8 @@ def plot_allcools_spatial_annot(
     
     fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
     bars = ax.bar(
-        adata.obs[f'allcools_{ref_cell_type_column}'].value_counts().index,
-        adata.obs[f'allcools_{ref_cell_type_column}'].value_counts().values,
+        adata.obs[f'{annot_name}_{ref_cell_type_column}'].value_counts().index,
+        adata.obs[f'{annot_name}_{ref_cell_type_column}'].value_counts().values,
         color='lightblue', edgecolor='black', alpha=1
     )
     ax.bar_label(bars, padding=3, fontsize=8, color='black', weight='bold')
@@ -111,7 +112,10 @@ def plot_allcools_c2c(
     conf_mat,
     ref_cell_type_column : str = "supercluster_name",
     pdf_file=None,
-): 
+    qry_label_col : str | None = None,  # adata_merf's label column (default: same as adata_comb's)
+):
+    comb_label_col = f"c2c_allcools_label_{ref_cell_type_column}"
+    qry_label_col = qry_label_col or comb_label_col
     fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
     sns.heatmap(conf_mat, vmin=0.1, vmax=0.9, cmap='cividis', cbar=None, ax=ax, yticklabels=True)
     cumsum_c, cumsum_r = 0, 0
@@ -134,9 +138,9 @@ def plot_allcools_c2c(
         plt.close()
 
     fig, ax = plt.subplots(1, 3,figsize=(20, 6), dpi=200)
-    plot_categorical(adata_comb[adata_comb.obs['Modality'] == 'query'], coord_base="integrated_umap", cluster_col=f"c2c_allcools_label_{ref_cell_type_column}", show=False, coding=True, text_anno=True, ax=ax[0])
-    plot_categorical(adata_merf, coord_base="base_umap", cluster_col=f"c2c_allcools_label_{ref_cell_type_column}", show=False, coding=True, text_anno=True, ax=ax[1])
-    plot_categorical(adata_merf, coord_base="spatial", cluster_col=f"c2c_allcools_label_{ref_cell_type_column}", show=False, coding=True, ax=ax[2])
+    plot_categorical(adata_comb[adata_comb.obs['Modality'] == 'query'], coord_base="integrated_umap", cluster_col=comb_label_col, show=False, coding=True, text_anno=True, ax=ax[0])
+    plot_categorical(adata_merf, coord_base="base_umap", cluster_col=qry_label_col, show=False, coding=True, text_anno=True, ax=ax[1])
+    plot_categorical(adata_merf, coord_base="spatial", cluster_col=qry_label_col, show=False, coding=True, ax=ax[2])
     if pdf_file:
         pdf_file.savefig(fig, dpi=300)
         plt.close(fig)

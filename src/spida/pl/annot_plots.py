@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 import json
 import pandas as pd
@@ -8,6 +9,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 import seaborn as sns
 from spida.pl import plot_categorical, plot_continuous, categorical_scatter
+
+logger = logging.getLogger(__name__)
 
 def plot_annot(
     adata, 
@@ -61,7 +64,9 @@ def plot_annot(
             ax=axes[0][i] if num_rows > 1 else axes[i]
             # If too many types do not annotate text
             text_annot = False if len(adata.obs[f"{annot_name}_{_cc}"].unique()) > 15 else True
-            pp = palette[_cc] if palette_path is not None else None # get palette
+            pp = palette.get(_cc) if palette_path is not None else None # get palette
+            if palette_path is not None and pp is None:
+                logger.warning(f"palette has no entry for level {_cc!r} (keys: {list(palette)}); using default colours")
             # plot
             plot_categorical(adata, cluster_col=f"{annot_name}_{_cc}", coord_base=umap_col, show=False, ax=ax, text_anno=text_annot, coding=True, palette_path=pp)
             ax.set_title(_cc)
@@ -77,7 +82,7 @@ def plot_annot(
         fig, axes = plt.subplots(num_rows, num_cols, figsize=(5 * num_cols, 15))
         for i, _cc in enumerate(hierarchy_list):
             ax=axes[0][i] if num_rows > 1 else axes[i]
-            pp = palette[_cc] if palette_path is not None else None
+            pp = palette.get(_cc) if palette_path is not None else None
             plot_categorical(adata, cluster_col=f"{annot_name}_{_cc}", coord_base='spatial', show=False, ax=ax, text_anno=False, coding=True, palette_path=pp)
             ax.set_title(_cc)
             if num_rows > 1:
@@ -93,7 +98,7 @@ def plot_annot(
             df_annot = adata.obs[[f"{annot_name}_{_cc}" for _cc in hierarchy_list] + [f"{annot_name}_{_cc}_{score_ext}" for _cc in hierarchy_list]].copy()
             for _cc in hierarchy_list:
                 fig, ax = plt.subplots(figsize=(8, 4))
-                pp = palette[_cc] if palette_path is not None else None
+                pp = palette.get(_cc) if palette_path is not None else None
                 sns.violinplot(
                     data=df_annot, y=f"{annot_name}_{_cc}_{score_ext}", x=f"{annot_name}_{_cc}",
                     hue=f"{annot_name}_{_cc}", ax=ax, inner=None, alpha=0.7,
@@ -117,7 +122,7 @@ def plot_annot(
             for _cc in hierarchy_list:
                 df_annot[f"{annot_name}_{_cc}"] = df_annot[f"{annot_name}_{_cc}"].astype("category").cat.remove_unused_categories()
                 fig, ax = plt.subplots(figsize=(8, 4))
-                pp = palette[_cc] if palette_path is not None else None
+                pp = palette.get(_cc) if palette_path is not None else None
                 sns.violinplot(
                     data=df_annot, y=f"{annot_name}_{_cc}_{score_ext}", x=f"{annot_name}_{_cc}",
                     hue=f"{annot_name}_{_cc}", ax=ax, inner=None, alpha=0.7,
@@ -141,7 +146,7 @@ def plot_annot(
             if adata.obs[f"{annot_name}_{_cc}"].nunique() <= single_clust_plot_thr:
                 ncols = 4
                 nrows = max(1, int(np.ceil(len(adata.obs[f"{annot_name}_{_cc}"].cat.categories) / ncols)))
-                pp = palette[_cc] if palette_path is not None else None
+                pp = palette.get(_cc) if palette_path is not None else None
                 fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*4, nrows*4))
                 for ct, ax in zip(adata.obs[f"{annot_name}_{_cc}"].cat.categories, axes.flatten()):
                     adata_sub = adata[adata.obs[f"{annot_name}_{_cc}"] == ct].copy()

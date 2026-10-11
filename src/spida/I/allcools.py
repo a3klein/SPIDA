@@ -1,10 +1,6 @@
-import os
-import glob
 from pathlib import Path
-import tempfile
 import logging
 import warnings
-from dotenv import load_dotenv
 
 # assuming that all genes in the merscope dataset should overlap with the genes in the scRNA dataset.
 import numpy as np
@@ -20,7 +16,6 @@ from sklearn.decomposition import TruncatedSVD
 from ..utilities.ad_utils import normalize_adata
 import time
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
 
@@ -547,12 +542,9 @@ def _allcools_clust2clust_transfer(
         logger.info(f"{group}, {len(ref_cells)}, {len(qry_cells)}, {ref_annot}")
         if len(ref_annot) > 1: 
             if integration_round == 1: # Doing a second round of integration with only the ambiguous clusters
-                anndata_dir = tempfile.TemporaryDirectory()
                 _, adata_comb_ret = run_allcools_seurat(
                     ref_adata = adata_comb[ref_cells,:].copy(),
                     qry_adata = adata_comb[qry_cells,:].copy(),
-                    anndata_store_path=anndata_dir,
-                    annotations_store_path=None,
                     rna_cell_type_column = ref_cell_type_column,
                     qry_cluster_column = joint_cluster_column,
                     top_deg_genes = 20,
@@ -604,8 +596,8 @@ def _allcools_clust2clust_transfer(
 def run_allcools_seurat(
     ref_adata: ad.AnnData,
     qry_adata: ad.AnnData,
-    anndata_store_path: str,
-    annotations_store_path: str,
+    query_path: str | Path | None = None,
+    output_dir: str | Path | None = None,
     rna_cell_type_column: str = "supercluster_name",
     qry_cluster_column:str = "leiden",
     top_deg_genes:int = -1,
@@ -649,15 +641,17 @@ def run_allcools_seurat(
     Parameters:
     ref_adata (AnnData): Reference AnnData object.
     qry_adata (AnnData): Query AnnData object.
+    query_path: where the annotated query is written (needed if save_query).
+    output_dir: where the integrator / combined AnnData go (needed if save_integrator / save_adata_comb).
     **kwargs: Additional keyword arguments for SeuratIntegration.
     """
 
     logger.info("in the function run_allcools_seurat")
 
-    exp = qry_adata.uns.get("experiment")
-    seg_name = qry_adata.uns.get("segmentation")
-    donor = qry_adata.uns.get("donor")
-    qry_path = Path(f"{anndata_store_path}/{exp}/{seg_name}/adata_{donor}.h5ad")
+    if save_query and query_path is None:
+        raise ValueError("save_query needs query_path")
+    if (save_integrator or save_adata_comb) and output_dir is None:
+        raise ValueError("save_integrator / save_adata_comb need output_dir")
 
     # All integration parameters defined here
     n_train_cell = kwargs.get("n_train_cell", 100000)
@@ -791,8 +785,8 @@ def run_allcools_seurat(
     qry_adata.uns[_labels_key] = _score_df.columns.tolist()
 
     if save_query:
-        qry_path.parent.mkdir(parents=True, exist_ok=True)
-        qry_adata.write_h5ad(qry_path)
+        Path(query_path).parent.mkdir(parents=True, exist_ok=True)
+        qry_adata.write_h5ad(query_path)
 
     if save_integrator:
         ### Making sure that there are no category dtypes in the integrator (they have nan's)
@@ -804,16 +798,14 @@ def run_allcools_seurat(
                     v.obs[col] = v.obs[col].cat.add_categories(["nan"])
                     v.obs[col] = v.obs[col].fillna("nan").astype(str)
         # Save the integrator object
-        integrator_path = f"{annotations_store_path}/{exp}/{seg_name}/allcools/{donor}"
-        Path(integrator_path).mkdir(parents=True, exist_ok=True)
-        logger.info(f"Saving integrator to {integrator_path}/integrator_rna_merfish")
-        integrator.save(f"{integrator_path}/integrator_rna_merfish", save_adata=True)
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving integrator to {output_dir}/integrator_rna_merfish")
+        integrator.save(f"{output_dir}/integrator_rna_merfish", save_adata=True)
 
     if save_adata_comb:
-        adata_comb_path = f"{annotations_store_path}/{exp}/{seg_name}/allcools/{donor}"
-        Path(adata_comb_path).mkdir(parents=True, exist_ok=True)
-        logger.info(f"Saving combined adata to {adata_comb_path}/adata_comb_rna_merfish.h5ad")
-        adata_comb.write_h5ad(f"{adata_comb_path}/adata_comb_rna_merfish.h5ad")
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving combined adata to {output_dir}/adata_comb_rna_merfish.h5ad")
+        adata_comb.write_h5ad(f"{output_dir}/adata_comb_rna_merfish.h5ad")
 
     return qry_adata, adata_comb
 
@@ -846,3 +838,163 @@ def _add_obs_columns(adata_source, adata_target, cols_to_add):
     if remaining_cols:
         adata_target.obs[remaining_cols] = adata_source.obs[remaining_cols]
     return adata_target
+
+def integrate_adata(
+    qry_adata: ad.AnnData,
+    ref_path: str | Path,
+    reference: str,
+    query_path: str | Path,
+    output_dir: str | Path | None,
+    gene_rename_dict: dict | None = None,
+    downsample_ref: bool = False,
+    min_ref_cells: int = 50000,
+    **run_kwargs,
+):
+    """
+    Integrate a query AnnData with the reference RNA AnnData at ``ref_path``.
+    Columns the run adds to the query are renamed ``allcools_<reference>_<rest>``.
+
+    Parameters:
+        qry_adata: Query (spatial) AnnData.
+        ref_path: Path to the reference RNA AnnData object.
+        reference: Reference name used in the column names.
+        query_path: Where the annotated query is written.
+        output_dir: Where the integrator / combined AnnData go (None: nothing saved).
+        gene_rename_dict: Query gene renames before matching to the reference.
+        downsample_ref: Randomly downsample the reference before integrating.
+        min_ref_cells: Floor for the downsampled reference size.
+        **run_kwargs: Passed to run_allcools_seurat.
+
+    Returns:
+        (query, combined AnnData, old -> new column map)
+    """
+    from spida.I._io import tag_columns
+
+    # Handling the gene renaming:
+    if gene_rename_dict is not None:
+        logger.info(f"Renaming genes using gene_rename_dict: {gene_rename_dict}")
+        qry_adata.var_names = [gene_rename_dict.get(name, name) for name in qry_adata.var_names]
+
+    ref_adata = ad.read_h5ad(ref_path, backed='r')
+    logger.info(f"ref_adata shape: {ref_adata.shape}")
+    if downsample_ref:
+        logger.info("Downsampling the reference AnnData object")
+        # Never less than the number in the reference, or the min_ref_cells params
+        num_cells = min(ref_adata.shape[0], max(qry_adata.shape[0], min_ref_cells))
+        ref_adata = ref_adata[ref_adata.obs.sample(num_cells).index]
+        logger.info(f"ref_adata shape after downsampling: {ref_adata.shape}")
+
+    # Subsetting to shared genes before loading into memory:
+    ref_adata = ref_adata[:, ref_adata.var_names[ref_adata.var_names.isin(qry_adata.var_names)]]
+    ref_adata = ref_adata.to_memory()
+    logger.info(f"Missing Gene Names: {qry_adata.var_names.difference(ref_adata.var_names)}")
+
+    before = set(qry_adata.obs.columns)
+    run_kwargs["save_query"] = False
+    qry, comb = run_allcools_seurat(ref_adata=ref_adata, qry_adata=qry_adata, output_dir=output_dir, **run_kwargs)
+
+    names = tag_columns(qry, [c for c in qry.obs.columns if c not in before], "allcools", reference)
+    col = run_kwargs.get("rna_cell_type_column", "supercluster_name")
+    for store, key in ((qry.obsm, f"allcools_{col}_score_matrix"), (qry.uns, f"allcools_{col}_score_labels")):
+        if key in store:
+            store[key.replace("allcools_", f"allcools_{reference}_", 1)] = store.pop(key)
+
+    query_path = Path(query_path)
+    query_path.parent.mkdir(parents=True, exist_ok=True)
+    qry.write_h5ad(query_path)
+    return qry, comb, names
+
+
+def integrate_region(
+    dataset,
+    prefix_name: str,
+    ref_path: str | Path,
+    suffix: str = "_filt",
+    reference: str | None = None,
+    adata_file: str | Path | None = None,
+    refresh_table: bool = False,
+    backup_to_spatialdata: bool = False,
+    **kwargs,
+):
+    """
+    Integrate segmentation ``prefix_name`` of one region against the reference at ``ref_path``.
+    Labels go into the region's AnnData file (or ``adata_file``); the integrator and combined
+    AnnData go to ``<annotations>/<table>/allcools/<reference>``.
+
+    Parameters:
+        dataset: The region's locations (Dataset).
+        prefix_name: Segmentation name, e.g. cellpose_cell.
+        ref_path: Path to the reference RNA AnnData object.
+        suffix: Table suffix, e.g. _filt.
+        reference: Reference name in column names and paths (default: ref file stem).
+        adata_file: Integrate this AnnData file instead; labels are written back to it.
+        refresh_table: Re-read the table from the zarr store even if its AnnData file exists.
+        backup_to_spatialdata: Also write the labelled table back into the zarr store.
+        **kwargs: Passed to integrate_adata / run_allcools_seurat.
+
+    Returns:
+        (query, combined AnnData, query path, output dir, old -> new column map)
+    """
+    from spida.I._io import load_table, backup_table
+    from spida.io.layout import table_key
+
+    reference = reference or Path(ref_path).stem
+    key = table_key(prefix_name, suffix)
+    output_dir = dataset.annotation_dir(key, "allcools", reference)
+    adata, query_path = load_table(dataset, prefix_name, suffix, adata_file=adata_file, refresh=refresh_table)
+    logger.info(f"adata shape: {adata.shape}")
+    qry, comb, names = integrate_adata(adata, ref_path, reference, query_path, output_dir, **kwargs)
+    if backup_to_spatialdata:
+        logger.info("Backing up the AnnData object to the spatialdata object")
+        backup_table(dataset, qry, key)
+    return qry, comb, query_path, output_dir, names
+
+
+def plot_integration(
+    query_path: str | Path,
+    comb_path: str | Path,
+    output_path: str | Path,
+    reference: str,
+    plot_joint_embeddings: bool = False,
+    plot_c2c_transfer: bool = False,
+    ref_cell_type_column: str = "supercluster_name",
+):
+    """
+    Plot one reference's integration into one pdf.
+
+    Parameters:
+        query_path: The annotated query AnnData file.
+        comb_path: The combined (reference + query) AnnData file.
+        output_path: Output pdf.
+        reference: Reference name, as in the ``allcools_<reference>_*`` columns.
+    """
+    from spida.pl import plot_allcools_joint_embeddings, plot_allcools_spatial_annot
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    qry_adata = ad.read_h5ad(query_path)
+    adata_comb = ad.read_h5ad(comb_path)
+    annot = f"allcools_{reference}"
+    names = dict(exp_name=qry_adata.uns.get("experiment"), seg_name=qry_adata.uns.get("segmentation"),
+                 donor=qry_adata.uns.get("donor"))
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pdf_file = PdfPages(output_path)
+    if plot_joint_embeddings:
+        plot_allcools_joint_embeddings(adata_comb, **names, pdf_file=pdf_file)
+    plot_allcools_spatial_annot(qry_adata, **names, ref_cell_type_column=ref_cell_type_column,
+                                annot_name=annot, pdf_file=pdf_file)
+    if plot_c2c_transfer and 'c2c_allcools_integration_results' not in adata_comb.uns:
+        # only c2c_method="allcools" stores the confusion-matrix results; "proportion" does not
+        logger.warning("no c2c_allcools_integration_results in the combined AnnData; skipping the c2c page")
+    elif plot_c2c_transfer:
+        from spida.pl.I_plots import plot_allcools_c2c
+        res = adata_comb.uns['c2c_allcools_integration_results']
+        ref_group = res.get("ref_group", None)
+        ref_group = ref_group['ref_group'] if ref_group is not None else None
+        query_group = res.get("qry_group", None)
+        query_group = query_group['qry_group'] if query_group is not None else None
+        plot_allcools_c2c(adata_comb, qry_adata, ref_group, query_group, res.get("confusion_matrix", None),
+                          ref_cell_type_column=ref_cell_type_column, pdf_file=pdf_file,
+                          qry_label_col=f"{annot}_c2c_label_{ref_cell_type_column}")
+    pdf_file.close()
