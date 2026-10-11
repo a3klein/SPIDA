@@ -1,5 +1,3 @@
-import os
-from dotenv import load_dotenv  # type: ignore
 
 import warnings
 from pathlib import Path
@@ -9,7 +7,6 @@ import anndata as ad
 
 from spida._constants import *
 
-load_dotenv()
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -98,12 +95,11 @@ def _validate_adata(adata):
     return adata
 
 
-def _backup_adata(exp_name: str, reg_name: str, element: ad.AnnData, element_name: str, zarr_store=None):
+def _backup_adata(zarr_path, element: ad.AnnData, element_name: str):
     """
-    Backup the current state of a spatialdata element before modifying it.
-    This function deletes the existing element from disk and writes the new element to the spatialdata object.
+    Replace a table in the store at ``zarr_path`` (delete, then write).
     Parameters:
-    sdata (sd.SpatialData): The spatialdata object to modify.
+    zarr_path (str | Path): The dataset's zarr store.
     element: The new element to write to the spatialdata object.
     element_name (str): The name of the element in the spatialdata object.
     """
@@ -116,10 +112,6 @@ def _backup_adata(exp_name: str, reg_name: str, element: ad.AnnData, element_nam
         warnings.filterwarnings("ignore")
         import spatialdata as sd
 
-    # Getting the sdata object (right now from a constant zarr store path)
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     sdata = sd.read_zarr(zarr_path)
 
     if element.raw:
@@ -131,33 +123,6 @@ def _backup_adata(exp_name: str, reg_name: str, element: ad.AnnData, element_nam
     sdata.write_element(element_name)
 
 
-def _backup_element(exp_name: str, reg_name: str, element, element_name: str, zarr_store=None):
-    """
-    Backup the current state of a spatialdata element before modifying it.
-    This function deletes the existing element from disk and writes the new element to the spatialdata object.
-    Parameters:
-    sdata (sd.SpatialData): The spatialdata object to modify.
-    element: The new element to write to the spatialdata object.
-    element_name (str): The name of the element in the spatialdata object.
-    """
-
-    ### TODO: Verify this works correctly for all element types (Points / Shapes / Tables)
-    # Main use case is going to be for tables
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        import spatialdata as sd
-
-    # Getting the sdata object (right now from a constant zarr store path)
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
-    sdata = sd.read_zarr(zarr_path)
-
-    print(f"attempting to remove {element_name} from disk")
-    sdata.delete_element_from_disk(element_name)  # Remove the old table from disk
-    sdata[element_name] = element
-    sdata.write_element(element_name)
 
 def _backup_element_sd(sdata, element, element_name: str):
     """
@@ -179,38 +144,25 @@ def _backup_element_sd(sdata, element, element_name: str):
     sdata.write_element(element_name)
 
 
-def _write_adata(exp_name, reg_name, prefix_name, output_path: Path, zarr_store=None):
+def _write_adata(zarr_path, table_key: str, output_file: Path):
     """
-    Write the AnnData object to an H5AD file.
+    Write one table of the store at ``zarr_path`` to an H5AD file.
     Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    output_path (Path): Path to the output directory where the H5AD file will be saved.
+    zarr_path (str | Path): The dataset's zarr store.
+    table_key (str): The table to export.
+    output_file (Path): The H5AD file to write.
     """
-    # Get the donor name for the filename
-    donor_name = _region_to_donor(reg_name)
-    Path(output_path).mkdir(
-        parents=True, exist_ok=True
-    )  # Ensure the output directory exists
-
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
-
-    adata = ad.read_zarr(f"{zarr_path}/tables/{prefix_name}_table")
-    adata.write_h5ad(Path(f"{output_path}/adata_{donor_name}.h5ad"))
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    adata = ad.read_zarr(f"{zarr_path}/tables/{table_key}")
+    adata.write_h5ad(Path(output_file))
 
 
-def _get_adata(
-    exp_name: str, reg_name: str, prefix_name: str, suffix: str = "", zarr_store=None,
-) -> ad.AnnData:
+def _get_adata(zarr_path, table_key: str) -> ad.AnnData:
     """
-    Retrieve the AnnData object from a spatialdata object based on the experiment and region names.
+    Read one table from the store at ``zarr_path``.
     Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
+    zarr_path (str | Path): The dataset's zarr store.
+    table_key (str): The table to read.
     """
     ### TODO: Try, except block for when spatialdata is not installed in a given environment
     ### Then load the AnnData object directly from the zarr store
@@ -219,37 +171,19 @@ def _get_adata(
         warnings.filterwarnings("ignore")
         import spatialdata as sd
 
-    # Get KEYS
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
-    full_name = f"{KEYS[TABLE_KEY]}{suffix}"
-
-    logger.info("Zarr Store Path: %s" % zarr_store)
-    # Getting the sdata object (right now from a constant zarr store path)
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
-    logger.info(f"Loading SpatialData object from {zarr_path}")
+    logger.info(f"Loading {table_key} from {zarr_path}")
     sdata = sd.read_zarr(zarr_path)
-    adata = sdata[full_name].copy()
+    adata = sdata[table_key].copy()
     return adata
 
 
-def _assign_new_table(
-    exp_name: str,
-    reg_name: str,
-    element: ad.AnnData,
-    element_name: str,
-    suffix: str = "",
-    zarr_store=None,
-):
+def _assign_new_table(zarr_path, element: ad.AnnData, element_name: str):
     """
-    Backup the current state of a spatialdata element before modifying it.
-    This function deletes the existing element from disk and writes the new element to the spatialdata object.
+    Write a new table into the store at ``zarr_path``; raises if it already exists.
     Parameters:
-    sdata (sd.SpatialData): The spatialdata object to modify.
+    zarr_path (str | Path): The dataset's zarr store.
     element: The new element to write to the spatialdata object.
     element_name (str): The name of the element in the spatialdata object.
-    suffix (str): Suffix to append to the element name for the new table.
     """
 
     ### TODO: Verify this works correctly for all element types (Points / Shapes / Tables)
@@ -258,13 +192,9 @@ def _assign_new_table(
         warnings.filterwarnings("ignore")
         import spatialdata as sd
 
-    # Getting the sdata object (right now from a constant zarr store path)
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
     sdata = sd.read_zarr(zarr_path)
 
-    full_name = f"{element_name}{suffix}"
+    full_name = element_name
 
     if f"tables/{full_name}" not in sdata.elements_paths_on_disk():
         sdata[full_name] = element

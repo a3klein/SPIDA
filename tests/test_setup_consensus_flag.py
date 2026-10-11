@@ -130,13 +130,16 @@ def test_main_forwards_consensus_to_run_setup(monkeypatch, value):
 
     from spida._constants import TABLE_KEY
 
+    from pathlib import Path
+    from spida.io.layout import Dataset
+
     monkeypatch.setattr(setup_adata, "run_setup", fake_run_setup)
     monkeypatch.setattr(p_main, "_get_adata", lambda *a, **k: object())
-    monkeypatch.setattr(p_main, "_gen_keys", lambda *a, **k: {TABLE_KEY: "tbl"})
     monkeypatch.setattr(p_main, "_region_to_donor", lambda *a, **k: "donor")
     monkeypatch.setattr(p_main, "_assign_new_table", lambda *a, **k: None)
 
-    p_main.setup_adata_region("exp", "reg", "pfx", consensus_cluster=value)
+    p_main.setup_adata_region(Dataset(exp="exp", reg="reg", zarr=Path("/nonexistent.zarr")), "pfx",
+                              consensus_cluster=value)
     assert seen["consensus_cluster"] is value
 
 
@@ -152,13 +155,10 @@ def test_cli_flag_maps_to_consensus_cluster(monkeypatch, tmp_path, argv_flag, ex
 
     seen = {}
     monkeypatch.setattr(
-        p_main, "setup_adata_region", lambda **kw: seen.update(kw)
+        p_main, "setup_adata_region", lambda *a, **kw: seen.update(kw)
     )
 
-    # --image_store carries a config-injected default under click.Path(exists=True),
-    # so an ambient config makes Click reject the invocation before the command
-    # body runs. Point it somewhere real to keep this test about the new flag.
-    args = ["setup-adata-region", "exp", "reg", "pfx", "--image_store", str(tmp_path)]
+    args = ["setup-adata-region", "pfx", "--exp", "exp", "--reg", "reg"]
     if argv_flag:
         args.append(argv_flag)
 

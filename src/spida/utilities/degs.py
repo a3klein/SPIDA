@@ -191,14 +191,6 @@ def call_degs_scanpy(
     return deg_results
 
 
-def call_degs_by_celltype(*args, **kwargs) -> dict[str, pd.DataFrame]:
-    """Deprecated. Use call_degs_scanpy instead."""
-    warnings.warn(
-        "call_degs_by_celltype is deprecated; use call_degs_scanpy instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return call_degs_scanpy(*args, **kwargs)
 
 
 def summarize_scanpy_results(

@@ -185,11 +185,13 @@ def run_tissue_mask(
     write_raster: bool = True,
     m2m_path: str | Path | None = None,
     persist: bool = True,
+    mask_dir: str | Path | None = None,
 ):
     """Compute the tissue mask and (optionally) persist polygon + labels + images-dir tif.
 
     Returns (stages, grid_polygons, x0, y0). ``images_dir`` holds the raw mosaics and the
-    ``micron_to_mosaic_pixel_transform.csv``; the boolean ``tissue_mask.tif`` is written there.
+    ``micron_to_mosaic_pixel_transform.csv``; the boolean ``tissue_mask.tif`` is written to
+    ``mask_dir`` (default: ``images_dir``).
     """
     images_dir = Path(images_dir)
     logger.info("run_tissue_mask started (points_key=%s)", points_key)
@@ -227,7 +229,8 @@ def run_tissue_mask(
         m2m = read_micron_to_mosaic(m2m_path)
         shape = _mosaic_shape(images_dir)
         px_mask = rasterize_pixel_mask(grid, m2m, shape)
-        out_tif = images_dir / QC_MASK_TIF_NAME
+        out_tif = Path(mask_dir or images_dir) / QC_MASK_TIF_NAME
+        out_tif.parent.mkdir(parents=True, exist_ok=True)
         tifffile.imwrite(out_tif, (px_mask.astype(np.uint8) * 255), compression="deflate")
         logger.info("Wrote pixel mask %s (%s, %.1f MB, tissue=%.1f%%)",
                     out_tif, px_mask.shape, out_tif.stat().st_size / 1e6, 100 * px_mask.mean())

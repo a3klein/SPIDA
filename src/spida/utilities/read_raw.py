@@ -150,13 +150,15 @@ def read_img(
         img, attrs = read_zip(path, frames=frames)
     else:
         img = ski.io.imread(path, plugin=plugin, **plugin_args)
+        attrs = {}  # plain images carry no zip metadata
 
     if z_project:
         img = img.max(axis=-3)
 
-    attrs["stage_position"] = np.asarray(
-        attrs["position"].strip("()").split(","), dtype=np.float32
-    )
+    if "position" in attrs:
+        attrs["stage_position"] = np.asarray(
+            attrs["position"].strip("()").split(","), dtype=np.float32
+        )
     return img.squeeze(), attrs
 
 

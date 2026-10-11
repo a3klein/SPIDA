@@ -400,7 +400,7 @@ def run_filtering(
     prefix_name: str,
     donor_name=None,
     seg_fam:str=None,
-    cutoffs_path: str = "/ceph/cephatlas/aklein/bican/reference/filtering_cutoffs.json",
+    cutoffs_path: str | None = None,
 ):
     """
     Run the filtering process on the spatialdata object.
@@ -432,6 +432,8 @@ def run_filtering(
     )  # PRESET for column names
 
     # Cutoffs for the filtering
+    if cutoffs_path is None:
+        raise ValueError("no cutoffs file; pass --cutoffs_path or set CUTOFFS_PATH in the config")
     with open(cutoffs_path) as f:
         cutoffs = json.load(f)
     adata.uns["cutoffs"] = cutoffs  # Store cutoffs in the AnnData object for reference

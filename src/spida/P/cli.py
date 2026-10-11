@@ -12,7 +12,12 @@ import logging
 # from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
+from spida.io.options import dataset_options, dataset_overrides, dataset_from_options, run_config
 from spida.utilities.script_utils import parse_click_kwargs, JSONParam
+
+
+def _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, **roots):
+    return dataset_from_options(run_config(ctx, **roots), exp, reg, zarr_path, raw_path, seg_path, figures_path)
 
 
 import sys
@@ -30,26 +35,26 @@ warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
 @click.option(
     "config",
     "--config",
-    default=".env",
-    type=click.Path(exists=True),
-    help="Path to the configuration file (default: .env)",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="JSON config file (optional; unset settings come from the environment).",
 )
 @click.pass_context
 def cli(ctx, config):
     ctx.ensure_object(dict)
     pass
 
-# For Testing the CLI Group default_map functionality
-@click.command(cls=RichCommand, help="test_command")
-@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary")
-@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Path to the Rust binary")
-@click.option("deconwolf_config_file", "--deconwolf_config_file", default=None, type=click.Path(), help="Path to the Deconwolf config file")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Path to the processed root directory")
-@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Path to the segmentation output directory")
-@click.option("anndata_store", "--anndata_store", default=None, type=click.Path(), help="Path to the AnnData store directory")
-@click.option("annotation_store", "--annotation_store", default=None, type=click.Path(), help="Path to the annotation store directory")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to the image store directory")
+# Show how a call's configuration resolves
+@click.command(cls=RichCommand, help="Print the resolved configuration: --config JSON, then the environment, then these options.")
+@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Directory holding the VPT binary, --backend vpt only (default: VPT_BIN_PATH in the config)")
+@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Directory holding the proseg binary (default: RUST_BIN_PATH in the config)")
+@click.option("deconwolf_config_file", "--deconwolf_config_file", default=None, type=click.Path(), help="deconwolf .config.ini: binary, PSFs, [Optics] (default: DECONWOLF_CONFIG in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
+@click.option("anndata_store", "--anndata_store", default=None, type=click.Path(), help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
+@click.option("annotation_store", "--annotation_store", default=None, type=click.Path(), help="Root of the annotation intermediates (default: ANNOTATION_STORE_PATH in the config)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.pass_context
 def test_command(
     ctx,
@@ -63,23 +68,14 @@ def test_command(
     annotation_store,
     image_store,
 ):
-    """
-    Printing all of the default values for the configuration parameters
-    """
-    click.echo(click.style("Default configuration values:", bold=True))
-    for key, value in ctx.default_map.items():
-        click.echo(click.style(key, fg='magenta', bold=True) + f": {click.style(value, fg='green')}")
-
-    click.echo(click.style("\nPassed In Values:\n", bold=True))
-    click.echo(click.style(f"vpt_bin_path: {vpt_bin_path}", fg='green'))
-    click.echo(click.style(f"rust_bin_path: {rust_bin_path}", fg='green'))
-    click.echo(click.style(f"deconwolf_config_file: {deconwolf_config_file}", fg='green'))
-    click.echo(click.style(f"zarr_store: {zarr_store}", fg='green'))
-    click.echo(click.style(f"root_path: {root_path}", fg='green'))
-    click.echo(click.style(f"segmentation_store: {segmentation_store}", fg='green'))
-    click.echo(click.style(f"anndata_store: {anndata_store}", fg='green'))
-    click.echo(click.style(f"annotation_store: {annotation_store}", fg='green'))
-    click.echo(click.style(f"image_store: {image_store}", fg='green'))  
+    """Print every SpidaConfig field as this call resolves it."""
+    import dataclasses
+    cfg = run_config(ctx, vpt_bin_path=vpt_bin_path, rust_bin_path=rust_bin_path,
+                     deconwolf_config_file=deconwolf_config_file, zarr_store=zarr_store, root_path=root_path,
+                     segmentation_store=segmentation_store, anndata_store=anndata_store,
+                     annotation_store=annotation_store, image_store=image_store)
+    for f in dataclasses.fields(cfg):
+        click.echo(click.style(f.name, fg='magenta', bold=True) + f": {click.style(str(getattr(cfg, f.name)), fg='green')}")
 
 
 
@@ -87,23 +83,22 @@ def test_command(
     name="filter-cells-region",
     cls=RichCommand,
     aliases=["filter_cells_region"],
-    help="Filter cells for a specific PREFIX_NAME segmentation for REG_NAME in an experiment EXP_NAME.",
+    help="Filter cells of the PREFIX_NAME segmentation of one region (--exp/--reg, or the path options).",
     )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str)
+@dataset_options
 @click.option("--seg_fam", type=str, default=None, help="Which preset of column names to use when running filtering (default is None which uses vpt outputs)")
-@click.option("--cutoffs_path", type=click.Path(exists=True, file_okay=True), default=None, help="Path to the cutoffs JSON file")
+@click.option("--cutoffs_path", type=click.Path(exists=True, file_okay=True), default=None, help="QC cutoffs JSON (default: CUTOFFS_PATH in the config)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to save the plot")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to plot store")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def filter_cells_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
     prefix_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     seg_fam:str = None,
     cutoffs_path: Path = None,
     plot: bool = False,
@@ -112,42 +107,35 @@ def filter_cells_region(
     zarr_store: Path = None,
 ):
     """
-    Filter cells for a specific PREFIX_NAME segmentation for REG_NAME in an experiment EXP_NAME.
+    Filter cells of the PREFIX_NAME segmentation of one region.
     """
     for key, value in ctx.params.items():
         logger.info(f"Parsed {key} = {value};  {type(value)}")
 
+    cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store, cutoffs_path=cutoffs_path)
+    dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from spida.P.main import filter_cells_region as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
-        seg_fam=seg_fam,
-        cutoffs_path=cutoffs_path,
-        plot=plot,
-        image_path=image_path,
-        image_store=image_store,
-        zarr_store=zarr_store,
-    )
+    func(dataset, prefix_name, seg_fam=seg_fam, cutoffs_path=cfg.cutoffs_path,
+         plot=plot, image_path=image_path)
 
 @cli.command(
     name="filter-cells-all",
     cls=RichCommand,
     aliases=["filter_cells_all"],
-    help="Filter cells for all regions in an experiment EXP_NAME for a specific PREFIX_NAME segmentation.",
+    help="Filter cells of the PREFIX_NAME segmentation for every region of --exp.",
 )
-@click.argument("exp_name", type=str)
 @click.argument("prefix_name", type=str)
+@click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
 @click.option("--seg_fam", type=str, default=None, help="Which preset of column names to use when running filtering (default is None which uses vpt outputs)")
-@click.option("--cutoffs_path", type=click.Path(exists=True), default=None, help="Path to the cutoffs JSON file")
+@click.option("--cutoffs_path", type=click.Path(exists=True), default=None, help="QC cutoffs JSON (default: CUTOFFS_PATH in the config)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to save the plot")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.pass_context
 def filter_cells_all(
     ctx,
-    exp_name: str,
     prefix_name: str,
+    exp_name: str,
     cutoffs_path: Path = None,
     seg_fam:str = None,
     plot: bool = False,
@@ -155,111 +143,93 @@ def filter_cells_all(
     zarr_store: Path = None,
 ):
     """
-    Filter cells for all regions in an experiment EXP_NAME for a specific PREFIX_NAME segmentation.
+    Filter cells of the PREFIX_NAME segmentation for every region of an experiment.
     """
+    cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store, cutoffs_path=cutoffs_path)
     from spida.P.main import filter_cells_all as func
-    func(
-        exp_name=exp_name,
-        prefix_name=prefix_name,
-        seg_fam=seg_fam,
-        cutoffs_path=cutoffs_path,
-        plot=plot,
-        image_path=image_store,
-        zarr_store=zarr_store,
-    )
+    func(cfg, exp_name, prefix_name, seg_fam=seg_fam, cutoffs_path=cfg.cutoffs_path, plot=plot)
 
 @cli.command(
     name="plot-filtering-region",
     cls=RichCommand,
     aliases=["plot_filtering_region"],
-    help="Plot the filtering results for a specific region in an experiment.",
+    help="Plot the filtering results of the PREFIX_NAME segmentation of one region.",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str)
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
+@dataset_options
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
 @click.option("--suffix", type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def plot_filtering_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
     prefix_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     image_store: Path = None,
     image_path: Path = None,
     suffix: str = "",
     zarr_store: Path = None,
 ):
     """
-    Plot the filtering results for a specific region in an experiment.
+    Plot the filtering results of the PREFIX_NAME segmentation of one region.
     """
-    from spida.P.main import plot_filtering_region as func  
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
-        image_path=image_path,
-        image_store=image_store,
-        suffix=suffix,
-        zarr_store=zarr_store,
-    )
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
+    from spida.P.main import plot_filtering_region as func
+    func(dataset, prefix_name, image_path=image_path, suffix=suffix)
 
 @cli.command(
     name="write-adata",
     cls=RichCommand,
     aliases=["write_adata"],
-    help="Write AnnData objects to disk for a specific experiment and region",
+    help="Export segmentation tables of --exp (one --reg, or all regions) to h5ad.",
 )
-@click.argument("exp_name", type=str)
-@click.option("--reg_name", type=str, default=None, help="Name of the region (optional, if not provided writes all regions)")
+@click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
+@click.option("--reg", "reg_name", type=str, default=None, help="Region name (default: every region of --exp)")
 @click.option("--prefix_names", type=parse_list, required=True, help="List of prefix names")
-@click.option("--output_path", type=click.Path(exists=True), default=None, help="Output directory path (default is None)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--suffix", type=str, default="", help="Table suffix, e.g. _filt (default: none)")
+@click.option("anndata_store", "--anndata_store", default=None, type=click.Path(), help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.pass_context
 def write_adata(
     ctx,
     exp_name,
     reg_name: str = None,
     prefix_names: list[str] = None,
-    output_path: Path = "/ceph/cephatlas/aklein/bican/data/anndatas/",
+    suffix: str = "",
+    anndata_store: Path = None,
     zarr_store: Path = None,
 ):
     """
-    Write AnnData objects to disk for a specific experiment and region
+    Export segmentation tables to AnnData files, ANNDATA_STORE_PATH/<exp>/<reg>/<prefix>_table<suffix>.h5ad.
     """
+    cfg = run_config(ctx, zarr_store=zarr_store, anndata_store=anndata_store)
     from spida.P.main import write_adata as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_names=prefix_names,
-        output_path=output_path,
-        zarr_store=zarr_store,
-    )
+    func(cfg, exp_name, reg_name=reg_name, prefix_names=prefix_names, suffix=suffix)
 
 @cli.command(
     name="setup-adata-region",
     cls=RichCommand,
     aliases=["setup_adata_region"],
-    help="Setup the anndata object for downstream analysis for a specific region",
+    help="Setup the PREFIX_NAME table of one region for downstream analysis (--exp/--reg, or the path options).",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str)
+@dataset_options
 @click.option("--suffix", type=str, default="", help="Suffix for the table key (default: '')")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--do_tsne", is_flag=True, default=False, help="Also compute the tSNE embedding (needed by the setup plots; default: False = UMAP only)")
 @click.option("--consensus/--no-consensus","consensus_cluster",default=True,help="Consensus clustering (200 Leiden repeats) vs a single Leiden run. ")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def setup_adata_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
     prefix_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     suffix: str = "",
     plot=False,
     do_tsne: bool = False,
@@ -271,47 +241,32 @@ def setup_adata_region(
     """
     Setup the AnnData object for downstream analysis.
     This involves normalizing data, calculating PCA, umap, tsne, and leiden clusters
-
-    Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
-    plot (bool, optional): Whether to plot the results. Defaults to False.
-    do_tsne (bool, optional): Also compute the tSNE embedding (needed by the setup plots). Defaults to False.
     """
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import setup_adata_region as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
-        suffix=suffix,
-        plot=plot,
-        do_tsne=do_tsne,
-        consensus_cluster=consensus_cluster,
-        image_path=image_path,
-        image_store=image_store,
-        zarr_store=zarr_store,
-    )
+    func(dataset, prefix_name, suffix=suffix, plot=plot, do_tsne=do_tsne,
+         consensus_cluster=consensus_cluster, image_path=image_path)
 
 
 @cli.command(
     name="setup-adata-all",
     cls=RichCommand,
     aliases=["setup_adata_all"],
-    help="Setup the AnnData objects for all regions in an experiment",
+    help="Setup the PREFIX_NAME tables for every region of --exp.",
 )
-@click.argument("exp_name", type=str)
 @click.argument("prefix_name", type=str)
+@click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
 @click.option("--suffix", type=str, default="", help="Suffix for the output table key in the spatialdata object (default: '')")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.pass_context
 def setup_adata_all(
     ctx,
-    exp_name: str,
     prefix_name: str,
+    exp_name: str,
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
@@ -319,58 +274,42 @@ def setup_adata_all(
     zarr_store: Path = None,
 ):
     """
-    Setup the AnnData objects for all regions in an experiment.
-    This function iterates over all regions and calls setup_adata for each region.
+    Setup the AnnData objects for every region of an experiment.
     """
+    cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import setup_adata_all as func
-    func(
-        exp_name=exp_name,
-        prefix_name=prefix_name,
-        suffix=suffix,
-        plot=plot,
-        image_path=image_path,
-        image_store=image_store,
-        zarr_store=zarr_store,
-    )
+    func(cfg, exp_name, prefix_name, suffix=suffix, plot=plot, image_path=image_path)
 
 @cli.command(
     name="plot-setup-region",
     cls=RichCommand,
     aliases=["plot_setup_region"],
-    help="Plot the setup results for a specific region",
+    help="Plot the setup results of the PREFIX_NAME table of one region.",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str)
+@dataset_options
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--suffix", type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def plot_setup_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
     prefix_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     image_path: Path = None,
     image_store: Path = None,
     suffix: str = "",
     zarr_store: Path = None,
 ):
     """
-    Plot the setup results for a specific region in an experiment.
-    This function generates a PDF with the setup plots
+    Plot the setup results of the PREFIX_NAME table of one region.
     """
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import plot_setup_region as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
-        image_path=image_path,
-        image_store=image_store,
-        suffix=suffix,
-        zarr_store=zarr_store,
-    )
+    func(dataset, prefix_name, image_path=image_path, suffix=suffix)
 
 @cli.command(
     name="remove-doublets-region",
@@ -382,20 +321,19 @@ def plot_setup_region(
         allow_extra_args=True,
     )
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str)
+@dataset_options
 @click.option("--suffix", type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
 @click.option("--threshold", type=float, default=0.5, help="Threshold for doublet detection (default: 0.5)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to save the plot")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def remove_doublets_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
     prefix_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     threshold: float = 0.5,
     suffix: str = "",
     plot: bool = False,
@@ -410,18 +348,10 @@ def remove_doublets_region(
     for key, value in kwargs.items():
         logger.info(f"Parsed {key} = {value};  {type(value)}")
 
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import remove_doublets_region as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
-        threshold=threshold,
-        suffix=suffix,
-        plot=plot,
-        image_path=image_store,
-        model_kwargs=kwargs,
-        zarr_store=zarr_store,
-    )
+    func(dataset, prefix_name, threshold=threshold, suffix=suffix, plot=plot, model_kwargs=kwargs)
 
 @cli.command(
     name="remove-doublets-all",
@@ -433,18 +363,18 @@ def remove_doublets_region(
         allow_extra_args=True,
     )
 )
-@click.argument("exp_name", type=str)
 @click.argument("prefix_name", type=str)
+@click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
 @click.option("--suffix", type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
 @click.option("--threshold", type=float, default=0.5, help="Threshold for doublet detection (default: 0.5)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to save the plot")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.pass_context
 def remove_doublets_all(
     ctx,
-    exp_name: str,
     prefix_name: str,
+    exp_name: str,
     threshold: float = 0.5,
     suffix: str = "",
     plot: bool = False,
@@ -459,17 +389,9 @@ def remove_doublets_all(
     for key, value in kwargs.items():
         logger.info(f"Parsed {key} = {value};  {type(value)}")
 
+    cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import remove_doublets_all as func
-    func(
-        exp_name=exp_name,
-        prefix_name=prefix_name,
-        threshold=threshold,
-        suffix=suffix,
-        plot=plot,
-        image_path=image_store,
-        zarr_store=zarr_store,
-        model_kwargs=kwargs,
-    )
+    func(cfg, exp_name, prefix_name, threshold=threshold, suffix=suffix, plot=plot, model_kwargs=kwargs)
 
 @cli.command(
     name="resolvi-region",
@@ -481,25 +403,24 @@ def remove_doublets_all(
         allow_extra_args=True,
     )
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str)
+@dataset_options
 @click.option("--suffix", type=str, default="", help="Suffix for the AnnData object (default: '')")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to save the plot")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--model_save_path", type=click.Path(exists=True), default=None, help="Path to save the ResolVI model")
 @click.option("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
 @click.option("--max_epochs", type=int, default=100, help="Maximum number of epochs for training (default: 100)")
 @click.option("--layer", type=str, default="raw", help="Layer of the AnnData object to use (default: 'raw')")
 @click.option("--batch_key", type=str, default=None, help="Key for batch information in the AnnData object (default: None)")
 @click.option("--categorical_covariates", type=parse_list, default=None, help="List of categorical covariates to use (default: [])")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def resolvi_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
     prefix_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     suffix: str = "",
     plot: bool = False,
     image_store: Path = None,
@@ -519,21 +440,20 @@ def resolvi_region(
     for key, value in kwargs.items():
         logger.info(f"Parsed {key} = {value};  {type(value)}")
 
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import resolvi_cluster_region as func
     func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
+        dataset,
+        prefix_name,
         suffix=suffix,
         plot=plot,
-        image_path=image_store,
         model_save_path=model_save_path,
         trained=trained,
         max_epochs=max_epochs,
         layer=layer,
         batch_key=batch_key,
         categorical_covariates=categorical_covariates,
-        zarr_store=zarr_store,
         model_kwargs=kwargs,
     )
 
@@ -547,18 +467,18 @@ def resolvi_region(
         allow_extra_args=True,
     )
 )
-@click.argument("exp_name", type=str)
 @click.argument("prefix_name", type=str)
+@click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
 @click.option("--suffix", type=str, default="_filt", help="Suffix for the table key in the spatialdata object (default: '_filt')")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--model_save_path", type=click.Path(), default=None, help="Path to save the ResolVI model")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.pass_context
 def resolvi_all(
     ctx,
-    exp_name: str,
     prefix_name: str,
+    exp_name: str,
     suffix: str = "",
     plot: bool = False,
     image_store: Path = None,
@@ -573,54 +493,39 @@ def resolvi_all(
     for key, value in kwargs.items():
         logger.info(f"Parsed {key} = {value};  {type(value)}")
     
+    cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import resolvi_cluster_all as func
-    func(
-        exp_name=exp_name,
-        prefix_name=prefix_name,
-        suffix=suffix,
-        plot=plot,
-        image_store=image_store,
-        model_save_path=model_save_path,
-        zarr_store=zarr_store,
-        **kwargs,
-    )
+    func(cfg, exp_name, prefix_name, suffix=suffix, plot=plot,
+         model_save_path=model_save_path, model_kwargs=kwargs)
 
 @cli.command(
     name="plot-resolvi-region",
     cls=RichCommand,
     aliases=["plot_resolvi_region"],
-    help="Plot the resolvi results for a specific region",
+    help="Plot the resolvi results of the PREFIX_NAME table of one region.",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str)
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
+@dataset_options
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--suffix", type=str, default="", help="Suffix for the keys in the spatialdata object (default: '')")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def plot_resolvi_region(
     ctx,
-    exp_name:str,
-    reg_name:str,
     prefix_name:str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     image_store:Path = None,
     suffix:str = "",
     zarr_store: Path = None,
 ):
     """
-    Plot the setup results for a specific region in an experiment.
-    This function generates a PDF with the setup plots.
+    Plot the resolvi results of the PREFIX_NAME table of one region.
     """
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import plot_resolvi_region as func
-
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix_name=prefix_name,
-        image_path=image_store,
-        suffix=suffix,
-        zarr_store=zarr_store,
-    )
+    func(dataset, prefix_name, suffix=suffix)
 
 @cli.command(
     name="combine-datasets",
@@ -633,8 +538,8 @@ def plot_resolvi_region(
 @click.option("--suffix", type=str, default="_filt", help="Suffix to append to the table keys (default: '_filt')")
 @click.option("--lab_name", type=str, default="salk", help="Name of the lab (default: 'salk')")
 @click.option("--project_name", type=str, default="BG_salk", help="Name of the project (default: 'BG_salk')")
-@click.option("--zarr_store", type=click.Path(exists=True), default=None, help="Path to the Zarr directory")
-@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Path to the output directory")
+@click.option("--zarr_store", type=click.Path(exists=True), default=None, help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
 @click.option("--table_keys", type=parse_list, default=None, help="List of table keys to include (default: None, which uses all keys with the specified suffix)")
 @click.pass_context
 def combine_datasets(
@@ -651,6 +556,7 @@ def combine_datasets(
     """
     Aggregate spatial data from multiple experiments into a single SpatialData object.
     """
+    cfg = run_config(ctx, zarr_store=zarr_store, anndata_store=anndata_store)
     from spida.P.main import combine_datasets as func
     func(
         experiment_list=experiment_list,
@@ -658,8 +564,7 @@ def combine_datasets(
         suffix=suffix,
         lab_name=lab_name,
         project_name=project_name,
-        zarr_store=zarr_store,
-        anndata_store=anndata_store,
+        config=cfg,
         table_keys=table_keys,
     )
 
@@ -671,7 +576,7 @@ def combine_datasets(
 )
 @click.argument("dataset_name", type=str)
 @click.option("--scale", type=bool, default=False, help="Whether to scale the data (default: False)")
-@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Path to the AnnData directory")
+@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
 @click.pass_context
 def setup_dataset(
     ctx,
@@ -682,12 +587,9 @@ def setup_dataset(
     """
     Perform standard PCA + Leiden clustering on a joint dataset object.
     """
+    cfg = run_config(ctx, anndata_store=anndata_store)
     from spida.P.main import setup_dataset as func
-    func(
-        dataset_name=dataset_name,
-        scale=scale,
-        anndata_store=anndata_store,
-    )
+    func(dataset_name=dataset_name, scale=scale, anndata_store=cfg.anndata_store)
 
 @cli.command(
     name="resolvi-dataset",
@@ -696,10 +598,10 @@ def setup_dataset(
     help="Perform ResolVI workflow on a joint dataset object",
 )
 @click.argument("dataset_name", type=str)
-@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Path to the AnnData directory")
+@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
 @click.option("--model_save_path", type=click.Path(), default=None, help="Path to save the ResolVI model")
 @click.option("--trained", type=bool, default=False, help="Whether the model is already trained (default: False)")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to save the plot")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--max_epochs", type=int, default=100, help="Maximum number of epochs for training (default: 100)")
 @click.option("--categorical_covariates", type=parse_list, default=['donor', 'brain_region'], help="List of categorical covariates to use (default: ['donor', 'brain_region'])")
 @click.option("--batch_key", type=str, default="dataset_id", help="Key for batch information in the AnnData object (default: 'dataset_id')")
@@ -725,13 +627,14 @@ def resolvi_dataset(
     for key, value in kwargs.items():
         logger.info(f"Parsed {key} = {value};  {type(value)}")
 
+    cfg = run_config(ctx, anndata_store=anndata_store, image_store=image_store)
     from spida.P.main import resolvi_dataset as func
     func(
         dataset_name=dataset_name,
-        anndata_store=anndata_store,
+        anndata_store=cfg.anndata_store,
+        image_store=cfg.image_store,
         model_save_path=model_save_path,
         trained=trained,
-        image_path=image_store,
         max_epochs=max_epochs,
         layer=layer,
         batch_key=batch_key,
@@ -747,8 +650,8 @@ def resolvi_dataset(
     help="Plot the dataset resolvi + setup results ",
 )
 @click.argument("dataset_name", type=str)
-@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Path to the anndata file")
-@click.option("--image_store", type=click.Path(), default=None, help="Path to save the plot (default: None)")
+@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--show", is_flag=True, help="Whether to show the plot (default: False)")
 @click.pass_context
 def plot_dataset(
@@ -761,13 +664,9 @@ def plot_dataset(
     """
     Plot the dataset results for a specific region in an experiment.
     """
+    cfg = run_config(ctx, anndata_store=anndata_store, image_store=image_store)
     from spida.P.main import plot_dataset_setup as func
-    func(
-        dataset_name=dataset_name,
-        anndata_store=anndata_store,
-        image_path=image_store,
-        show=show,
-    )
+    func(dataset_name=dataset_name, anndata_store=cfg.anndata_store, image_store=cfg.image_store, show=show)
 
 @cli.command(
     name="call-region-tz",
@@ -775,10 +674,9 @@ def plot_dataset(
     aliases=["call_region_tz"],
     help="Call the transcript-based spatial regions for a specific region in an experiment",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
 @click.argument("prefix_name", type=str, default="default")
 @click.argument("geoms_name", type=str, default="wm_region")
+@dataset_options
 @click.option("--use_genes", type=parse_list, default="BCAS1", help="List of genes to use for calling regions (default: ['BCAS1'])")
 @click.option("--save_geoms_path", type=click.Path(), default=None, help="Path to save the geometries (default: None)")
 @click.option("--dsc_comp_min_size", type=int, default=5, help="Minimum size of the DSC components (default: 5)")
@@ -790,15 +688,15 @@ def plot_dataset(
 @click.option("--top_n_comp", type=int, default=1, help="Top N components to consider (default: 1)")
 @click.option("--plot", is_flag=True, help="Whether to generate plots (default: False)")
 @click.option("--image_path", type=click.Path(), default=None, help="Path to save the plots (default: None)")
-@click.option("--image_store", type=click.Path(), default=None, help="Path to the image store (default: None)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def call_region_tz(
     ctx,
-    exp_name : str,
-    reg_name : str,
     prefix_name : str = "default",
     geoms_name : str = "wm_region",
+    exp=None, reg=None, zarr_path=None, raw_path=None, seg_path=None, figures_path=None,
     use_genes : str | list[str] = "BCAS1",
     save_geoms_path : str | None = None,
     dsc_comp_min_size : int = 5,
@@ -816,10 +714,11 @@ def call_region_tz(
     """
     Call the transcript-based spatial regions for a specific region in an experiment.
     """
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import call_region_tz as func
     func(
-        exp_name=exp_name,
-        reg_name=reg_name,
+        dataset,
         prefix_name=prefix_name,
         geoms_name=geoms_name,
         use_genes=use_genes,
@@ -833,18 +732,15 @@ def call_region_tz(
         top_n_comp=top_n_comp,
         gen_plots=plot,
         image_path=image_path,
-        image_store=image_store,
-        zarr_store=zarr_store,
     )
 
 @cli.command(
     name="transcript-qc",
     cls=RichCommand,
     aliases=["transcript_qc"],
-    help="Run transcript hex QC for a region.",
+    help="Run transcript hex QC for one region (--exp/--reg, or --zarr_path).",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+@dataset_options
 @click.option("--prefix_name", type=str, default="default")
 @click.option("--qc_shapes_key", type=str, default="transcript_qc_shapes", help="Key to store the QC shapes in the spatialdata object (default: 'transcript_qc_shapes')")
 @click.option("--hex_size", type=float, default=30, help="Hex size (distance center->vertex) (default: 30)")
@@ -855,13 +751,13 @@ def call_region_tz(
 @click.option("--min_transcripts", type=int, default=100, help="Minimum transcripts per hex (default: 100)")
 @click.option("--min_density", type=float, default=None, help="Minimum density (per µm²) (default: None)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results (default: False)")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def transcript_qc(
     ctx,
-    exp_name: str,
-    reg_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     prefix_name: str = "default",
     qc_shapes_key: str = "transcript_qc_shapes",
     hex_size: float = 30,
@@ -875,10 +771,11 @@ def transcript_qc(
     image_store: Path = None,
     zarr_store: Path = None,
 ):
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import transcript_qc_region as func
     func(
-        exp_name=exp_name,
-        reg_name=reg_name,
+        dataset,
         prefix_name=prefix_name,
         qc_shapes_key=qc_shapes_key,
         hex_size=hex_size,
@@ -889,18 +786,15 @@ def transcript_qc(
         min_transcripts=min_transcripts,
         min_density=min_density,
         plot=plot,
-        image_store=image_store,
-        zarr_store=zarr_store,
     )
 
 @cli.command(
     name="tissue-mask",
     cls=RichCommand,
     aliases=["tissue_mask"],
-    help="Compute the KDE tissue mask for a region (polygon + labels + images-dir tif).",
+    help="Compute the KDE tissue mask for one region: a polygon and a label layer in the zarr store, and tissue_mask.tif.",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+@dataset_options
 @click.option("--prefix_name", type=str, default="default")
 @click.option("--gene_col", type=str, default="gene", help="Gene column name (default: 'gene')")
 @click.option("--x_col", type=str, default="x", help="X coordinate column (default: 'x')")
@@ -912,16 +806,17 @@ def transcript_qc(
 @click.option("--gb", type=float, default=5.0, help="Micron grid spacing (default: 5)")
 @click.option("--shapes_key", type=str, default="qc_mask", help="Key for the pass-region polygon shapes (default: 'qc_mask')")
 @click.option("--labels_key", type=str, default="tissue_mask", help="Key for the boolean labels layer (default: 'tissue_mask')")
-@click.option("--no_raster", is_flag=True, default=False, help="Skip writing the pixel tissue_mask.tif into the images dir")
+@click.option("--no_raster", is_flag=True, default=False, help="Skip writing the pixel tissue_mask.tif")
+@click.option("--tissue_mask_output_path", "tissue_mask_output_path", type=click.Path(file_okay=False), default=None, help="Directory to write tissue_mask.tif into (default: the region's raw images dir, where segment-region looks for it)")
 @click.option("--plot", is_flag=True, help="Whether to plot the mask overview (default: False)")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Processed root path (holds out/<reg>/images)")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def tissue_mask(
     ctx,
-    exp_name: str,
-    reg_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     prefix_name: str = "default",
     gene_col: str = "gene",
     x_col: str = "x",
@@ -934,15 +829,17 @@ def tissue_mask(
     shapes_key: str = "qc_mask",
     labels_key: str = "tissue_mask",
     no_raster: bool = False,
+    tissue_mask_output_path: Path = None,
     plot: bool = False,
     image_store: Path = None,
     zarr_store: Path = None,
     root_path: Path = None,
 ):
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store, root_path=root_path)
     from spida.P.main import tissue_mask_region as func
     func(
-        exp_name=exp_name,
-        reg_name=reg_name,
+        dataset,
         prefix_name=prefix_name,
         gene_col=gene_col,
         x_col=x_col,
@@ -956,19 +853,16 @@ def tissue_mask(
         labels_key=labels_key,
         write_raster=not no_raster,
         plot=plot,
-        image_store=image_store,
-        zarr_store=zarr_store,
-        root_path=root_path,
+        mask_dir=tissue_mask_output_path,
     )
 
 @cli.command(
     name="cluster-hexes",
     cls=RichCommand,
     aliases=["cluster_hexes"],
-    help="Run hex clustering for a region.",
+    help="Run hex clustering for one region (--exp/--reg, or --zarr_path).",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+@dataset_options
 @click.option("--prefix_name", type=str, default="default")
 @click.option("--hex_size", type=float, default=30, help="Hex size (distance center->vertex)")
 @click.option("--hex_overlap", type=float, default=0, help="Hex overlap")
@@ -983,13 +877,13 @@ def tissue_mask(
 @click.option("--n_top_genes", type=int, default=200, help="Number of HVGs")
 @click.option("--pca_comps", type=int, default=50, help="PCA components")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
-@click.option("--image_store", type=click.Path(exists=True), default=None, help="Path to the image store")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
+@click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def cluster_hexes(
     ctx,
-    exp_name: str,
-    reg_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     prefix_name: str = "default",
     hex_size: float = 30,
     hex_overlap: float = 0,
@@ -1007,10 +901,11 @@ def cluster_hexes(
     image_store: Path = None,
     zarr_store: Path = None,
 ):
+    dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                       zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import cluster_hexes_region as func
     func(
-        exp_name=exp_name,
-        reg_name=reg_name,
+        dataset,
         prefix_name=prefix_name,
         hex_size=hex_size,
         hex_overlap=hex_overlap,
@@ -1025,8 +920,6 @@ def cluster_hexes(
         n_top_genes=n_top_genes,
         pca_comps=pca_comps,
         plot=plot,
-        image_store=image_store,
-        zarr_store=zarr_store,
     )
 
 cli.add_command(test_command)
