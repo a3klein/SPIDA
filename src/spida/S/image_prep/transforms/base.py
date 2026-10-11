@@ -25,6 +25,7 @@ class TileContext:
     z_step_um: float
     gpu: bool = False
     gpu_lock: Any = None
+    optics_config: Any = None
 
 
 class Transform(Protocol):

@@ -1,9 +1,9 @@
-import subprocess
 import warnings
 import logging
 from pathlib import Path
 
 import pandas as pd
+import geopandas as gpd
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     import spatialdata as sd
@@ -16,7 +16,6 @@ with warnings.catch_warnings():
         set_transformation,
     )
 
-from spida.utilities.sd_utils import _gen_keys
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 from .filt_to_qc import apply_qc_filter_to_segmentation
 
@@ -34,47 +33,39 @@ logger = logging.getLogger(__package__)
 def read_merscope(
     path,
     zarr_path,
-    exp_name: str = None,
-    reg_name: str = None,
-    prefix_name: str = None,
+    keys: dict,
+    namespace: str,
+    exp_name: str | None = None,
+    reg_name: str | None = None,
+    prefix_name: str = "default",
     **kwargs,
 ):
     """
-    Read Merscope data from a given path as a spatialdata object.
-    Saves the data to a zarr file at the specified zarr_path.
+    Read a MERSCOPE region into a new zarr store at ``zarr_path``.
 
-    The function then preprocesses some of the spatialdata attributes to make it compatible with downstream analysis.
+    Element names follow ``keys``. Without --exp/--reg (empty ``namespace``) the ``<exp>_<reg>`` part
+    is dropped from the spatialdata-io element names. The names used are recorded in ``sdata.attrs["spida"]``.
 
     Parameters:
-    path (str): Path to the Merscope data directory.
-    zarr_path (str): Path to save the zarr file.
-    **kwargs: Additional keyword arguments to pass to the function.
+    path (str): MERSCOPE region directory.
+    zarr_path (str): Zarr store to write.
+    keys (dict): Element keys (``Dataset.keys(prefix_name)``).
+    namespace (str): The ``<exp>_<reg>`` part of element names ("" when ingesting without names).
     """
-    # Generating spatialdata keys
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    KEYS = keys
+    slide = f"{prefix_name}_{exp_name}" if exp_name else prefix_name
+    region = reg_name or "region"
 
-    # Reading in the experiment and then writing and reloading it as zarr format
-    # surpressing the read_only warnings
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        sdata = merscope(path, slide_name=f"{prefix_name}_{exp_name}")
-        if sd.__version__ <= "0.6.0": 
-            sdata.write(zarr_path, overwrite=True)
-            # Renaming the default table from "table" to "default_table"
-            subprocess.run(
-                [
-                    "mv",
-                    f"{zarr_path}/tables/table",
-                    f"{zarr_path}/tables/{KEYS[TABLE_KEY]}",
-                ],
-                check=True,
-            )
-            sdata = sd.read_zarr(zarr_path, on_bad_files="warn")
-        else: 
-            sdata['default_table'] = sd.deepcopy(sdata['table'])
-            del sdata['table']
-            sdata.write(zarr_path, overwrite=True)
-            sdata = sd.read_zarr(zarr_path, on_bad_files="warn")
+        sdata = merscope(path, slide_name=slide, region_name=region)
+        if not namespace:
+            _drop_namespace(sdata, dataset_id=f"{slide}_{region}", prefix_name=prefix_name)
+        sdata[KEYS[TABLE_KEY]] = sd.deepcopy(sdata["table"])
+        del sdata["table"]
+        sdata.attrs["spida"] = {"namespace": namespace, "exp": exp_name, "reg": reg_name}
+        sdata.write(zarr_path, overwrite=True)
+        sdata = sd.read_zarr(zarr_path, on_bad_files="warn")
 
 
     # All MultiPolygons to Polygons
@@ -101,12 +92,26 @@ def read_merscope(
     set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
     set_transformation(sdata[KEYS[IMAGE_KEY]], affine_inv, to_coordinate_system="pixel")
     set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
-    if sd.__version__ <= "0.6.0": 
-        sd.save_transformations(sdata)
-    else: 
-        sdata.write_transformations()
+    sdata.write_transformations()
 
     return sdata
+
+
+def _drop_namespace(sdata, dataset_id: str, prefix_name: str) -> None:
+    """Rename spatialdata-io's ``{dataset_id}_*`` elements to ``{prefix_name}_*`` (no ``<exp>_<reg>``), in memory."""
+    for kind in ("images", "points", "shapes"):
+        for name in list(getattr(sdata, kind)):
+            if name.startswith(f"{dataset_id}_"):
+                sdata[f"{prefix_name}{name[len(dataset_id):]}"] = sdata[name]
+                del sdata[name]
+    if "table" in sdata.tables:
+        table, region = sdata["table"], f"{prefix_name}_polygons"
+        attrs = table.uns["spatialdata_attrs"]
+        table.obs[attrs["region_key"]] = pd.Categorical([region] * table.n_obs)
+        sdata.set_table_annotates_spatialelement(
+            "table", region=region,
+            region_key=attrs["region_key"], instance_key=attrs["instance_key"],
+        )
 
 
 def _cast_multipolygons_to_polygons(
@@ -214,10 +219,7 @@ def _finalize_and_write(
         else:
             logger.warning("%s %r already exists on disk; not overwriting.", kind, key)
 
-    if sd.__version__ <= "0.6.0":
-        sd.save_transformations(sdata)
-    else:
-        sdata.write_transformations()
+    sdata.write_transformations()  # spatialdata >= 0.8 is pinned
     return sdata
 
 
@@ -315,9 +317,12 @@ def _load_proseg_native(
 def load_segmentation(
     sdata: sd.SpatialData,
     spec,
-    exp_name: str,
-    reg_name: str,
+    keys: dict,
+    default_keys: dict,
     seg_dir: str,
+    exp_name: str | None = None,
+    reg_name: str | None = None,
+    dataset_id: str = "",
     prefix_name: str = "default",
     boundaries_fname: str | None = None,
     cell_by_gene_fname: str = "cell_by_gene.csv",
@@ -345,9 +350,11 @@ def load_segmentation(
     Parameters:
     sdata (spatialdata.SpatialData): The spatialdata object to load the segmentation into.
     spec (SegmentationClass): The method spec (from ``get_spec``) driving file names and the read path.
-    exp_name (str): The name of the experiment.
-    reg_name (str): The name of the region.
-    seg_dir (str): The path to the segmentation-output directory (contains ``{reg_name}/``).
+    keys (dict): Element keys for this segmentation (``Dataset.keys(prefix_name)``).
+    default_keys (dict): Element keys of the ingested ``default`` elements (source of the transform).
+    seg_dir (str): This segmentation's output directory.
+    exp_name, reg_name (str | None): Written to the table's ``slide`` / ``region`` columns ("" when unnamed).
+    dataset_id (str): Written to the table's ``dataset_id`` column.
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     boundaries_fname (str | None): Override for the boundaries filename; defaults to the segmentation schema name (default is None).
     cell_by_gene_fname (str): The cell-by-gene filename for boundary-only methods (default is "cell_by_gene.csv").
@@ -371,14 +378,13 @@ def load_segmentation(
     for k, v in kwargs.items():
         logger.info("  extra kwarg %s=%s", k, v)
 
-    DEF_KEYS = _gen_keys("default", exp_name, reg_name)
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    KEYS = keys
+    exp_name, reg_name = exp_name or "", reg_name or ""
     identity = Identity()
-    affine = get_transformation(sdata[DEF_KEYS[SHAPES_KEY]], to_coordinate_system="global")
+    affine = get_transformation(sdata[default_keys[SHAPES_KEY]], to_coordinate_system="global")
     transformations = {"global": affine}
 
     seg_region = Path(seg_dir)
-    dataset_id = f"{exp_name}_{reg_name}"
 
     qc_kwargs = dict(
         qc_regions=qc_regions, qc_table_key=qc_table_key, qc_shapes_key=qc_shapes_key,
@@ -433,9 +439,8 @@ def load_decon_images(
     image_path (str|Path): The path to the deconvolution images.
     """
 
-    image_models_kwargs = {}
-    image_models_kwargs["chunks"] = (1, 4906, 4906)
-    image_models_kwargs["scale_factors"] = [2, 2, 2, 2]
+    image_models_kwargs.setdefault("chunks", (1, 4906, 4906))
+    image_models_kwargs.setdefault("scale_factors", [2, 2, 2, 2])
 
     sdata[image_name] = _read_decon_images(
         image_dir, suffix=suffix,  z_layer=z_layer, **image_models_kwargs

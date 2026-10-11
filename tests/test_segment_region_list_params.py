@@ -62,8 +62,8 @@ def test_describe_unknown_method_lists_known_ones():
 # ---------------------------------------------------------------------------
 
 def _invoke(args, tmp_path):
-    cfg = tmp_path / ".env"
-    cfg.write_text("\n")
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text("{}")
     return CliRunner().invoke(cli_module.cli, ["--config", str(cfg), *args])
 
 
@@ -91,9 +91,9 @@ def test_list_params_does_not_run_segmentation(monkeypatch, tmp_path):
 
 
 def test_missing_region_without_list_params_is_a_usage_error(tmp_path):
-    result = _invoke(["segment-region", "cellpose", "EXP"], tmp_path)
+    result = _invoke(["segment-region", "cellpose", "--exp", "EXP"], tmp_path)
     assert result.exit_code != 0
-    assert "REG_NAME are required" in result.output
+    assert "--exp and --reg" in result.output
 
 
 def test_normal_invocation_still_works(monkeypatch, tmp_path):
@@ -101,16 +101,15 @@ def test_normal_invocation_still_works(monkeypatch, tmp_path):
     called = {}
     monkeypatch.setattr(
         "spida.S.segmentation.main.segment_region",
-        lambda **kw: called.update(kw),
+        lambda method, dataset, **kw: called.update(kw, method=method, dataset=dataset),
     )
     result = _invoke(
-        ["segment-region", "cellpose", "EXP", "region_001", "--scale=4"],
+        ["segment-region", "cellpose", "--exp", "EXP", "--reg", "region_001", "--scale=4"],
         tmp_path,
     )
     assert result.exit_code == 0, result.output
     assert called["method"] == "cellpose"
-    assert called["exp_name"] == "EXP"
-    assert called["reg_name"] == "region_001"
+    assert (called["dataset"].exp, called["dataset"].reg) == ("EXP", "region_001")
     assert called["scale"] == 4
 
 

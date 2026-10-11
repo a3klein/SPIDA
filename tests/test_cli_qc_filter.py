@@ -5,96 +5,41 @@ from click.testing import CliRunner
 from spida.S import cli as cli_module
 
 
-def test_load_segmentation_region_transcript_qc_flag(monkeypatch, tmp_path: Path):
+def _invoke(monkeypatch, tmp_path, *args):
     captured = {}
 
-    def _fake_load_segmentation_region(**kwargs):
-        captured.update(kwargs)
+    def _fake(dataset, **kwargs):
+        captured.update(kwargs, dataset=dataset)
 
-    monkeypatch.setattr(
-        "spida.S.io.main.load_segmentation_region",
-        _fake_load_segmentation_region,
-    )
+    monkeypatch.setattr("spida.S.io.main.load_segmentation_region", _fake)
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text("{}")
+    result = CliRunner().invoke(cli_module.cli, ["--config", str(cfg), "load-segmentation-region", *args])
+    return result, captured
 
-    cfg = tmp_path / ".env"
-    cfg.write_text("\n")
-    seg_dir = tmp_path / "seg"
-    seg_dir.mkdir(parents=True, exist_ok=True)
 
-    runner = CliRunner()
-    result = runner.invoke(
-        cli_module.cli,
-        [
-            "--config",
-            str(cfg),
-            "load-segmentation-region",
-            "EXP",
-            "region_001",
-            # seg_dir became an OPTION when the storage layout moved to
-            # {store}/{exp}/{reg}/{label}; passing it positionally is a parse error.
-            "--seg_dir",
-            str(seg_dir),
-            "--transcript-qc",
-        ],
-    )
-
+def test_load_segmentation_region_transcript_qc_flag(monkeypatch, tmp_path: Path):
+    seg = tmp_path / "seg"
+    result, captured = _invoke(monkeypatch, tmp_path, "--exp", "EXP", "--reg", "region_001",
+                               "--zarr_path", str(tmp_path / "z"), "--seg_path", str(seg), "--transcript-qc")
     assert result.exit_code == 0, result.output
-    assert captured["exp_name"] == "EXP"
-    assert captured["reg_name"] == "region_001"
-    assert captured["seg_dir"] == str(seg_dir)
-    # default is now the tissue-mask pass region, not the legacy hex QC shapes
+    d = captured["dataset"]
+    assert (d.exp, d.reg, d.seg) == ("EXP", "region_001", seg)
+    # default is the tissue-mask pass region, not the legacy hex QC shapes
     assert captured["qc_shapes_key"] == "qc_mask"
 
 
 def test_load_segmentation_region_legacy_qc_shapes_key(monkeypatch, tmp_path: Path):
     """The legacy transcript-QC hex mask stays reachable by naming it explicitly."""
-    captured = {}
-
-    monkeypatch.setattr(
-        "spida.S.io.main.load_segmentation_region",
-        lambda **kwargs: captured.update(kwargs),
-    )
-
-    cfg = tmp_path / ".env"
-    cfg.write_text("\n")
-
-    result = CliRunner().invoke(
-        cli_module.cli,
-        [
-            "--config",
-            str(cfg),
-            "load-segmentation-region",
-            "EXP",
-            "region_001",
-            "--transcript-qc",
-            "--qc_shapes_key",
-            "transcript_qc_shapes",
-        ],
-    )
-
+    result, captured = _invoke(monkeypatch, tmp_path, "--exp", "EXP", "--reg", "region_001",
+                               "--zarr_path", str(tmp_path / "z"),
+                               "--transcript-qc", "--qc_shapes_key", "transcript_qc_shapes")
     assert result.exit_code == 0, result.output
     assert captured["qc_shapes_key"] == "transcript_qc_shapes"
 
 
-def test_load_segmentation_region_rejects_positional_seg_dir(monkeypatch, tmp_path: Path):
-    """Regression guard: the SLURM templates passed seg_dir positionally, which
-    now fails to parse. Pin the behaviour so the fix isn't silently undone."""
-    monkeypatch.setattr(
-        "spida.S.io.main.load_segmentation_region",
-        lambda **kwargs: None,
-    )
-
-    cfg = tmp_path / ".env"
-    cfg.write_text("\n")
-
-    result = CliRunner().invoke(
-        cli_module.cli,
-        [
-            "--config", str(cfg),
-            "load-segmentation-region",
-            "EXP", "region_001", str(tmp_path / "seg"),
-        ],
-    )
-
+def test_load_segmentation_region_rejects_positional_names(monkeypatch, tmp_path: Path):
+    """Names are options now; positional EXP/REG must fail to parse, not be silently ignored."""
+    result, _ = _invoke(monkeypatch, tmp_path, "EXP", "region_001")
     assert result.exit_code != 0
     assert "unexpected extra argument" in result.output.lower()

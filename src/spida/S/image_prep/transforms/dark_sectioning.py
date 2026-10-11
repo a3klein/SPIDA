@@ -471,7 +471,7 @@ def run(
         except (TypeError, ValueError):
             channel = str(c)
 
-    optics = get_optics(channel)
+    optics = get_optics(channel, ctx.optics_config)
     if emwavelength is None:
         emwavelength = optics.get("emission_nm")
     if emwavelength is None:

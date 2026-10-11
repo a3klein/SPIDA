@@ -32,7 +32,7 @@ def _write(tmp_path, gdf, region="region_T"):
 
 def test_3d_convert_derives_schema_from_raw(tmp_path):
     _write(tmp_path, _raw_3d(n_cells=5, n_z=7))
-    _3d_convert_geometry(str(tmp_path), str(tmp_path), "region_T",
+    _3d_convert_geometry(str(tmp_path / "region_T"), str(tmp_path / "region_T"),
                          convert_micron=False, spacing_z=_SPACING)
     out = gpd.read_parquet(tmp_path / "region_T" / "cellpose_micron_space.parquet")
 
@@ -96,7 +96,7 @@ def test_3d_convert_honors_nondefault_spacing(tmp_path):
     # Stage 4B: spacing_z must flow through to the 1-based ZLevel derivation
     # (ZLevel = (z+1)*spacing_z) for non-default z-spacings, not just 1.5.
     _write(tmp_path, _raw_3d(n_cells=3, n_z=7))
-    _3d_convert_geometry(str(tmp_path), str(tmp_path), "region_T",
+    _3d_convert_geometry(str(tmp_path / "region_T"), str(tmp_path / "region_T"),
                          convert_micron=False, spacing_z=2.7)
     out = gpd.read_parquet(tmp_path / "region_T" / "cellpose_micron_space.parquet")
     assert np.allclose(out["ZLevel"], (out["z"] + 1) * 2.7)
@@ -126,7 +126,7 @@ def test_seg_to_vpt_forwards_spacing_z(tmp_path, monkeypatch):
     monkeypatch.setattr(vpt_mod, "_cli_partition_transcripts", lambda *a, **k: None)
     monkeypatch.setattr(vpt_mod, "_cli_get_metadata", lambda *a, **k: None)
 
-    vpt_mod.seg_to_vpt(str(tmp_path), str(tmp_path), region,
+    vpt_mod.seg_to_vpt(str(tmp_path / region), str(tmp_path / region),
                        is_3d=True, spacing_z=3.14)
     assert captured["spacing_z"] == 3.14
 
@@ -141,7 +141,7 @@ def test_3d_convert_reproduces_release_zlevels(tmp_path):
     old["ZLevel"] = (old["z"] + 1) * _SPACING
     old["EntityID"] = pd.factorize(old["ID"])[0] + 1
     _write(tmp_path, raw)
-    _3d_convert_geometry(str(tmp_path), str(tmp_path), "region_T",
+    _3d_convert_geometry(str(tmp_path / "region_T"), str(tmp_path / "region_T"),
                          convert_micron=False, spacing_z=_SPACING)
     out = gpd.read_parquet(tmp_path / "region_T" / "cellpose_micron_space.parquet")
     m = out.merge(old[["ID", "z", "ZIndex", "ZLevel"]], on=["ID", "z"], suffixes=("", "_old"))

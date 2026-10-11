@@ -1,5 +1,6 @@
-from spida.utilities.sd_utils import _gen_keys
 from spida._constants import *
+from spida.config import SpidaConfig
+from spida.io.layout import Dataset, TreeLayout, dataset_from, element_keys
 from .ingest_exp import (
     read_merscope,
     load_segmentation,
@@ -7,13 +8,9 @@ from .ingest_exp import (
 )
 from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
 
-import os
-import glob
 from pathlib import Path
 import warnings
 import logging
-
-from dotenv import load_dotenv  # type: ignore
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
@@ -21,56 +18,39 @@ with warnings.catch_warnings():
 
 from matplotlib.backends.backend_pdf import PdfPages
 
-load_dotenv()
 logger = logging.getLogger(__package__)
 
 
 def ingest_region(
-    exp_name: str,
-    reg_name: str,
+    dataset: Dataset,
     type: str = "merscope",
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
-    root_path : str | Path | None = None,
-    zarr_store : str | Path | None = None,
-    image_store : str | Path | None = None,
     **kwargs,
 ):
     """
-    Entry point for ingesting spatial data / segmentation outputs into spatialdata objects.
+    Ingest one MERSCOPE region into a new zarr store.
 
     Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
+    dataset (Dataset): Where the region's raw data, zarr store and figures live, and its names.
     type (str): Type of the data to ingest (default is "merscope").
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     source (str): Source of the data (default is "machine").
     plot (bool): Whether to generate plots (default is False).
-    root_path (str|Path): Root path for the data (default is None, uses environment variable).
-    zarr_store (str|Path): Path to store the zarr files (default is None, uses environment variable).
-    image_store (str|Path): Path to store the images (default is None, uses environment variable).
-    kwargs: Additional keyword arguments for the ingestion functions.
     """
-
-    logger.info("INGESTING REGION; EXPERIMENT %s, REGION %s " % (exp_name, reg_name))
-    KEYS = _gen_keys(prefix_name, exp_name, reg_name)
+    namespace = f"{dataset.exp}_{dataset.reg}" if dataset.named else ""
+    logger.info("INGESTING REGION %s -> %s (element names suffix %r)", dataset.raw, dataset.zarr, namespace)
+    KEYS = element_keys(prefix_name, namespace)
 
     if type == "merscope" and source == "machine":
-        if root_path is None:
-            root_path = os.getenv("PROCESSED_ROOT_PATH")
-        if zarr_store is None:
-            zarr_store = os.getenv("ZARR_STORAGE_PATH")
-        if image_store is None:
-            image_store = os.getenv("IMAGE_STORE_PATH")
-        input_path = f"{root_path}/{exp_name}/out/{reg_name}"
-        zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
-
         sdata = read_merscope(
-            input_path,
-            zarr_path,
-            exp_name=exp_name,
-            reg_name=reg_name,
+            dataset.require("raw"),
+            dataset.require("zarr"),
+            keys=KEYS,
+            namespace=namespace,
+            exp_name=dataset.exp,
+            reg_name=dataset.reg,
             prefix_name=prefix_name,
         )
 
@@ -79,8 +59,8 @@ def ingest_region(
 
         logger.info(sdata.tables.keys())
         if plot:
-            image_path = f"{image_store}/{exp_name}/default/{reg_name}/pixi-ing.pdf"
-            Path(image_path).parent.mkdir(parents=True, exist_ok=True)
+            image_path = dataset.figures_dir("default") / "pixi-ing.pdf"
+            image_path.parent.mkdir(parents=True, exist_ok=True)
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 with PdfPages(image_path) as pdf:
@@ -120,95 +100,56 @@ def ingest_region(
 
 
 def ingest_all(
+    config: SpidaConfig,
     exp_name: str,
     type: str = "merscope",
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
-    root_path: str | Path | None = None,
-    zarr_store : str | Path | None = None,
-    image_store : str | Path | None = None,
     **kwargs,
 ):
     """
-    Ingest all regions of an experiment into spatialdata objects.
+    Ingest every region of an experiment found under the raw root.
 
     Parameters:
+    config (SpidaConfig): Store roots.
     exp_name (str): Name of the experiment.
-    type (str): Type of the data to ingest (default is "merscope").
-    prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
-    source (str): Source of the data (default is "machine").
-    plot (bool): Whether to generate plots (default is False).
-    root_path (str|Path): Root path for the data (default is None, uses environment variable).
-    zarr_store (str|Path): Path to store the zarr files (default is None, uses environment variable).
-    image_store (str|Path): Path to store the images (default is None, uses environment variable).
-    kwargs: Additional keyword arguments for the ingestion functions
     """
-
     logger.info("INGESTING ALL REGIONS; EXPERIMENT %s" % (exp_name))
-
     if type == "merscope" and source == "machine":
-        if root_path is None:
-            root_path = os.getenv("PROCESSED_ROOT_PATH")
-        input_path = f"{root_path}/{exp_name}/out"
-        regions = glob.glob(f"{input_path}/region_*")
-        for reg in regions:
+        for reg in TreeLayout(config).units(exp_name, under="raw"):
             ingest_region(
-                exp_name,
-                reg.split("/")[-1],
+                dataset_from(config, exp_name, reg),
                 type=type,
                 prefix_name=prefix_name,
                 source=source,
                 plot=plot,
-                root_path=root_path,
-                zarr_store=zarr_store,
-                image_store=image_store,
             )
 
 
 def load_segmentation_region(
-    exp_name: str,
-    reg_name: str,
-    seg_dir: str | None = None,
+    dataset: Dataset,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
-    segmentation_store: str | Path | None = None,
-    zarr_store: str | Path | None = None,
-    image_store: str | Path | None = None,
     **load_kwargs,
 ):
     """
-    Load segmentation data into spatialdata objects.
+    Load one segmentation's schema files into the dataset's store.
 
-    The region's segmentation directory is derived from ``segmentation_store`` (root) +
-    ``prefix_name`` under the ``{exp}/{reg}/{prefix_name}`` layout (legacy
-    ``{exp}/{prefix_name}/{reg}`` is resolved as a fallback). Pass ``seg_dir`` only to
-    override with an explicit ``{store}/{exp}/{prefix_name}`` directory.
+    The segmentation directory is ``dataset.seg_dir(label)`` (label = ``prefix_name``, or the
+    method for "default"); the legacy ``{exp}/{label}/{reg}`` folder structure is read as a fallback.
 
     Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    seg_dir (str | None): Optional explicit ``{store}/{exp}/{prefix_name}`` override; if None,
-        derived from ``segmentation_store`` + ``prefix_name`` (default is None).
+    dataset (Dataset): The region's locations (zarr store, segmentation dir, figures dir) and names.
     type (str): Type of the segmentation data to load (default is "vpt").
     prefix_name (str): Segmentation name; used both as the storage label and the spatialdata
         key prefix (default is "default").
-    segmentation_store (str | Path | None): Segmentation output root (default is None, uses
-        env SEGMENTATION_OUT_PATH).
     """
 
     load_kwargs = load_kwargs.get("load_kwargs", load_kwargs)
-
-    logger.info(
-        "LOADING SEGMENTATION; EXPERIMENT %s, REGION %s, SEGMENTATION %s"
-        % (exp_name, reg_name, type)
-    )
-
-    if zarr_store is None: 
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
-    logger.info(zarr_path)
+    zarr_path = dataset.require("zarr")
+    logger.info("LOADING SEGMENTATION %s (%s) into %s", prefix_name, type, zarr_path)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         sdata = sd.read_zarr(zarr_path)
@@ -227,22 +168,20 @@ def load_segmentation_region(
     version = load_kwargs.pop("version", None)    # proseg v2/v3 (defaults to v3)
     spec = get_spec(method, version)
 
-    # Resolve the region's segmentation leaf. Label = prefix_name (falls back to the method
-    # for the "default" sentinel). Current layout {exp}/{reg}/{label}, legacy {exp}/{label}/{reg}.
-    from spida.S.segmentation.backends import resolve_region_dir
+    # Label = prefix_name (the method for the "default" sentinel).
     label = prefix_name if prefix_name and prefix_name != "default" else method
-    if seg_dir is not None:                       # explicit {store}/{exp}/{label} override
-        store, label = Path(seg_dir).parent.parent, Path(seg_dir).name
-    else:
-        store = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
-    seg_region = resolve_region_dir(store, exp_name, reg_name, label, must_exist=True)
+    seg_region = dataset.seg_dir(label, must_exist=True)
+    KEYS = dataset.keys(prefix_name)
 
     sdata = load_segmentation(
         sdata,
         spec,
-        exp_name,
-        reg_name,
-        str(seg_region),
+        keys=KEYS,
+        default_keys=dataset.keys("default"),
+        seg_dir=str(seg_region),
+        exp_name=dataset.exp,
+        reg_name=dataset.reg,
+        dataset_id=dataset.namespace,
         prefix_name=prefix_name,
         **load_kwargs,
     )
@@ -250,16 +189,11 @@ def load_segmentation_region(
     # TODO: add a function to filter the spatialdata object to something very permissive (like at least 5 transcripts per cell?)
 
     if plot:
-        # plot params
-        KEYS = _gen_keys(prefix_name, exp_name, reg_name)
         # image_channels = sd.models.get_channel_names(sdata[KEYS[IMAGE_KEY]])
         image_scale_keys = list(sdata[KEYS[IMAGE_KEY]].keys())
 
-        # define plot pdf
-        if image_store is None:
-            image_store = os.getenv("IMAGE_STORE_PATH")
-        image_path = f"{image_store}/{exp_name}/{prefix_name}/{reg_name}/pixi-load.pdf"
-        Path(image_path).parent.mkdir(parents=True, exist_ok=True)
+        image_path = dataset.figures_dir(prefix_name) / "pixi-load.pdf"
+        image_path.parent.mkdir(parents=True, exist_ok=True)
 
         # plot
         with warnings.catch_warnings():
@@ -290,99 +224,57 @@ def load_segmentation_region(
 
 
 def load_segmentation_all(
+    config: SpidaConfig,
     exp_name: str,
-    seg_dir: str | None = None,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
-    segmentation_store: str | Path | None = None,
     **load_kwargs,
 ):
     """
-    Load segmentation data for all regions of an experiment into spatialdata objects.
-
-    Region dirs are derived from ``segmentation_store`` + ``prefix_name`` under the
-    ``{exp}/{reg}/{prefix_name}`` layout (legacy ``{exp}/{prefix_name}/{reg}`` is resolved
-    as a fallback). Pass ``seg_dir`` only to override with an explicit
-    ``{store}/{exp}/{prefix_name}`` directory.
+    Load one segmentation for every region of an experiment that has it under the segmentation store.
 
     Parameters:
+    config (SpidaConfig): Store roots.
     exp_name (str): Name of the experiment.
-    seg_dir (str | None): Optional explicit ``{store}/{exp}/{prefix_name}`` override (default None).
     type (str): Type of the segmentation data to load (default is "vpt").
     prefix_name (str): Segmentation name (storage label + key prefix) (default is "default").
-    segmentation_store (str | Path | None): Segmentation output root (default None -> env).
     """
     _METHOD = {"vpt": "cellpose", "cellpose": "cellpose", "mesmer": "mesmer", "proseg": "proseg"}
     label = prefix_name if prefix_name and prefix_name != "default" else _METHOD.get(type, type)
-    if seg_dir is not None:                       # explicit {store}/{exp}/{label} override
-        store, label = Path(seg_dir).parent.parent, Path(seg_dir).name
-    else:
-        store = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
-    exp_dir = Path(store) / exp_name
-
-    # current layout: regions at {exp}/region_* each with a {label} subdir; legacy: {exp}/{label}/{reg}
-    reg_names = [Path(p).name for p in glob.glob(f"{exp_dir}/region_*")
-                 if (Path(p) / label).is_dir()]
-    if not reg_names:
-        reg_names = [Path(p).name for p in glob.glob(f"{exp_dir}/{label}/region_*")]
-    for reg_name in reg_names:
+    for reg_name in TreeLayout(config).units(exp_name, under="seg", label=label):
         load_segmentation_region(
-            exp_name,
-            reg_name,
+            dataset_from(config, exp_name, reg_name),
             type=type,
             prefix_name=prefix_name,
             plot=plot,
-            segmentation_store=str(store),
             **load_kwargs,
         )
 
 
 def load_deconvolution_region(
-    exp_name: str,
-    reg_name: str,
-    image_dir: str,
+    dataset: Dataset,
+    image_dir: str | Path | None = None,
     image_name: str = "decon_image",
     suffix: str = ".decon.tif",
     z_layer: int | str = 3,
     plot: bool = False,
-    root_path: str | Path | None = None,
-    zarr_store: str | Path | None = None,
-    image_store: str | Path | None = None,
     **load_kwargs,
 ):
     """
-    Load deconvolution images into spatialdata objects.
+    Load deconvolution images into the dataset's store.
 
     Parameters:
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    image_dir (str|Path): Directory containing the deconvolution images.
+    dataset (Dataset): The dataset (store, raw images, figures dir).
+    image_dir (str|Path|None): Directory holding the deconvolved images (default: the raw images dir).
     image_name (str): Name of the image key in the spatialdata object (default is "decon_image").
     suffix (str): Suffix of the deconvolution image files (default is ".decon.tif").
     plot (bool): Whether to generate plots (default is False).
-    root_path (str|Path): Root path for the data (default is None, uses environment variable).
-    zarr_store (str|Path): Path to store the zarr files (default is
-    image_store (str|Path): Path to store the images (default is None, uses environment variable).
     load_kwargs: Additional keyword arguments for the load_decon_images function.
     """
-
-    logger.info(
-        "LOADING DECONVOLUTION IMAGES; EXPERIMENT %s, REGION %s" % (exp_name, reg_name)
-    )
-
-    if image_dir is None:
-        if root_path is None:
-            image_dir = os.getenv("PROCESSED_ROOT_PATH")
-        else: 
-            image_dir = root_path
-    image_dir = f"{image_dir}/{exp_name}/out/{reg_name}/images"
-    logger.info(f"Loading deconvolution images from {image_dir}")
-
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    zarr_path = f"{zarr_store}/{exp_name}/{reg_name}"
-    logger.info(zarr_path)
+    image_dir = Path(image_dir) if image_dir is not None else dataset.raw_images()
+    zarr_path = dataset.require("zarr")
+    logger.info("LOADING DECONVOLUTION IMAGES from %s into %s", image_dir, zarr_path)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         sdata = sd.read_zarr(zarr_path)
@@ -400,11 +292,8 @@ def load_deconvolution_region(
         image_channels = sd.models.get_channel_names(sdata[image_name])
         image_scale_keys = list(sdata[image_name].keys())
 
-        if image_store is None:
-            image_store = os.getenv("IMAGE_STORE_PATH")
-
-        image_path = f"{image_store}/{exp_name}/default/{reg_name}/pixi-decon.pdf"
-        Path(image_path).parent.mkdir(parents=True, exist_ok=True)
+        image_path = dataset.figures_dir("default") / "pixi-decon.pdf"
+        image_path.parent.mkdir(parents=True, exist_ok=True)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             with PdfPages(image_path) as pdf:

@@ -232,15 +232,6 @@ def test_run_cellpose_writes_nothing_outside_output_dir(monkeypatch, images_dir,
     assert sorted(p.name for p in out.iterdir()) == ["meta.json", "polygons.parquet"]
 
 
-def test_run_cellpose_legacy_project_3d_to_2d(monkeypatch, images_dir, tmp_path):
-    fake = _patch_model(monkeypatch, _two_cell_mask_2d())
-    with pytest.warns(DeprecationWarning):
-        cpb.run_cellpose(str(images_dir), str(tmp_path / "o"), "r",
-                         project_3d_to_2d=True, scale=1, min_size=0, min_z=1)
-    meta = json.loads((tmp_path / "o" / "meta.json").read_text())
-    assert meta["config"]["seg_mode"] == "2d"
-    assert meta["config"]["z_reduce"] == "mip"             # legacy did a projection
-    assert fake.eval_kwargs["do_3D"] is False
 
 
 def test_run_cellpose_3d_applies_min_z_filter(monkeypatch, images_dir, tmp_path):

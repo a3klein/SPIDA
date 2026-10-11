@@ -1,25 +1,21 @@
-import os
 from pathlib import Path
 import logging
-from dotenv import load_dotenv  # type: ignore
 
 import spatialdata as sd
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Polygon
 
-load_dotenv()
 logger = logging.getLogger(__package__)
 
 
 def align_segmentations(
     zarr_path: str | Path,
-    exp_name: str,
-    reg_name: str,
+    shape_key1: str,
+    shape_key2: str,
     prefix1: str,
     prefix2: str,
-    output_dir: str | Path | None = None,
-    segmentation_store: str | Path | None = None,
+    output_dir: str | Path,
     geometry_mode: str = "larger",
     cell_id: str = "EntityID",
     coordinate_system: str = "global",
@@ -31,29 +27,21 @@ def align_segmentations(
     keeping only cells present in both datasets with one-to-one mappings.
 
     This function identifies matching cells between two shape layers based on their intersection area,
-    keeps only one-to-one mappings, and saves the aligned geometries as a parquet file for downstream
-    processing with VPT functions to create new cell_by_gene matrices.
-
-    The aligned parquet file can be directly used with the VPT segmentation pipeline to generate
-    new cell_by_gene matrices based on the aligned geometries.
+    keeps only one-to-one mappings, and saves the aligned geometries as a parquet file for
+    ``process_custom_segmentation`` (native) to build the segmentation schema from.
 
     Parameters:
     -----------
     zarr_path: str | Path
         Path to the spatialdata zarr store containing the segmentations
-    exp_name : str
-        Experiment name used to construct keys (e.g., '202511071313_BICAN-4x1-HIPU-E-01_VMSC31910')
-    reg_name : str
-        Region name used to construct keys (e.g., 'region_UCI-5224')
+    shape_key1, shape_key2 : str
+        The two shapes elements (``Dataset.keys(prefix)[SHAPES_KEY]``).
     prefix1 : str
-        Prefix for the first shapes layer (e.g., 'cellpose_nuc')
+        Name of the first segmentation (e.g., 'cellpose_nuc'); used in column and file names.
     prefix2 : str
-        Prefix for the second shapes layer (e.g., 'cellpose_cell')
-    output_dir : str | Path, optional
-        Directory to save the output parquet file. If None, uses segmentation_store environment variable.
-        Default structure: {segmentation_store}/{exp_name}/align/{reg_name}/
-    segmentation_store : str | Path, optional
-        Default path to store the segmentation results. If None, uses SEGMENTATION_OUT_PATH environment variable.
+        Name of the second segmentation (e.g., 'cellpose_cell').
+    output_dir : str | Path
+        Directory for the output parquet file.
     geometry_mode : str, default='larger'
         How to select geometry for aligned cells:
         - 'larger': Keep the larger of the two overlapping geometries
@@ -89,10 +77,11 @@ def align_segmentations(
     >>> from spida.S.segmentation import align_segmentations
     >>> result = align_segmentations(
     ...     zarr_path="/path/to/zarr/store",
-    ...     exp_name="202511071313_BICAN-4x1-HIPU-E-01_VMSC31910",
-    ...     reg_name="region_UCI-5224",
+    ...     shape_key1="cellpose_nuc_polygons",
+    ...     shape_key2="cellpose_cell_polygons",
     ...     prefix1="cellpose_nuc",
     ...     prefix2="cellpose_cell",
+    ...     output_dir="/path/to/seg/align",
     ...     geometry_mode="larger"
     ... )
     >>> print(f"Aligned {result['n_aligned']} cell pairs")
@@ -107,12 +96,6 @@ def align_segmentations(
         )
 
     # Setup output directory
-    if output_dir is None:
-        if segmentation_store is None:
-            seg_out_path = os.getenv("SEGMENTATION_OUT_PATH")
-        else:
-            seg_out_path = segmentation_store
-        output_dir = f"{seg_out_path}/{reg_name}"
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -121,8 +104,6 @@ def align_segmentations(
     sdata = sd.read_zarr(zarr_path)
 
     # Generate shape keys
-    shape_key1 = f"{prefix1}_{exp_name}_{reg_name}_polygons"
-    shape_key2 = f"{prefix2}_{exp_name}_{reg_name}_polygons"
 
     logger.info(f"Loading shapes from {shape_key1} and {shape_key2}")
 

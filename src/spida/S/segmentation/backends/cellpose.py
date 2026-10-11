@@ -9,10 +9,8 @@ All tunables are described by :class:`CellposeConfig`; see
 ``segment-region cellpose --list-params``.
 """
 
-import os
 import json
 import time
-from dotenv import load_dotenv  # type: ignore
 
 import numpy as np
 import geopandas as gpd
@@ -29,21 +27,11 @@ from ...io.mosaic import find_stain_planes, load_tissue_mask, probe_mosaic_shape
 from .masks import masks_to_geodataframe
 from .config import ConfigError
 from .cellpose_config import (
-    CELLPOSE_ENV_VAR,
-    SPIDA_ENV_VAR,
     CellposeConfig,
+    point_cellpose_at,
     resolve_model,
+    resolve_model_dir,
 )
-
-# DO NOT MOVE THIS BLOCK INTO A FUNCTION.
-#
-# cellpose resolves its model cache (``models.MODEL_DIR``) from
-# CELLPOSE_LOCAL_MODELS_PATH at IMPORT time, so bridging SPIDA's own key across
-# has to happen before the first `import cellpose.models`.
-load_dotenv()
-if os.getenv(SPIDA_ENV_VAR) and not os.getenv(CELLPOSE_ENV_VAR):
-    os.environ[CELLPOSE_ENV_VAR] = os.environ[SPIDA_ENV_VAR]
-
 
 logger = logging.getLogger(__package__)
 
@@ -114,11 +102,18 @@ def _load_and_check_mask(
 
 # Load in cellpose model
 def _load_model(cfg: CellposeConfig):
-    """Load the cellpose model named by ``cfg.model``."""
+    """Load the cellpose model named by ``cfg.model``.
+
+    cellpose fixes its model cache (``models.MODEL_DIR``) from ``CELLPOSE_LOCAL_MODELS_PATH``
+    when ``cellpose.models`` is first imported, so the directory is resolved and cellpose is
+    pointed at it BEFORE that import; a download then lands where SPIDA looks next time.
+    """
+    directory = resolve_model_dir(cfg.model_dir)
+    point_cellpose_at(directory)
     from cellpose import models
 
     _require_gpu()
-    resolution = resolve_model(cfg.model, cfg.model_dir)
+    resolution = resolve_model(cfg.model, directory)
     resolution.log()
     model = models.CellposeModel(
         pretrained_model=resolution.pretrained_model,
@@ -571,9 +566,7 @@ def run_cellpose(root_dir: str, output_dir: str, region: str, *,
         with no tissue, and zeroes out-of-tissue pixels before downscaling —
         and is resolved by the caller (``segment_region``), not here. Ignored
         with a warning on the untiled path, which segments its whole input.
-    **kwargs: Any :class:`CellposeConfig` field. Unknown names raise, and
-        deprecated ones (``do_3D``, ``project_3d_to_2d``, ``tile_size``,
-        ``overlap``, ``model_name``, ...) are translated with a warning. Run
+    **kwargs: Any :class:`CellposeConfig` field; unknown names raise. Run
         ``segment-region cellpose --list-params`` for the full surface.
 
     Returns:

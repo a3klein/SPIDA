@@ -10,6 +10,7 @@ import logging
 # from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
+from spida.io.options import dataset_options, dataset_overrides, dataset_from_options, run_config
 from spida.utilities.script_utils import parse_click_kwargs, parse_literal, JSONParam
 
 logger = logging.getLogger(__name__)
@@ -21,26 +22,26 @@ logger = logging.getLogger(__name__)
 @click.option(
     "config",
     "--config",
-    default=".env",
-    type=click.Path(exists=True),
-    help="Path to the configuration file (default: .env)",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="JSON config file (optional; unset settings come from the environment).",
 )
 @click.pass_context
 def cli(ctx, config):
     ctx.ensure_object(dict)
     pass
 
-# For Testing the CLI Group default_map functionality
-@click.command(cls=RichCommand, help="test_command")
-@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary")
-@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Path to the Rust binary")
-@click.option("deconwolf_config_file", "--deconwolf_config_file", default=None, type=click.Path(), help="Path to the Deconwolf config file")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to the Zarr storage")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Path to the processed root directory")
-@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Path to the segmentation output directory")
-@click.option("anndata_store", "--anndata_store", default=None, type=click.Path(), help="Path to the AnnData store directory")
-@click.option("annotation_store", "--annotation_store", default=None, type=click.Path(), help="Path to the annotation store directory")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to the image store directory")
+# Show how a call's configuration resolves
+@click.command(cls=RichCommand, help="Print the resolved configuration: --config JSON, then the environment, then these options.")
+@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Directory holding the VPT binary, --backend vpt only (default: VPT_BIN_PATH in the config)")
+@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Directory holding the proseg binary (default: RUST_BIN_PATH in the config)")
+@click.option("deconwolf_config_file", "--deconwolf_config_file", default=None, type=click.Path(), help="deconwolf .config.ini: binary, PSFs, [Optics] (default: DECONWOLF_CONFIG in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
+@click.option("anndata_store", "--anndata_store", default=None, type=click.Path(), help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
+@click.option("annotation_store", "--annotation_store", default=None, type=click.Path(), help="Root of the annotation intermediates (default: ANNOTATION_STORE_PATH in the config)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.pass_context
 def test_command(
     ctx,
@@ -54,40 +55,30 @@ def test_command(
     annotation_store,
     image_store,
 ):
-    """
-    Printing all of the default values for the configuration parameters
-    """
-    click.echo(click.style("Default configuration values:", bold=True))
-    for key, value in ctx.default_map.items():
-        click.echo(click.style(key, fg='magenta', bold=True) + f": {click.style(value, fg='green')}")
-
-    click.echo(click.style("\nPassed In Values:\n", bold=True))
-    click.echo(click.style(f"vpt_bin_path: {vpt_bin_path}", fg='green'))
-    click.echo(click.style(f"rust_bin_path: {rust_bin_path}", fg='green'))
-    click.echo(click.style(f"deconwolf_config_file: {deconwolf_config_file}", fg='green'))
-    click.echo(click.style(f"zarr_store: {zarr_store}", fg='green'))
-    click.echo(click.style(f"root_path: {root_path}", fg='green'))
-    click.echo(click.style(f"segmentation_store: {segmentation_store}", fg='green'))
-    click.echo(click.style(f"anndata_store: {anndata_store}", fg='green'))
-    click.echo(click.style(f"annotation_store: {annotation_store}", fg='green'))
-    click.echo(click.style(f"image_store: {image_store}", fg='green'))  
+    """Print every SpidaConfig field as this call resolves it."""
+    import dataclasses
+    cfg = run_config(ctx, vpt_bin_path=vpt_bin_path, rust_bin_path=rust_bin_path,
+                     deconwolf_config_file=deconwolf_config_file, zarr_store=zarr_store, root_path=root_path,
+                     segmentation_store=segmentation_store, anndata_store=anndata_store,
+                     annotation_store=annotation_store, image_store=image_store)
+    for f in dataclasses.fields(cfg):
+        click.echo(click.style(f.name, fg='magenta', bold=True) + f": {click.style(str(getattr(cfg, f.name)), fg='green')}")
 
 
-@click.command(cls=RichCommand, help="Ingest spatial data for a given EXP_NAME and REG_NAME.")
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+@click.command(cls=RichCommand, help="Ingest one region's raw data into a new zarr store (--exp/--reg, or the path options).")
+@dataset_options
 @click.option("type", "--type", default="merscope", type=str, help="Type of the data to ingest (default: merscope)")
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
 @click.option("source", "--source", default="machine", type=str, help="Source of the data (default: machine)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def ingest_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     type: str = "merscope",
     prefix_name: str = "default",
     source: str = "machine",
@@ -98,31 +89,22 @@ def ingest_region(
     **kwargs,
 ):
     """
-    Ingest spatial data for a specific EXP_NAME and REG_NAME.
+    Ingest one region's raw data into a new zarr store.
     """
+    cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
+    dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .io.main import ingest_region as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        type=type,
-        prefix_name=prefix_name,
-        source=source,
-        plot=plot,
-        root_path=root_path,
-        zarr_store=zarr_store,
-        image_store=image_store,
-        **kwargs,
-    )
+    func(dataset, type=type, prefix_name=prefix_name, source=source, plot=plot, **kwargs)
 
-@click.command(cls=RichCommand, help="Ingest spatial data for all regions in a given EXPERIMENT.")
-@click.argument("exp_name", type=str)
+@click.command(cls=RichCommand, help="Ingest every region of --exp found under PROCESSED_ROOT_PATH.")
+@click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
 @click.option("type", "--type", default="merscope", type=str, help="Type of the data to ingest (default: merscope)")
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
 @click.option("source", "--source", default="machine", type=str, help="Source of the data (default: machine)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.pass_context
 def ingest_all(
     ctx,
@@ -137,40 +119,28 @@ def ingest_all(
     **kwargs,
 ):
     """
-    Ingest spatial data for all regions in a specific EXPERIMENT.
+    Ingest every region of an experiment found under the raw root.
     """
+    cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
     from .io.main import ingest_all as func
-    func(
-        exp_name=exp_name,
-        type=type,
-        prefix_name=prefix_name,
-        source=source,
-        plot=plot,
-        root_path=root_path,
-        zarr_store=zarr_store,
-        image_store=image_store,
-        **kwargs,
-    )
+    func(cfg, exp_name, type=type, prefix_name=prefix_name, source=source, plot=plot, **kwargs)
 
-@click.command(cls=RichCommand, help="Load segmentation data for a given EXP_NAME and REG_NAME.")
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
-@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Segmentation output root; region dir derived as {store}/{exp}/{reg}/{prefix_name} (default: env SEGMENTATION_OUT_PATH)")
-@click.option("seg_dir", "--seg_dir", default=None, type=click.Path(), help="Explicit {store}/{exp}/{prefix_name} override (default: derive from segmentation_store + prefix_name)")
+@click.command(cls=RichCommand, help="Load one segmentation into a region's zarr store (--exp/--reg, or the path options).")
+@dataset_options
+@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
 @click.option("type", "--type", default="vpt", type=str, help="Type of the segmentation data (default: vpt)")
-@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name: storage label + spatialdata key prefix (default: default)")
+@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name, used for its output folder and its names in the zarr store (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
 @click.option("qc_shapes_key", "--qc_shapes_key", default="qc_mask", type=str,help="Shapes key holding the QC pass-region mask to apply (default: qc_mask; e.g. transcript_qc_shapes for the legacy hex mask)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def load_segmentation_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     segmentation_store: str | Path | None = None,
-    seg_dir: str | None = None,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
@@ -181,7 +151,7 @@ def load_segmentation_region(
     **load_kwargs,
 ):
     """
-    Load segmentation data for a specific EXP_NAME and REG_NAME.
+    Load one segmentation into a region's zarr store.
     """
     # kwargs
     extra_args = ctx.args
@@ -192,40 +162,27 @@ def load_segmentation_region(
             "Transcript QC filtering enabled for load-segmentation-region with qc_shapes_key=%s",
             load_kwargs["qc_shapes_key"],
         )
-    # for key, value in load_kwargs.items():
-    #     logger.info(f"Parsed {key} = {value};  {type(value)}")
 
+    cfg = run_config(ctx, segmentation_store=segmentation_store, zarr_store=zarr_store, image_store=image_store)
+    dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .io.main import load_segmentation_region as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        seg_dir=seg_dir,
-        type=type,
-        prefix_name=prefix_name,
-        plot=plot,
-        segmentation_store=segmentation_store,
-        zarr_store=zarr_store,
-        image_store=image_store,
-        **load_kwargs,
-    )
+    func(dataset, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
 
-@click.command(cls=RichCommand, help="Load segmentation data for all regions in a given EXPERIMENT.")
-@click.argument("exp_name", type=str)
-@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Segmentation output root; region dirs derived as {store}/{exp}/{reg}/{prefix_name} (default: env SEGMENTATION_OUT_PATH)")
-@click.option("seg_dir", "--seg_dir", default=None, type=click.Path(), help="Explicit {store}/{exp}/{prefix_name} override (default: derive from segmentation_store + prefix_name)")
+@click.command(cls=RichCommand, help="Load one segmentation for every region of --exp that has it.")
+@click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
+@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
 @click.option("type", "--type", default="vpt", type=str, help="Type of the segmentation data (default: vpt)")
-@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name: storage label + spatialdata key prefix (default: default)")
+@click.option("prefix_name", "--prefix_name", default="default", type=str, help="Segmentation name, used for its output folder and its names in the zarr store (default: default)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
 @click.option("qc_shapes_key", "--qc_shapes_key", default="qc_mask", type=str,help="Shapes key holding the QC pass-region mask to apply (default: qc_mask; e.g. transcript_qc_shapes for the legacy hex mask)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.pass_context
 def load_segmentation_all(
     ctx,
     exp_name: str,
     segmentation_store: str | Path | None = None,
-    seg_dir: str | None = None,
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
@@ -247,47 +204,34 @@ def load_segmentation_all(
             "Transcript QC filtering enabled for load-segmentation-all with qc_shapes_key=%s",
             load_kwargs["qc_shapes_key"],
         )
-    # for key, value in load_kwargs.items():
-    #     logger.info(f"Parsed {key} = {value};  {type(value)}")
-
+    cfg = run_config(ctx, segmentation_store=segmentation_store, zarr_store=zarr_store, image_store=image_store)
     from .io.main import load_segmentation_all as func
-    func(
-        exp_name=exp_name,
-        seg_dir=seg_dir,
-        type=type,
-        prefix_name=prefix_name,
-        plot=plot,
-        segmentation_store=segmentation_store,
-        zarr_store=zarr_store,
-        image_store=image_store,
-        **load_kwargs,
-    )
+    func(cfg, exp_name, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
 
 @click.command(
     name="load-decon-images",
     cls=RichCommand,
-    help="Load deconvolution images for a given EXP_NAME and REG_NAME.",
+    help="Load deconvolution images into a region's zarr store (--exp/--reg, or the path options).",
     context_settings=dict(
         ignore_unknown_options=True,
         allow_extra_args=True,
     )
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
-@click.argument("image_dir", type=click.Path(exists=True, dir_okay=True))
+@dataset_options
+@click.option("image_dir", "--image_dir", default=None, type=click.Path(exists=True, file_okay=False), help="Directory holding the deconvolved images (default: the region's raw images dir)")
 @click.option("image_name", "--image_name", default="decon_image", type=str, help="Name of the image key in the spatialdata object (default: decon_image)")
 @click.option("suffix", "--suffix", default=".decon.tif", type=str, help="Suffix of the deconvolution image files (default: .decon.tif)")
 @click.option("z_layer", "--z_layer", default=3, type=str, help="Z-layer to read from the deconvolution images (default: 3)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
-@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Path to store the zarr files (default: None, uses environment variable)")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@dataset_overrides
 @click.pass_context
 def load_deconvolution_region(
     ctx,
-    exp_name: str,
-    reg_name: str,
-    image_dir: str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
+    image_dir: str | None = None,
     image_name: str = "decon_image",
     suffix: str = ".decon.tif",
     z_layer: int | str = 3,
@@ -306,20 +250,11 @@ def load_deconvolution_region(
     for key, value in load_kwargs.items():
         logger.info(f"Parsed {key} = {value};  {type(value)}")
 
+    cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
+    dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .io.main import load_deconvolution_region as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        image_dir=image_dir,
-        image_name=image_name,
-        suffix=suffix,
-        z_layer=z_layer,
-        plot=plot,
-        root_path=root_path,
-        zarr_store=zarr_store,
-        image_store=image_store,
-        **load_kwargs,
-    )
+    func(dataset, image_dir=image_dir, image_name=image_name, suffix=suffix,
+         z_layer=z_layer, plot=plot, **load_kwargs)
 
 
 @cli.command(
@@ -347,48 +282,6 @@ def test_vpt(ctx):
     func()
 
 
-@cli.command(
-    name="run-segmentation-region",
-    aliases=["run", "run_segmentation_region"],
-    cls=RichCommand,
-    help="['run', 'run_segmentation_region'], Run segmentation of kind TYPE for a given EXP_NAME and REG_NAME.",
-    context_settings=dict(
-        ignore_unknown_options=True,
-        allow_extra_args=True,
-    )
-)
-@click.argument("seg_type", type=str)
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
-@click.option("input_dir", "--input_dir", default=None, type=click.Path(), help="Directory containing the input data (default: None, uses environment variable)")
-@click.option("output_dir", "--output_dir", default=None, type=click.Path(), help="Directory to save the output data (default: None, uses environment variable)")
-@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root path for the data (default: None, uses environment variable)")
-@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Path to store the segmentation results (default: None, uses environment variable)")
-@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=click.Path(), help="Path to the VPT binary (default: None, uses environment variable)")
-@click.option("rust_bin_path", "--rust_bin_path", default=None, type=click.Path(), help="Path to the Rust binary (default: None, uses environment variable)")
-@click.pass_context
-def run_segmentation(
-    ctx,
-    seg_type: str,
-    exp_name: str,
-    reg_name: str,
-    input_dir: str | Path | None = None,
-    output_dir: str | Path | None = None,
-    root_path: str | Path | None = None,
-    segmentation_store: str | Path | None = None,
-    vpt_bin_path: str | Path | None = None,
-    rust_bin_path: str | Path | None = None,
-    **kwargs,
-):
-    """
-    DEPRECATED. Segmentation and its post-processing are now separate commands
-    (see the printed migration guidance).
-    """
-    from .segmentation.main import _deprecated_run_segmentation_message
-
-    raise click.ClickException(
-        _deprecated_run_segmentation_message(seg_type, exp_name, reg_name)
-    )
 
 
 @cli.command(
@@ -400,17 +293,17 @@ def run_segmentation(
     context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
 )
 @click.argument("method", type=str)
-@click.argument("exp_name", type=str, required=False)
-@click.argument("reg_name", type=str, required=False)
-@click.option("--list-params", "--list_params", "list_params", is_flag=True, default=False, help="Print every run parameter METHOD accepts (with types, defaults and deprecated aliases) and exit. EXP_NAME/REG_NAME are not required.")
+@dataset_options
+@click.option("--list-params", "--list_params", "list_params", is_flag=True, default=False, help="Print every run parameter METHOD accepts (with types, defaults and deprecated aliases) and exit. No dataset needed.")
 @click.option("--prefix_name", "prefix_name", default=None, type=str, help="Segmentation name / output-dir leaf (default: method; e.g. cellpose_nuc / cellpose_cell). Must match process/load.")
-@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
-@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
-@click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Rust/proseg binary path")
+@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
+@click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Directory holding the proseg binary (default: RUST_BIN_PATH in the config)")
 @click.option("--tissue_mask_path", "tissue_mask_path", default=None, type=click.Path(), help="Tissue mask restricting where segmentation runs (default: auto-discover <images_dir>/tissue_mask.tif, else ungated).")
+@dataset_overrides
 @click.pass_context
-def segment_region(ctx, method, exp_name, reg_name, list_params, prefix_name,
-                   root_path, segmentation_store, rust_bin_path,
+def segment_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                   list_params, prefix_name, root_path, segmentation_store, rust_bin_path,
                    tissue_mask_path):
     # Method-specific run parameters are NOT exposed as Click options.
     # `--list-params` makes them discoverable instead, from the method's own config class.
@@ -418,16 +311,15 @@ def segment_region(ctx, method, exp_name, reg_name, list_params, prefix_name,
         from .segmentation.backends import describe_method_params
         click.echo(describe_method_params(method))
         return
-    if exp_name is None or reg_name is None:
-        raise click.UsageError(
-            "EXP_NAME and REG_NAME are required (omit them only with --list-params)."
-        )
 
     kwargs = parse_click_kwargs(ctx.args)
+    cfg = run_config(ctx, root_path=root_path, segmentation_store=segmentation_store, rust_bin_path=rust_bin_path)
+    if method == "cellpose" and "model_dir" not in kwargs and cfg.cellpose_model_path is not None:
+        kwargs["model_dir"] = str(cfg.cellpose_model_path)  # CELLPOSE_MODEL_PATH; --model_dir wins
+    dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .segmentation.main import segment_region as func
-    func(method=method, exp_name=exp_name, reg_name=reg_name, prefix_name=prefix_name,
-         root_path=root_path, segmentation_store=segmentation_store,
-         rust_bin_path=rust_bin_path, tissue_mask_path=tissue_mask_path, **kwargs)
+    func(method, dataset, prefix_name=prefix_name,
+         rust_bin_path=cfg.rust_bin_path, tissue_mask_path=tissue_mask_path, **kwargs)
 
 
 @cli.command(
@@ -439,27 +331,28 @@ def segment_region(ctx, method, exp_name, reg_name, list_params, prefix_name,
     context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
 )
 @click.argument("method", type=str)
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+@dataset_options
 @click.option("--version", "version", default=None, type=str, help="Method version (proseg: 2 or 3)")
 @click.option("--prefix_name", "prefix_name", default=None, type=str, help="Segmentation name / output-dir leaf (default: method). Must match segment-region.")
 @click.option("--backend", "backend", default="native", type=click.Choice(["native", "vpt"]), help="native (default) or vpt fallback")
-@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Raw MERSCOPE root (default: env PROCESSED_ROOT_PATH)")
-@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Segmentation output root (default: env SEGMENTATION_OUT_PATH)")
+@click.option("--root_path", "root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
 @click.option("--micron_per_z", "micron_per_z", default=1.5, type=float, help="Micron thickness per z-plane")
 @click.option("--n_z_planes", "n_z_planes", default=7, type=int, help="Number of z-planes for 2D->3D replication")
 @click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7; IO-bound step, more is slower + costs more SUs)")
-@click.option("--vpt_bin_path", "vpt_bin_path", default=None, type=click.Path(), help="VPT binary path (only for --backend vpt)")
+@click.option("--vpt_bin_path", "vpt_bin_path", default=None, type=click.Path(), help="Directory holding the VPT binary, --backend vpt only (default: VPT_BIN_PATH in the config)")
+@dataset_overrides
 @click.pass_context
-def process_segmentation_region(ctx, method, exp_name, reg_name, version, prefix_name, backend,
-                                root_path, segmentation_store, micron_per_z,
-                                n_z_planes, n_jobs, vpt_bin_path):
+def process_segmentation_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures_path,
+                                version, prefix_name, backend, root_path, segmentation_store,
+                                micron_per_z, n_z_planes, n_jobs, vpt_bin_path):
     kwargs = parse_click_kwargs(ctx.args)
+    cfg = run_config(ctx, root_path=root_path, segmentation_store=segmentation_store, vpt_bin_path=vpt_bin_path)
+    dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .segmentation.main import process_segmentation_region as func
-    func(method=method, exp_name=exp_name, reg_name=reg_name, version=version,
-         prefix_name=prefix_name, backend=backend, root_path=root_path,
-         segmentation_store=segmentation_store, micron_per_z=micron_per_z,
-         n_z_planes=n_z_planes, n_jobs=n_jobs, vpt_bin_path=vpt_bin_path, **kwargs)
+    func(method, dataset, version=version, prefix_name=prefix_name, backend=backend,
+         micron_per_z=micron_per_z, n_z_planes=n_z_planes, n_jobs=n_jobs,
+         vpt_bin_path=cfg.vpt_bin_path, **kwargs)
 
 
 @cli.command(
@@ -502,95 +395,39 @@ def process_custom_segmentation(ctx, boundaries_path, output_dir, boundaries_spa
          metadata_cell_id_col=metadata_cell_id_col, n_jobs=n_jobs, **kwargs)
 
 
-@cli.command(
-    name="filt-to-ids",
-    aliases=["filt_to_ids", "filter_to_ids", "filter-to-ids"],
-    cls=RichCommand,
-    help="['filt_to_ids', 'filter_to_ids', 'filter-to-ids'] - Filter metadata and geometry to only include cells with IDs in the provided list.",
-)
-@click.argument("meta_path", type=click.Path(exists=True, dir_okay=False))
-@click.argument("geom_path", type=click.Path(exists=True, dir_okay=False))
-@click.argument("tz_path", type=click.Path(exists=True, dir_okay=False))
-@click.argument("cbg_path", type=click.Path(exists=True, dir_okay=False))
-@click.pass_context
-def filt_to_ids(
-    ctx,
-    meta_path: str | Path,
-    geom_path: str | Path,
-    tz_path: str | Path,
-    cbg_path: str | Path,
-):
-    """
-    Filter metadata and geometry to only include cells with IDs in the provided list.
-    Additionally rename the index of the merged_cell_by_gene
-    """
-    from .segmentation.backends.proseg import filt_to_ids as func
-    func(
-        meta_path=meta_path,
-        geom_path=geom_path,
-        tz_path=tz_path,
-        cbg_path=cbg_path,
-    )
 
 
 @cli.command(
     name="align-segmentation",
-    aliases=["align_segmentation", "align-segmentation"],
+    aliases=["align_segmentation"],
     cls=RichCommand,
-    help="['align_segmentation', 'align-segmentation'] - Align segmentation results between different methods.",
+    help="Align two segmentations of one region by overlap, and build the aligned segmentation's output files in SEGMENTATION_OUT_PATH/<exp>/<reg>/OUT_DIR_NAME.",
 )
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
-@click.option("prefix1", "--prefix1", default="cellpose_nuc", type=str, help="Prefix for the first segmentation method (default: cellpose_nuc)")
-@click.option("prefix2", "--prefix2", default="cellpose_cell", type=str, help="Prefix for the second segmentation method (default: cellpose_cell)")
-@click.option("output_dir", "--output_dir", default=None, type=click.Path(), help="Directory to save the aligned segmentation results (default: None, uses environment variable)")
-@click.option("geometry_mode", "--geometry_mode", default="larger", type=str, help="Geometry mode for alignment (default: larger)")
-@click.option("cell_id", "--cell_id", default="EntityID", type=str, help="Column name for the cell IDs (default: EntityID for vpt)")
-@click.option("min_intersection_area", "--min_intersection_area", default=0.0, type=float, help="Minimum intersection area for alignment (default: 0.0)")
-@click.option("coordinate_system", "--coordinate_system", default="global", type=str, help="Coordinate system for alignment (default: global)")
-@click.option("out_dir_name", "--out_dir_name", default="align", type=str, help="The name of the output directory to store the segmentation under (default: align)")
-@click.option("zarr_store", "--zarr_store", default=None, type=str, help="Path to the zarr store (default: None)")
-@click.option("segmentation_store", "--segmentation_store", default=None, type=str, help="Path to the segmentation store (default: None)")
-@click.option("root_path", "--root_path", default=None, type=str, help="Root path for the data (default: None)")
-@click.option("vpt_bin_path", "--vpt_bin_path", default=None, type=str, help="Path to the VPT binary (default: None)")
+@dataset_options
+@click.option("prefix1", "--prefix1", default="cellpose_nuc", type=str, help="First segmentation (default: cellpose_nuc)")
+@click.option("prefix2", "--prefix2", default="cellpose_cell", type=str, help="Second segmentation (default: cellpose_cell)")
+@click.option("geometry_mode", "--geometry_mode", default="larger", type=click.Choice(["larger", "prefix1", "prefix2", "intersection"]), help="Polygon kept per matched pair (default: larger)")
+@click.option("cell_id", "--cell_id", default="EntityID", type=str, help="Column name for the cell IDs (default: EntityID)")
+@click.option("min_intersection_area", "--min_intersection_area", default=0.0, type=float, help="Minimum intersection area for a match, pixels (default: 0.0)")
+@click.option("coordinate_system", "--coordinate_system", default="global", type=str, help="Coordinate system to align in (default: global = mosaic pixels)")
+@click.option("out_dir_name", "--out_dir_name", default="align", type=str, help="Name of the aligned segmentation, i.e. its output folder (default: align)")
+@click.option("micron_per_z", "--micron_per_z", default=1.5, type=float, help="Micron thickness per z-plane (default: 1.5)")
+@click.option("n_jobs", "--n_jobs", default=7, type=int, help="sum-signals workers (default: 7)")
+@click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
+@click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@dataset_overrides
 @click.pass_context
-def align_geometries(
-    ctx,
-    exp_name,
-    reg_name,
-    prefix1 : str = "cellpose_nuc",
-    prefix2 : str = "cellpose_cell",
-    output_dir : str | None = None,
-    geometry_mode : str = "larger", 
-    cell_id : str = "EntityID",
-    min_intersection_area : float = 0.0,
-    coordinate_system : str = "global",
-    out_dir_name : str = "align",
-    zarr_store : str | None = None,
-    segmentation_store: str | None = None,
-    root_path : str | None = None,
-    vpt_bin_path : str | None = None
-): 
-    """
-    Align segmentation results between different methods.
-    """
+def align_geometries(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, prefix1, prefix2, geometry_mode,
+                     cell_id, min_intersection_area, coordinate_system, out_dir_name, micron_per_z, n_jobs,
+                     zarr_store, segmentation_store, root_path):
+    """Align two segmentations of one region and build the aligned segmentation's output files."""
+    cfg = run_config(ctx, zarr_store=zarr_store, segmentation_store=segmentation_store, root_path=root_path)
+    dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .segmentation.main import align_geometries as func
-    func(
-        exp_name=exp_name,
-        reg_name=reg_name,
-        prefix1=prefix1,
-        prefix2=prefix2,
-        output_dir=output_dir,
-        geometry_mode=geometry_mode,
-        cell_id=cell_id,
-        min_intersection_area=min_intersection_area,
-        coordinate_system=coordinate_system,
-        out_dir_name=out_dir_name,
-        zarr_store=zarr_store,
-        segmentation_store=segmentation_store,
-        root_path=root_path,
-        vpt_bin_path=vpt_bin_path,
-    )
+    func(dataset, prefix1=prefix1, prefix2=prefix2, geometry_mode=geometry_mode, cell_id=cell_id,
+         min_intersection_area=min_intersection_area, coordinate_system=coordinate_system,
+         out_dir_name=out_dir_name, micron_per_z=micron_per_z, n_jobs=n_jobs)
 
 
 @cli.command(
@@ -618,7 +455,8 @@ def align_geometries(
 @click.option("select_tiles_method", "--select-tiles", "--select_tiles", "--image-filter", "--image_filter", default=None, type=click.Choice(["otsu", "tissue_mask", "none"]), help="Tile-selection strategy; overrides --thr_tiles (default: None -> otsu if thr_tiles else none)")
 @click.option("mask_path", "--mask_path", default=None, type=click.Path(), help="Path to tissue_mask.tif for --image-filter tissue_mask (default: <image_path>/tissue_mask.tif)")
 @click.option("match_pre", "--match_pre", is_flag=True, default=False, help="Whether to match pre-existing tiles histogram distribution (default: False)")
-@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Path to store the images (default: None, uses environment variable)")
+@click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
+@click.option("deconwolf_config_file", "--deconwolf_config_file", default=None, type=click.Path(), help="deconwolf .config.ini: binary, PSFs, [Optics] (default: DECONWOLF_CONFIG in the config)")
 @click.pass_context
 def transform_image(
     ctx,
@@ -642,6 +480,7 @@ def transform_image(
     mask_path: str | Path | None = None,
     match_pre: bool = False,
     image_store: str | Path | None = None,
+    deconwolf_config_file: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -660,6 +499,7 @@ def transform_image(
         logger.info(f"{key}: {value} ({type(value)})")
 
 
+    _cfg = run_config(ctx, image_store=image_store, deconwolf_config_file=deconwolf_config_file)
     from spida.S.image_prep.orchestrator import transform_image as func
     func(
         image_path=image_path,
@@ -681,7 +521,8 @@ def transform_image(
         mask_path=mask_path,
         stitched_dir=stitched_dir,
         match_pre=match_pre,
-        image_store=image_store,
+        image_store=_cfg.image_store,
+        deconwolf_config=_cfg.deconwolf_config_file,
         **kwargs,
     )
 
@@ -691,8 +532,6 @@ cli.add_command(ingest_all)
 cli.add_command(load_segmentation_region)
 cli.add_command(load_segmentation_all)
 cli.add_command(load_deconvolution_region)
-cli.add_command(run_segmentation)
-cli.add_command(filt_to_ids)
 cli.add_command(align_geometries)
 cli.add_command(transform_image)
 

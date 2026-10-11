@@ -30,8 +30,8 @@ def segmentation_fixture(tmp_path: Path):
     output_dir = seg_out_dir / reg_name
     root_dir = tmp_path / "root"
 
-    shape_key1 = f"{prefix1}_{exp_name}_{reg_name}_polygons"
-    shape_key2 = f"{prefix2}_{exp_name}_{reg_name}_polygons"
+    shape_key1 = f"{prefix1}_polygons"
+    shape_key2 = f"{prefix2}_polygons"
 
     shapes1 = gpd.GeoDataFrame(
         {
@@ -70,6 +70,8 @@ def segmentation_fixture(tmp_path: Path):
         "reg_name": reg_name,
         "prefix1": prefix1,
         "prefix2": prefix2,
+        "shape_key1": shape_key1,
+        "shape_key2": shape_key2,
         "output_dir": output_dir,
         "seg_out_dir": seg_out_dir,
         "zarr_path": zarr_path,
@@ -89,8 +91,8 @@ def test_align_segmentations_geometry_modes(segmentation_fixture):
     for mode in geometry_modes:
         result = align_segmentations(
             zarr_path=zarr_path,
-            exp_name=exp_name,
-            reg_name=reg_name,
+            shape_key1=segmentation_fixture["shape_key1"],
+            shape_key2=segmentation_fixture["shape_key2"],
             prefix1=prefix1,
             prefix2=prefix2,
             geometry_mode=mode,
@@ -109,8 +111,8 @@ def test_align_segmentations_file_formats(segmentation_fixture):
     # Test for valid file formats
     result = align_segmentations(
         zarr_path=zarr_path,
-        exp_name=exp_name,
-        reg_name=reg_name,
+        shape_key1=segmentation_fixture["shape_key1"],
+        shape_key2=segmentation_fixture["shape_key2"],
         prefix1=prefix1,
         prefix2=prefix2,
         output_dir=output_dir
@@ -131,8 +133,8 @@ def test_no_cells_missing_or_introduced(segmentation_fixture):
     # Run the alignment
     result = align_segmentations(
         zarr_path=zarr_path,
-        exp_name=exp_name,
-        reg_name=reg_name,
+        shape_key1=segmentation_fixture["shape_key1"],
+        shape_key2=segmentation_fixture["shape_key2"],
         prefix1=prefix1,
         prefix2=prefix2,
         output_dir=output_dir
@@ -154,8 +156,8 @@ def test_seg_to_vpt_on_aligned_output(segmentation_fixture, monkeypatch):
 
     result = align_segmentations(
         zarr_path=zarr_path,
-        exp_name=exp_name,
-        reg_name=reg_name,
+        shape_key1=segmentation_fixture["shape_key1"],
+        shape_key2=segmentation_fixture["shape_key2"],
         prefix1=prefix1,
         prefix2=prefix2,
         output_dir=output_dir,
@@ -178,9 +180,8 @@ def test_seg_to_vpt_on_aligned_output(segmentation_fixture, monkeypatch):
     monkeypatch.setattr(vpt_module, "_cli_get_metadata", _record("metadata"))
 
     vpt_module.seg_to_vpt(
-        root_dir=str(root_dir),
-        seg_out_dir=str(seg_out_dir),
-        region=reg_name,
+        raw_dir=str(root_dir / reg_name),
+        seg_dir=str(output_dir),
         input_boundaries=aligned_name,
     )
 

@@ -1,13 +1,12 @@
 """Segmentation backend specification.
 
-A ``SegmentationClass`` describes one segmentation method: which pixi env its
+A ``SegmentationClass`` describes one segmentation method, which pixi env its
 backend runs in, which raw artifacts it produces, how those map to the
-(VPT-named) segmentation schema, and — derived from what it produces —
-which post-processing steps it still needs.
+(VPT-named) segmentation schema, and which post-processing steps it still needs.
 
 The segmentation schema uses VPT's names on disk
 (``EntityID``, ``ZIndex``, ``ZLevel``, ``Geometry``; transcript ``global_x/y/z``,
-``gene``, ``barcode_id``) so the VPT binary remains usable as a secondary backend.
+``gene``, ``barcode_id``) so the VPT binary remains usable as a backend.
 """
 
 from __future__ import annotations
@@ -19,37 +18,10 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__package__)
 
+# SPIDA imports
+from spida.io.layout import resolve_region_dir  # noqa: E402,F401
 
-def resolve_region_dir(store, exp_name, reg_name, label, *, must_exist: bool = False) -> Path:
-    """Resolve the on-disk directory for one region's segmentation output.
-
-    Layout (consistent with the zarr store's ``{exp}/{reg}`` hierarchy):
-        ``{store}/{exp}/{reg}/{label}``           (current)
-    with a single legacy fallback for older data:
-        ``{store}/{exp}/{label}/{reg}``           (pre-reorder)
-
-    ``label`` is the segmentation's name (== the loader's ``prefix_name``), which
-    defaults to the method (``cellpose``/``mesmer``/``proseg``) but can be set to
-    e.g. ``cellpose_nuc`` / ``cellpose_cell`` to distinguish runs.
-
-    Parameters:
-    store (str | Path): Segmentation output root (``SEGMENTATION_OUT_PATH``).
-    exp_name (str): The experiment name.
-    reg_name (str): The region name.
-    label (str): The segmentation name / prefix (directory leaf).
-    must_exist (bool): If True (reads), return the legacy path when only it exists;
-        otherwise (writes) always return the current-layout path (default False).
-    """
-    current = Path(store) / exp_name / reg_name / label
-    if must_exist and not current.exists():
-        legacy = Path(store) / exp_name / label / reg_name
-        if legacy.exists():
-            logger.info("resolve_region_dir: using legacy layout %s", legacy)
-            return legacy
-    return current
-
-# segmentation schema output filenames (identical across methods; written by the
-# process-segmentation steps). The loader resolves these first, then falls back
+# segmentation schema output filenames. The loader resolves these first, then falls back
 # to each method's legacy name for read-compatibility with older SPIDA data.
 SCHEMA_BOUNDARIES = "boundaries_micron.parquet"
 SCHEMA_CELL_BY_GENE = "cell_by_gene.csv"
@@ -67,15 +39,15 @@ class ColumnMap:
     for a boundary-only segmenter).
     """
 
-    cell_id: str = "ID"                # -> EntityID  (cellpose/mesmer "ID", proseg "cell")
-    geometry: str = "Geometry"         # -> Geometry
-    z_index: str | None = None         # -> ZIndex    (proseg "layer"; None => 2D / assigned)
+    cell_id: str = "ID" # EntityID  (cellpose/mesmer "ID", proseg "cell")
+    geometry: str = "Geometry" # Geometry
+    z_index: str | None = None # ZIndex (proseg "layer"; None => 2D / assigned)
     # transcript-table columns (only if the method emits assigned transcripts)
     tx_gene: str = "gene"
     tx_x: str = "global_x"
     tx_y: str = "global_y"
     tx_z: str = "global_z"
-    tx_assignment: str | None = None   # -> cell_id   (proseg "assignment")
+    tx_assignment: str | None = None # cell_id (proseg "assignment")
 
 
 @dataclass

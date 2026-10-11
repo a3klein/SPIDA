@@ -16,7 +16,6 @@ from spida.S.segmentation.backends import cellpose_config as cc
 from spida.S.segmentation.backends.cellpose_config import (
     CellposeConfig,
     KNOWN_MODELS,
-    SPIDA_ENV_VAR,
     CELLPOSE_ENV_VAR,
     derive_anisotropy,
     read_native_xy_um,
@@ -70,48 +69,14 @@ def test_unknown_parameter_raises_with_suggestion():
 
 
 @pytest.mark.parametrize(
-    "alias,target,value",
-    [
-        ("model_name", "model", "cpsam"),
-        ("tile_size", "poly_tile_size", 512),
-        ("overlap", "poly_tile_overlap", 64),
-        ("clahe_clipLimit", "clahe_clip_limit", 5.0),
-        ("clahe_tileGridSize", "clahe_tile_grid_size", 16),
-    ],
+    "old",
+    [dict(model_name="cpsam"), dict(tile_size=512), dict(overlap=64), dict(clahe_clipLimit=5.0),
+     dict(clahe_tileGridSize=16), dict(do_3D=True), dict(project_3d_to_2d=True)],
 )
-def test_deprecated_aliases_map_and_warn(alias, target, value):
-    with pytest.warns(DeprecationWarning):
-        cfg = CellposeConfig.from_kwargs(**{alias: value})
-    assert getattr(cfg, target) == value
-
-
-def test_alias_and_canonical_together_raises():
-    with pytest.warns(DeprecationWarning):
-        with pytest.raises(ConfigError, match="supplied twice"):
-            CellposeConfig.from_kwargs(poly_tile_size=512, tile_size=256)
-
-
-# ---------------------------------------------------------------------------
-# legacy mode flags -> seg_mode
-# ---------------------------------------------------------------------------
-
-def test_do_3d_true_maps_to_3d_true():
-    with pytest.warns(DeprecationWarning, match="do_3D"):
-        cfg = CellposeConfig.from_kwargs(do_3D=True)
-    assert cfg.seg_mode == "3d_true"
-
-
-def test_do_3d_false_maps_to_stitched():
-    with pytest.warns(DeprecationWarning, match="do_3D"):
-        cfg = CellposeConfig.from_kwargs(do_3D=False)
-    assert cfg.seg_mode == "3d_stitched"
-
-
-def test_project_3d_to_2d_maps_to_2d_mip():
-    with pytest.warns(DeprecationWarning, match="project_3d_to_2d"):
-        cfg = CellposeConfig.from_kwargs(project_3d_to_2d=True)
-    assert cfg.seg_mode == "2d"
-    assert cfg.z_reduce == "mip"        # legacy flag did a max projection
+def test_archived_names_are_unknown(old):
+    """Deprecated names and legacy mode flags were archived 2026-09-28; they now fail like typos."""
+    with pytest.raises(ConfigError, match="unknown parameter"):
+        CellposeConfig.from_kwargs(**old)
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +105,6 @@ def test_anisotropy_allowed_for_3d_true():
         (dict(gpu_tile_size=9000, gpu_merge="mean"), "gpu_merge"),
         # unknown / conflicting parameters
         (dict(nonexistent_param=1), "unknown parameter"),
-        (dict(seg_mode="2d", do_3D=True), "seg_mode"),
         # overlap vs tile, on either axis
         (dict(poly_tile_size=100, poly_tile_overlap=100), "must be smaller"),
         (dict(gpu_tile_size="12000x400", gpu_tile_overlap=500), "every axis"),
@@ -178,8 +142,7 @@ def test_describe_lists_every_field_and_is_readable():
     for name in CellposeConfig.field_names():
         assert name in text
     assert "seg_mode" in text and "3d_stitched" in text
-    assert "Deprecated aliases" in text
-    assert "tile_size -> poly_tile_size" in text
+    assert "Deprecated aliases" not in text  # all archived 2026-09-28
 
 
 def test_to_meta_is_json_serialisable():
@@ -196,27 +159,26 @@ def test_to_meta_is_json_serialisable():
 
 def test_model_dir_precedence(tmp_path, monkeypatch):
     explicit = tmp_path / "explicit"
-    spida = tmp_path / "spida"
     cellpose = tmp_path / "cellpose"
-    monkeypatch.setenv(SPIDA_ENV_VAR, str(spida))
     monkeypatch.setenv(CELLPOSE_ENV_VAR, str(cellpose))
+    monkeypatch.setenv("CELLPOSE_MODEL_PATH", str(tmp_path / "ignored"))  # a config key, not read here
 
-    assert resolve_model_dir(explicit) == explicit          # explicit wins
-    assert resolve_model_dir(None) == spida                 # then SPIDA's key
-
-    monkeypatch.delenv(SPIDA_ENV_VAR)
-    assert resolve_model_dir(None) == cellpose              # then cellpose's
+    assert resolve_model_dir(explicit) == explicit          # explicit (--model_dir / config) wins
+    assert resolve_model_dir(None) == cellpose              # then cellpose's own variable
 
     monkeypatch.delenv(CELLPOSE_ENV_VAR)
     assert resolve_model_dir(None) == Path.home() / ".cellpose" / "models"
 
 
-def test_spida_env_var_is_actually_honoured(tmp_path, monkeypatch):
-    """Regression guard for the original bug: CELLPOSE_MODEL_PATH was defined
-    in every config JSON but never reached the model loader."""
-    monkeypatch.setenv(SPIDA_ENV_VAR, str(tmp_path))
+def test_model_dir_expands_home(monkeypatch):
+    monkeypatch.setenv(CELLPOSE_ENV_VAR, "~/cp_env")
+    assert resolve_model_dir("~/cp_explicit") == Path.home() / "cp_explicit"
+    assert resolve_model_dir(None) == Path.home() / "cp_env"
+
+
+def test_explicit_dir_resolves_local_weights(tmp_path):
     (tmp_path / "cpsam").write_bytes(b"weights")
-    res = resolve_model("cpsam")
+    res = resolve_model("cpsam", model_dir=tmp_path)
     assert res.exists_locally
     assert res.pretrained_model == str(tmp_path / "cpsam")
 

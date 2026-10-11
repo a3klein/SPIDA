@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar, Literal
@@ -34,10 +33,9 @@ from .config import BackendConfig, ConfigError
 
 logger = logging.getLogger(__package__)
 
-#: Environment variable cellpose itself honours for its model cache.
+#: Environment variable cellpose itself honours for its model cache. cellpose reads it
+#: once, when ``cellpose.models`` is first imported (``models.MODEL_DIR``, not expanded).
 CELLPOSE_ENV_VAR = "CELLPOSE_LOCAL_MODELS_PATH"
-#: SPIDA's config key for the same thing (config JSON / .env).
-SPIDA_ENV_VAR = "CELLPOSE_MODEL_PATH"
 
 #: Models SPIDA knows about, with the notes that should inform picking one.
 KNOWN_MODELS: dict[str, str] = {
@@ -54,14 +52,30 @@ REQUIRES_DINOV3: frozenset[str] = frozenset({"cpdino", "cpdino-vitb"})
 def resolve_model_dir(explicit: str | Path | None = None) -> Path:
     """Resolve the directory holding cellpose weights.
 
-    Precedence: explicit config field > ``CELLPOSE_MODEL_PATH`` (SPIDA's config
-    key) > ``CELLPOSE_LOCAL_MODELS_PATH`` (cellpose's own) > cellpose's default
-    ``~/.cellpose/models``.
+    Precedence: ``explicit`` (``--model_dir``, or ``CELLPOSE_MODEL_PATH`` from the SPIDA config,
+    filled in by ``segment-region``) > ``CELLPOSE_LOCAL_MODELS_PATH`` (cellpose's own) >
+    cellpose's default ``~/.cellpose/models``. Always ``~``-expanded.
     """
-    for candidate in (explicit, os.getenv(SPIDA_ENV_VAR), os.getenv(CELLPOSE_ENV_VAR)):
+    for candidate in (explicit, os.getenv(CELLPOSE_ENV_VAR)):
         if candidate:
             return Path(candidate).expanduser()
     return Path.home() / ".cellpose" / "models"
+
+
+def point_cellpose_at(directory: str | Path) -> None:
+    """Make cellpose download and cache weights in ``directory`` (the one SPIDA reads).
+
+    Sets ``CELLPOSE_LOCAL_MODELS_PATH`` for an import that has not happened yet, and
+    updates ``cellpose.models.MODEL_DIR`` if cellpose was already imported in this process
+    (its value is fixed at import time, and ``cache_model_path`` reads it on each call).
+    """
+    import sys
+
+    directory = Path(directory).expanduser()
+    os.environ[CELLPOSE_ENV_VAR] = str(directory)
+    loaded = sys.modules.get("cellpose.models")
+    if loaded is not None:
+        loaded.MODEL_DIR = directory
 
 
 def _cellpose_known_models() -> set[str]:
@@ -94,9 +108,9 @@ class ModelResolution:
         else:
             logger.warning(
                 "cellpose model '%s' NOT FOUND in %s — cellpose will DOWNLOAD it "
-                "now. Set %s to a directory holding the weights to avoid "
-                "re-downloading on every job.",
-                self.name, self.model_dir, SPIDA_ENV_VAR,
+                "there now. Point CELLPOSE_MODEL_PATH (config) or --model_dir at a "
+                "shared directory to avoid re-downloading on every job.",
+                self.name, self.model_dir,
             )
 
 
@@ -276,13 +290,7 @@ class CellposeConfig(BackendConfig):
     poly_tolerance: float = 0.5
     n_poly_workers: int | None = None
 
-    ALIASES: ClassVar[dict[str, str]] = {
-        "model_name": "model",
-        "tile_size": "poly_tile_size",
-        "overlap": "poly_tile_overlap",
-        "clahe_clipLimit": "clahe_clip_limit",
-        "clahe_tileGridSize": "clahe_tile_grid_size",
-    }
+    ALIASES: ClassVar[dict[str, str]] = {}  # deprecated names archived 2026-09-28
 
     CHOICES: ClassVar[dict[str, tuple]] = {
         "seg_mode": ("2d", "3d_stitched", "3d_true"),
@@ -299,9 +307,9 @@ class CellposeConfig(BackendConfig):
                     "maximum-intensity projection over z.",
         "model": "Cellpose model NAME (not a path). "
                  + " | ".join(f"{k}: {v}" for k, v in KNOWN_MODELS.items()),
-        "model_dir": "Directory holding the weights. Defaults to "
-                     f"${SPIDA_ENV_VAR}, then ${CELLPOSE_ENV_VAR}, then "
-                     "~/.cellpose/models.",
+        "model_dir": "Directory holding the weights (downloads land here too). Defaults to "
+                     "CELLPOSE_MODEL_PATH in the config, then "
+                     f"${CELLPOSE_ENV_VAR}, then ~/.cellpose/models.",
         "use_bfloat16": "Half-precision inference. ~1.85x faster at mean "
                         "per-cell IoU 0.985 vs fp32.",
         "scale": "xy downsample factor applied before inference. Coupled to anisotropy.",
@@ -357,45 +365,6 @@ class CellposeConfig(BackendConfig):
     }
 
     # ------------------------------------------------------------------
-    @classmethod
-    def from_kwargs(cls, **kwargs) -> "CellposeConfig":
-        """As the base, but first folds the legacy mode flags into ``seg_mode``.
-
-        ``do_3D`` and ``project_3d_to_2d`` are not simple renames — they select
-        a mode — so they are translated here rather than via ``ALIASES``.
-        """
-        legacy = {}
-        for old in ("do_3D", "project_3d_to_2d"):
-            if old in kwargs:
-                legacy[old] = kwargs.pop(old)
-
-        if legacy and "seg_mode" in kwargs:
-            raise ConfigError(
-                f"seg_mode cannot be combined with the deprecated flag(s) "
-                f"{', '.join(sorted(legacy))}; use seg_mode alone."
-            )
-        if legacy:
-            if legacy.get("project_3d_to_2d"):
-                kwargs["seg_mode"] = "2d"
-                kwargs.setdefault("z_reduce", "mip")
-            elif legacy.get("do_3D"):
-                kwargs["seg_mode"] = "3d_true"
-            else:
-                kwargs["seg_mode"] = "3d_stitched"
-            names = ", ".join(sorted(legacy))
-            # Same signalling as ALIASES so every deprecated name behaves alike.
-            warnings.warn(
-                f"CellposeConfig: {names} is deprecated; use "
-                f"seg_mode={kwargs['seg_mode']!r}.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            logger.warning(
-                "CellposeConfig: %s is deprecated; interpreted as seg_mode=%r",
-                names, kwargs["seg_mode"],
-            )
-
-        return super().from_kwargs(**kwargs)  # type: ignore[return-value]
 
     def validate(self) -> None:
         super().validate()

@@ -1,6 +1,5 @@
 from pathlib import Path
 from natsort import natsorted
-from dotenv import load_dotenv  # type: ignore
 import logging
 
 from PIL import Image
@@ -11,7 +10,6 @@ from deepcell.applications import Mesmer  # type: ignore
 from .masks import masks_to_geodataframe
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit on image size
-load_dotenv()
 logger = logging.getLogger(__package__)
 
 

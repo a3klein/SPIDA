@@ -1,96 +1,75 @@
-import os
-from dotenv import load_dotenv  # type: ignore
 from pathlib import Path
 import logging
 
-load_dotenv()
 logger = logging.getLogger(__package__)
 
 
 def align_geometries(
-    exp_name,
-    reg_name,
-    prefix1 : str = "cellpose_nuc",
-    prefix2 : str = "cellpose_cell",
-    output_dir : str | None = None,
-    geometry_mode : str = "larger",
-    cell_id : str = "EntityID",
-    coordinate_system : str = "global",
-    min_intersection_area : float = 0.0,
-    out_dir_name : str = "align",
-    zarr_store : str | None = None,
-    segmentation_store: str | None = None,
-    root_path : str | None = None,
-    vpt_bin_path : str | None = None
+    dataset,
+    prefix1: str = "cellpose_nuc",
+    prefix2: str = "cellpose_cell",
+    geometry_mode: str = "larger",
+    cell_id: str = "EntityID",
+    coordinate_system: str = "global",
+    min_intersection_area: float = 0.0,
+    out_dir_name: str = "align",
+    micron_per_z: float = 1.5,
+    n_jobs: int = 7,
 ):
     """Reconcile two segmentations (e.g. nuclear ``cellpose_nuc`` vs whole-cell
-    ``cellpose_cell``) into one boundary set by spatial overlap, then convert to
-    the segmentation schema via VPT.
+    ``cellpose_cell``) into one boundary set by spatial overlap, then build the
+    segmentation schema from it natively (``process_custom_segmentation``, no VPT).
 
-    .. warning::
-        NOT YET MIGRATED to the segmentation-schema redesign and may be buggy.
-        Specifically: the ``seg_to_vpt`` call below does not thread
-        ``is_3d``/``spacing_z``, so it is effectively **2D-only** (3D aligned
-        geometries would get default z-spacing on the 2D path), and the outputs
-        still use the pre-redesign ``align``/nuc-cell conventions. Kept as a
-        feature but treat results with caution until migrated.
+    Output: ``{seg}/{out_dir_name}`` — the aligned polygons parquet plus the schema files.
+    2D: each aligned polygon is one plane, expanded across the transcript planes for
+    partitioning, as for any 2D custom segmentation.
 
     Parameters:
-    exp_name (str): The name of the experiment.
-    reg_name (str): The name of the region.
-    prefix1 (str): Shapes-layer prefix for the first segmentation (default "cellpose_nuc").
-    prefix2 (str): Shapes-layer prefix for the second segmentation (default "cellpose_cell").
-    output_dir (str | None): Directory for the aligned boundary output (default is None).
-    geometry_mode (str): Which polygon to keep per matched pair: one of "larger", "prefix1", "prefix2", "intersection" (default "larger").
+    dataset (Dataset): The dataset (zarr + raw + seg locations).
+    prefix1 (str): First segmentation (default "cellpose_nuc").
+    prefix2 (str): Second segmentation (default "cellpose_cell").
+    geometry_mode (str): Which polygon to keep per matched pair: "larger", "prefix1", "prefix2", "intersection" (default "larger").
     cell_id (str): The cell-id column name (default "EntityID").
-    coordinate_system (str): The spatialdata coordinate system to align in (default "global").
+    coordinate_system (str): Coordinate system to align in (default "global" = mosaic pixels for MERSCOPE).
     min_intersection_area (float): Minimum intersection area (pixels) required for a match (default 0.0).
-    out_dir_name (str): Sub-directory name under the segmentation store for outputs (default "align").
-    zarr_store (str | None): Path to the zarr storage (default is None, uses env ZARR_STORAGE_PATH).
-    segmentation_store (str | None): Segmentation output root (default is None, uses env SEGMENTATION_OUT_PATH).
-    root_path (str | None): Raw MERSCOPE root (default is None, uses env PROCESSED_ROOT_PATH).
-    vpt_bin_path (str | None): Path to the VPT binary (default is None, uses env VPT_BIN_PATH).
+    out_dir_name (str): Label of the aligned segmentation under the dataset's seg dir (default "align").
+    micron_per_z (float): Micron thickness per z-plane (default 1.5).
+    n_jobs (int): sum-signals workers (default 7).
     """
-    from .vpt import seg_to_vpt
+    from spida._constants import SHAPES_KEY
     from .align import align_segmentations
 
-    if zarr_store is None: 
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
-    if root_path is None: 
-        root_path = os.getenv("PROCESSED_ROOT_PATH")
-    input_dir = f"{root_path}/{exp_name}/out"
-    if segmentation_store is None:
-        seg_out_path = os.getenv("SEGMENTATION_OUT_PATH")
-        segmentation_store = Path(f"{seg_out_path}/{exp_name}/{out_dir_name}")
-    elif exp_name not in str(segmentation_store):
-        segmentation_store = Path(f"{segmentation_store}/{exp_name}/{out_dir_name}")
-    # if isinstance(segmentation_store, str):
-    #     segmentation_store = Path(segmentation_store)
-
-    zarr_path = Path(zarr_store) / exp_name / reg_name
-
-
-    ret_dict = align_segmentations(
-        zarr_path=zarr_path,
-        exp_name=exp_name,
-        reg_name=reg_name,
+    raw = dataset.require("raw")
+    out_dir = dataset.seg_dir(out_dir_name)
+    ret = align_segmentations(
+        zarr_path=dataset.require("zarr"),
+        shape_key1=dataset.keys(prefix1)[SHAPES_KEY],
+        shape_key2=dataset.keys(prefix2)[SHAPES_KEY],
         prefix1=prefix1,
         prefix2=prefix2,
-        output_dir = output_dir,
-        segmentation_store = segmentation_store,
-        geometry_mode = geometry_mode,
-        cell_id = cell_id,
-        min_intersection_area = min_intersection_area,
-        coordinate_system = coordinate_system,
+        output_dir=out_dir,
+        geometry_mode=geometry_mode,
+        cell_id=cell_id,
+        min_intersection_area=min_intersection_area,
+        coordinate_system=coordinate_system,
     )
 
-    logger.info(f"Converting aligned geometries to VPT format for region {reg_name} in experiment {exp_name}.")
-    logger.info(f"Input directory: {input_dir}")
-    logger.info(f"Segmentation store: {segmentation_store}")
-    logger.info(f"Input boundaries file: {Path(ret_dict['output_path']).name}")
-
-    input_boundaries = Path(ret_dict['output_path']).name
-    seg_to_vpt(input_dir, segmentation_store, reg_name, vpt_bin_path, input_boundaries=input_boundaries)
+    transcripts = raw / "detected_transcripts.parquet"
+    if not transcripts.exists():
+        transcripts = raw / "detected_transcripts.csv"
+    logger.info("align_geometries: %d aligned cells -> schema in %s", ret["n_aligned"], out_dir)
+    process_custom_segmentation(
+        ret["output_path"],
+        out_dir,
+        boundaries_space="pixel" if coordinate_system == "global" else "micron",
+        micron_to_mosaic_path=raw / "images" / "micron_to_mosaic_pixel_transform.csv",
+        z_spacing=micron_per_z,
+        n_z_planes=1,
+        cell_id_col=f"{prefix1}_id",
+        transcripts_path=transcripts,
+        images_dir=raw / "images",
+        n_jobs=n_jobs,
+    )
 
 
 # ===========================================================================
@@ -141,12 +120,9 @@ def resolve_tissue_mask_path(
 
 def segment_region(
     method: str,
-    exp_name: str,
-    reg_name: str,
+    dataset,
     *,
     prefix_name: str | None = None,
-    root_path: str | Path | None = None,
-    segmentation_store: str | Path | None = None,
     rust_bin_path: str | Path | None = None,
     tissue_mask_path: str | Path | None = None,
     **kwargs,
@@ -154,32 +130,32 @@ def segment_region(
     """Run only the segmentation *backend* for a region (produces raw boundaries).
 
     Runs in the backend's env (``spec.env``): cellpose -> "cellpose", mesmer ->
-    "deepcell", proseg -> "preprocessing". Output goes to
-    ``{SEGMENTATION_OUT_PATH}/{exp}/{region}/{prefix_name}`` (``prefix_name`` defaults
-    to the method; set it to e.g. ``cellpose_nuc``/``cellpose_cell`` to name the run).
+    "deepcell", proseg -> "preprocessing". Output goes to ``dataset.seg_dir(prefix_name)``
+    (``prefix_name`` defaults to the method; set it to e.g. ``cellpose_nuc``/``cellpose_cell``).
 
     Parameters:
+    dataset (Dataset): The dataset (raw region dir, segmentation dir).
     prefix_name (str | None): Segmentation name / output-directory leaf; defaults to the
         method name. This is the same label used as the ``prefix_name`` at load time
         (default is None).
     tissue_mask_path (str | Path | None): Boolean tissue mask restricting where
         segmentation runs, as written by ``tissue-mask``. Default None auto-discovers
-        ``{root}/{exp}/out/{region}/images/tissue_mask.tif`` and proceeds ungated
-        if it is absent; an explicit path that does not exist raises.
+        ``<raw images dir>/tissue_mask.tif`` and proceeds ungated if it is absent;
+        an explicit path that does not exist raises.
     """
-    from .backends import get_spec, resolve_region_dir
+    from .backends import get_spec
 
     spec = get_spec(method)
     spec.require_env("segment")
 
     label = prefix_name or method
-    processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")
-    seg_out = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
-    input_dir = f"{processed_root}/{exp_name}/out"
-    images_dir = f"{input_dir}/{reg_name}/images"
-    output_dir = str(resolve_region_dir(seg_out, exp_name, reg_name, label))
-    logger.info("segment_region: %s v%s on %s/%s -> %s",
-                method, spec.version, exp_name, reg_name, output_dir)
+    raw_region = dataset.require("raw")
+    reg_name = raw_region.name
+    input_dir = str(raw_region.parent)
+    images_dir = str(dataset.raw_images())
+    output_dir = str(dataset.seg_dir(label))
+    logger.info("segment_region: %s v%s on %s -> %s",
+                method, spec.version, raw_region, output_dir)
 
     if tissue_mask_path is not None and method not in _TISSUE_MASK_METHODS:
         raise ValueError(
@@ -207,14 +183,11 @@ def segment_region(
 
 def process_segmentation_region(
     method: str,
-    exp_name: str,
-    reg_name: str,
+    dataset,
     version: str | None = None,
     *,
     prefix_name: str | None = None,
     backend: str = "native",
-    root_path: str | Path | None = None,
-    segmentation_store: str | Path | None = None,
     micron_per_z: float = 1.5,
     n_z_planes: int = 7,
     n_jobs: int = 7,
@@ -226,14 +199,15 @@ def process_segmentation_region(
     Runs in the ``preprocessing`` env. ``backend="native"`` (default) uses the
     pure-Python path (ingest + the steps in ``spec.needs``); ``backend="vpt"``
     falls back to the VPT binary path (``seg_to_vpt``). Writes the standardized
-    segmentation schema files to ``{SEGMENTATION_OUT_PATH}/{exp}/{region}/{prefix_name}``.
+    segmentation schema files to ``dataset.seg_dir(prefix_name)``.
 
     Parameters:
+    dataset (Dataset): The dataset (raw region dir, segmentation dir).
     prefix_name (str | None): Segmentation name / directory leaf; must match what was
         passed to ``segment-region``. Defaults to the method name (default is None).
     """
     import pandas as pd
-    from .backends import get_spec, resolve_region_dir
+    from .backends import get_spec
     from .backends.base import (
         SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA,
         SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
@@ -243,23 +217,18 @@ def process_segmentation_region(
     spec.require_env("process")
 
     label = prefix_name or method
-    processed_root = root_path or os.getenv("PROCESSED_ROOT_PATH")
-    seg_out = segmentation_store or os.getenv("SEGMENTATION_OUT_PATH")
-    raw_region = Path(processed_root) / exp_name / "out" / reg_name
-    images_dir = raw_region / "images"
+    raw_region = dataset.require("raw")
+    images_dir = dataset.raw_images()
     m2m = images_dir / "micron_to_mosaic_pixel_transform.csv"
-    # resolve where segment-region wrote the raw output (current layout, legacy fallback)
-    seg_region = resolve_region_dir(seg_out, exp_name, reg_name, label, must_exist=True)
+    # where segment-region wrote the raw output (current layout, legacy fallback)
+    seg_region = dataset.seg_dir(label, must_exist=True)
 
     logger.info("process_segmentation_region: %s v%s (%s backend) needs=%s -> %s",
                 method, spec.version, backend, spec.needs, seg_region)
 
     if backend == "vpt":
-        # Legacy fallback: seg_to_vpt reconstructs {dir}/{region}, so it operates on the
-        # legacy {exp}/{label}/{reg} layout only (the loader resolves that via fallback).
         from .vpt import seg_to_vpt
-        seg_to_vpt(str(raw_region.parents[0]), f"{seg_out}/{exp_name}/{label}",
-                   reg_name, vpt_bin_path=vpt_bin_path,
+        seg_to_vpt(str(raw_region), str(seg_region), vpt_bin_path=vpt_bin_path,
                    is_3d=(n_z_planes > 1), spacing_z=micron_per_z, **kwargs)
         return
 
@@ -513,22 +482,3 @@ def process_custom_segmentation(
     logger.info("process_custom_segmentation: wrote segmentation schema outputs to %s", out)
 
 
-def _deprecated_run_segmentation_message(method: str = "cellpose",
-                                         exp_name: str = "EXP",
-                                         reg_name: str = "REGION") -> str:
-    """Migration guidance for the retired bundled `run-segmentation-region`."""
-    from .backends import get_spec
-    try:
-        env = get_spec(method).env
-    except Exception:
-        env = "cellpose"
-    return (
-        "`run-segmentation-region` is deprecated and no longer runs.\n"
-        "Segmentation and its post-processing are now two steps in two envs "
-        "(and output filenames changed, e.g. `boundaries_micron.parquet`):\n\n"
-        f"  pixi run -e {env} python -m spida.S.cli segment-region "
-        f"{method} {exp_name} {reg_name}\n"
-        f"  pixi run -e preprocessing python -m spida.S.cli process-segmentation-region "
-        f"{method} {exp_name} {reg_name}\n\n"
-        "Use `--backend vpt` on process-segmentation-region for the legacy VPT path."
-    )

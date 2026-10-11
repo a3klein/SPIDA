@@ -1,4 +1,3 @@
-from dotenv import load_dotenv  # type: ignore
 
 import logging
 from pathlib import Path
@@ -34,7 +33,6 @@ from spida.S.image_prep.tile_io import project_down_2D, project_to_3D, write_tif
 from spida.S.image_prep.tile_selection import select_tiles
 from spida.S.image_prep.transforms import TileContext, resolve_transform
 
-load_dotenv()
 logger = logging.getLogger(__package__)
 
 from spida.pl.decon_plots import save_threshold_plots_pdf
@@ -131,6 +129,7 @@ def transform_image(
     select_tiles_method: str | None = None,
     mask_path: str | Path | None = None,
     stitched_dir: str | Path | None = None,
+    deconwolf_config: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -138,6 +137,8 @@ def transform_image(
 
     stitched_dir
         Where the stitched `*_z{n}.decon.tif` outputs go. Default None next to image_path
+    deconwolf_config
+        The deconwolf .config.ini (binary, PSF dir, [Optics]); required by deconwolf.
     """
 
     logger.info(f"Starting {transform} on image: {image_path}")
@@ -291,6 +292,7 @@ def transform_image(
             colors=channels["color"].values,
             z_step_um=z_step,
             gpu=gpu,
+            optics_config=deconwolf_config,
         )
 
         if continue_stalled:

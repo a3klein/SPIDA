@@ -117,11 +117,14 @@ def captured(monkeypatch) -> dict:
     return calls
 
 
+def _dataset(root):
+    from spida.config import SpidaConfig
+    from spida.io.layout import dataset_from
+    return dataset_from(SpidaConfig(root_path=Path(root), segmentation_store=Path(root).parent / "seg"), "EXP", "REG")
+
+
 def _segment(root, **kw):
-    return seg_main.segment_region(
-        "cellpose", "EXP", "REG", root_path=str(root),
-        segmentation_store=str(Path(root).parent / "seg"), **kw,
-    )
+    return seg_main.segment_region("cellpose", _dataset(root), **kw)
 
 
 def test_segment_region_forwards_the_discovered_mask(region, captured):
@@ -165,8 +168,7 @@ def test_mask_rejected_for_a_backend_that_cannot_use_it(region, monkeypatch):
     (images / seg_main.TISSUE_MASK_FILENAME).write_bytes(b"")
     with pytest.raises(ValueError, match="does not consume it"):
         seg_main.segment_region(
-            "proseg", "EXP", "REG", root_path=str(root),
-            segmentation_store=str(root.parent / "seg"),
+            "proseg", _dataset(root),
             tissue_mask_path=str(images / seg_main.TISSUE_MASK_FILENAME),
         )
 
@@ -180,6 +182,5 @@ def test_proseg_unaffected_when_no_mask_is_requested(region, monkeypatch):
     seen: dict = {}
     monkeypatch.setattr(pb, "run_proseg",
                         lambda *a, **k: seen.update(args=a, kwargs=k))
-    seg_main.segment_region("proseg", "EXP", "REG", root_path=str(root),
-                            segmentation_store=str(root.parent / "seg"))
+    seg_main.segment_region("proseg", _dataset(root))
     assert "tissue_mask_path" not in seen["kwargs"]

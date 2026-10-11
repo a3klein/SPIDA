@@ -4,26 +4,17 @@ Read by every transform that needs physical parameters, so NA / pixel size /
 wavelength have one source rather than one per filter.
 """
 import configparser
-import os
 from pathlib import Path
-
-from dotenv import load_dotenv  # type: ignore
 
 from spida._constants import OPTICS_DEFAULTS
 
-load_dotenv()
 
-
-### TODO: change from .env pointer to dw config to just having the config params from the .ini file in the .env file
-def _configure_deconwolf():
-    """Configure Deconwolf."""
+def _configure_deconwolf(config_path: str | Path | None):
+    """Deconwolf binary and PSF dir from the ``[Paths]`` section of ``config_path``."""
+    if config_path is None:
+        raise ValueError("no deconwolf config; pass --deconwolf_config_file or set DECONWOLF_CONFIG in the config")
     config = configparser.ConfigParser()
-    config_path = Path(
-        os.getenv(
-            "DECONWOLF_CONFIG",
-            "/anvil/projects/x-mcb130189/aklein/BICAN/fish_supp/.config.ini",
-        )
-    )
+    config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(
             f"Config file not found at {config_path}. Please create a .config.ini file."
@@ -42,7 +33,7 @@ def _configure_deconwolf():
     return dw_path, psf_path
 
 
-def get_optics(channel: str | None = None) -> dict:
+def get_optics(channel: str | None = None, config_path: str | Path | None = None) -> dict:
     """Imaging optics from the [Optics] section of the deconwolf ini.
 
     Any consumer needing physical parameters -- deconvolution, PSF generation, or a
@@ -53,15 +44,14 @@ def get_optics(channel: str | None = None) -> dict:
 
     `channel` adds `emission_nm` for that channel when the ini declares it.
 
-    Lives here rather than in `spida.config` because it reads the SAME file, via the
-    same `DECONWOLF_CONFIG` env var, as `_configure_deconwolf` above -- `spida.config`
-    handles SPIDA's own JSON config, a different file with a different format. The
-    defaults themselves are in `spida._constants`, which holds no I/O.
+    Lives here rather than in `spida.config` because it reads the SAME ini file as
+    `_configure_deconwolf` above (its path is `SpidaConfig.deconwolf_config_file`);
+    `spida.config` handles SPIDA's own JSON config. No ``config_path`` gives the
+    defaults, which are in `spida._constants` (no I/O).
     """
     config = configparser.ConfigParser()
-    config_path = Path(os.getenv("DECONWOLF_CONFIG", ""))
     optics = dict(OPTICS_DEFAULTS)
-    if config_path.exists():
+    if config_path is not None and Path(config_path).is_file():
         config.read(str(config_path))
         if config.has_section("Optics"):
             for k in OPTICS_DEFAULTS:

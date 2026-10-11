@@ -76,9 +76,8 @@ def get_id() -> np.int64:
 
 # My function to convert the 3D geom
 def _3d_convert_geometry(
-    root_dir: str,
-    output_dir: str,
-    region: str,
+    raw_dir: str,
+    seg_dir: str,
     input_boundaries: str = "polygons.parquet",
     output_boundaries: str = "cellpose_micron_space.parquet",
     convert_micron: bool = True,
@@ -90,12 +89,12 @@ def _3d_convert_geometry(
     from VPT since it returns weird results for 3D geometry.
     """
 
-    input_path = f"{output_dir}/{region}/{input_boundaries}"
-    output_path = f"{output_dir}/{region}/{output_boundaries}"
+    input_path = f"{seg_dir}/{input_boundaries}"
+    output_path = f"{seg_dir}/{output_boundaries}"
     gdf_inp = gpd.read_parquet(input_path)
     
     if convert_micron:
-        mic_to_mos_path = f"{root_dir}/{region}/images/micron_to_mosaic_pixel_transform.csv"
+        mic_to_mos_path = f"{raw_dir}/images/micron_to_mosaic_pixel_transform.csv"
         micron_to_mosaic = read_micron_to_mosaic_transform(mic_to_mos_path)
         mosaic_to_micron_mat = np.linalg.inv(micron_to_mosaic)
         gdf_inp = transform_geoms(gdf_inp, mosaic_to_micron_mat)

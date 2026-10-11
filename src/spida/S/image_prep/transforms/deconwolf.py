@@ -42,7 +42,7 @@ def run(
     psigma
         Regulariser for the Richardson-Lucy sparsity artifact. Requires no tilesize.
     """
-    dw_path, psf_path = _configure_deconwolf()
+    dw_path, psf_path = _configure_deconwolf(ctx.optics_config)
     src, dst = Path(src), Path(dst)
 
     colors = [ctx.colors] if isinstance(ctx.colors, int) else ctx.colors
