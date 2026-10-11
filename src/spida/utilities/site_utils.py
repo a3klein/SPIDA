@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import re
 
-from spida.utilities.sd_utils import _gen_keys
 from spida._constants import IMAGE_KEY, SHAPES_KEY, POINTS_KEY, TABLE_KEY
 
 
@@ -43,23 +41,22 @@ def lookup_naming_entry(
 
 
 def _load_metadata(
-    exp_name: str,
-    reg_name: str,
+    dataset,
+    site_dir: str | Path | None,
     prefix_name: str | None = None,
     lab: str | None = None,
     brain_region: str = "WB",
-    zarr_store: str | None = None,
-    site_dir: str | Path | None = None,
     naming_map: str | Path | None = None,
 ):
+    """The dataset's store, its site dirs ``{site}/{images,data}/{brain_region}/{exp}_{reg}[_{lab}]``, and keys."""
     import spatialdata as sd
 
-    if zarr_store is None:
-        zarr_store = os.getenv("ZARR_STORAGE_PATH")
+    if not dataset.named:
+        raise ValueError("site figures are named after the dataset: pass --exp and --reg")
     if site_dir is None:
-        site_dir = os.getenv("SPIDA_SITE_DIR", None)
-    if isinstance(site_dir, str):
-        site_dir = Path(site_dir)
+        raise ValueError("no site dir; pass --site_dir or set SPIDA_SITE_DIR in the config")
+    site_dir = Path(site_dir)
+    exp_name, reg_name = dataset.exp, dataset.reg
 
     naming_map_df = load_naming_map(naming_map)
     entry = lookup_naming_entry(naming_map_df, exp_name, reg_name, lab)
@@ -70,20 +67,14 @@ def _load_metadata(
     img_dir.mkdir(parents=True, exist_ok=True)
     data_dir = site_dir / "data" / br / dir_name
     data_dir.mkdir(parents=True, exist_ok=True)
-    sdata_path = Path(zarr_store) / exp_name / reg_name
-    sdata = sd.read_zarr(sdata_path)
+    sdata = sd.read_zarr(dataset.require("zarr"))
 
-    keys = _gen_keys("default", exp_name, reg_name)
-    image_key = keys[IMAGE_KEY]
+    image_key = dataset.keys("default")[IMAGE_KEY]
     if prefix_name is not None:
-        keys = _gen_keys(prefix_name, exp_name, reg_name)
-        shapes_key = keys[SHAPES_KEY]
-        table_key = keys[TABLE_KEY]
-        points_key = keys[POINTS_KEY]
+        keys = dataset.keys(prefix_name)
+        shapes_key, table_key, points_key = keys[SHAPES_KEY], keys[TABLE_KEY], keys[POINTS_KEY]
     else:
-        shapes_key = None
-        table_key = None
-        points_key = None
+        shapes_key = table_key = points_key = None
 
     return sdata, img_dir, data_dir, (image_key, shapes_key, table_key, points_key), naming_map_df
 
@@ -117,11 +108,8 @@ def append_brain_region_qc_metrics(
     naming_map: pd.DataFrame | None = None,
 ) -> None:
     if site_dir is None:
-        site_dir = os.getenv("SPIDA_SITE_DIR", None)
-    if isinstance(site_dir, str):
-        site_dir = Path(site_dir)
-    if site_dir is None:
         return
+    site_dir = Path(site_dir)
 
     entry = lookup_naming_entry(naming_map, exp_name, reg_name, lab)
     if entry is not None:

@@ -52,8 +52,9 @@ def test_optional_inputs_are_skipped_not_fatal(shapes, tables, want_tz, want_hex
         # pass_context injects ctx itself, so the callback needs a live context.
         with click.Context(generate_load_qc_figs):
             generate_load_qc_figs.callback(
-                exp_name="EXP", reg_name="REG", lab=None, brain_region="WB",
-                zarr_store=None, site_dir=None, plot_decon=False, naming_map=None,
+                exp="EXP", reg="REG", zarr_path="/nonexistent.zarr", raw_path=None, seg_path=None,
+                figures_path=None, lab=None, brain_region="WB",
+                zarr_store=None, site_dir="/site", plot_decon=False, naming_map=None,
             )
 
     assert load_images.called

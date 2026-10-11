@@ -1,7 +1,6 @@
 ### This notebook is meant to generate the necessary files for the SPIDA website. It should be run from the root of the SPIDA repository.
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 import json
@@ -9,10 +8,10 @@ import re
 
 import click
 from rich_click import RichCommand, RichGroup, echo as rich_echo # type: ignore
-from dotenv import load_dotenv  # type: ignore
 
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
+from spida.io.options import dataset_options, dataset_overrides, dataset_from_options, run_config
 from spida.utilities.site_utils import (
     _load_metadata,
     append_brain_region_qc_metrics,
@@ -29,9 +28,9 @@ sys.ps1 = ">>> "  # Set the primary prompt string to indicate interactive mode
 @click.option(
     "config",
     "--config",
-    default=".env",
-    type=click.Path(exists=True),
-    help="Path to the configuration file (default: .env)",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="JSON config file (optional; unset settings come from the environment).",
 )
 @click.pass_context
 def cli(ctx, config):
@@ -39,22 +38,30 @@ def cli(ctx, config):
     pass
 
 
-@cli.command(cls=RichCommand, help="Generate QC figures for a given sample for the SPIDA website.")
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+_SITE_DIR = click.option("--site-dir", "--site_dir", "site_dir", type=click.Path(), default=None, help="SPIDA site directory (default: SPIDA_SITE_DIR in the config)")
+_ZARR_STORE = click.option("--zarr-store", "--zarr_store", "zarr_store", type=click.Path(), default=None, help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+
+
+def _site_dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, zarr_store, site_dir):
+    cfg = run_config(ctx, zarr_store=zarr_store, site_dir=site_dir)
+    return dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path), cfg.site_dir
+
+
+@cli.command(cls=RichCommand, help="Generate QC figures for one region (--exp/--reg) for the SPIDA website.")
+@dataset_options
 @click.option("--lab", type=str, default=None, help="Name of the lab (optional)")
 @click.option("--brain-region", type=str, default="WB", help="Name of the brain region (default: WB)")
 @click.option("--plot-decon", is_flag=True, default=False, help="Whether to plot deconvolved images (default: False)")
-@click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
-@click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
+@_ZARR_STORE
+@_SITE_DIR
 @click.option("--naming-map", type=click.Path(exists=True), default=None, help="Path to naming_map.csv for human-readable labels (optional)")
 @click.option("--rho_min", type=float, default=5.0, help="rho_min the tissue-mask run used, for the mask QC panels (default: 5)")
 @click.option("--erode_sigma", type=float, default=1.0, help="erode_sigma the tissue-mask run used, for the mask QC panels (default: 1)")
+@dataset_overrides
 @click.pass_context
 def generate_load_qc_figs(
     ctx,
-    exp_name : str,
-    reg_name : str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     lab : str = None,
     brain_region : str = "WB",
     zarr_store : str = None,
@@ -71,16 +78,16 @@ def generate_load_qc_figs(
     from spida.pl.site_figs import (plot_load_images, plot_decon_images, plot_tz_qc,
                                     plot_tz_hex_qc, plot_tissue_mask)
 
+    dataset, site_dir = _site_dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, zarr_store, site_dir)
+    exp_name, reg_name = dataset.exp, dataset.reg
     logger.info(f"Generating load QC figures for experiment {exp_name} region {reg_name}")
 
     sdata, img_dir, data_dir, keys, _ = _load_metadata(
-        exp_name=exp_name,
-        reg_name=reg_name,
+        dataset,
+        site_dir,
         prefix_name="default",
         lab=lab,
         brain_region=brain_region,
-        zarr_store=zarr_store,
-        site_dir=site_dir,
         naming_map=naming_map,
     )
 
@@ -125,14 +132,13 @@ def generate_load_qc_figs(
     if adata_hex is not None:
         plot_tz_hex_qc(adata_hex, img_dir)
 
-@cli.command(cls=RichCommand, help="Generate QC figures for a given segmentation for the SPIDA website.")
-@click.argument("exp_name", type=str)
-@click.argument("reg_name", type=str)
+@cli.command(cls=RichCommand, help="Generate QC figures for segmentation PREFIX_NAME of one region (--exp/--reg) for the SPIDA website.")
 @click.argument("prefix_name", type=str)
+@dataset_options
 @click.option("--lab", type=str, default=None, help="Name of the lab (optional)")
 @click.option("--brain-region", type=str, default="WB", help="Name of the brain region (default: WB)")
-@click.option("--zarr-store", type=str, default=None, help="Path to the zarr store (optional, defaults to ZARR_STORAGE_PATH env variable)")
-@click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
+@_ZARR_STORE
+@_SITE_DIR
 @click.option(
     "--neuron-type-col",
     type=str,
@@ -140,12 +146,12 @@ def generate_load_qc_figs(
     help="Column in adata.obs to use for neuron type grouping (optional).",
 )
 @click.option("--naming-map", type=click.Path(exists=True), default=None, help="Path to naming_map.csv for human-readable labels (optional)")
+@dataset_overrides
 @click.pass_context
 def generate_seg_qc_figs(
     ctx,
-    exp_name : str,
-    reg_name : str,
     prefix_name : str,
+    exp, reg, zarr_path, raw_path, seg_path, figures_path,
     lab : str = None,
     brain_region : str = "WB",
     zarr_store : str = None,
@@ -159,14 +165,14 @@ def generate_seg_qc_figs(
     from spida.pl.site_figs import plot_segload, plot_seg_qc, plot_cell_cluster, plot_seg_clust_dotplot
     from spida.P.filtering import ensure_qc_metrics
 
+    dataset, site_dir = _site_dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, zarr_store, site_dir)
+    exp_name, reg_name = dataset.exp, dataset.reg
     sdata, img_dir, data_dir, keys, naming_map_df = _load_metadata(
-        exp_name=exp_name,
-        reg_name=reg_name,
+        dataset,
+        site_dir,
         prefix_name=prefix_name,
         lab=lab,
         brain_region=brain_region,
-        zarr_store=zarr_store,
-        site_dir=site_dir,
         naming_map=naming_map,
     )
     logger.info(f"Generating Seg QC figures for experiment {exp_name} region {reg_name}, segmentation {prefix_name}")
@@ -221,7 +227,7 @@ def generate_seg_qc_figs(
 
 
 @cli.command(cls=RichCommand, help="Generate data.json manifest for the SPIDA website from the images and data directories.")
-@click.option("--site-dir", type=str, default=None, help="Path to the SPIDA site directory (optional, defaults to SPIDA_SITE_DIR env variable)")
+@_SITE_DIR
 @click.option("--experiment-alias-re", type=str, default=r"4x1-([^/]+)-(?:E|Q)", help="Regular expression to extract experiment alias from folder names (default: r'4x1-([^/]+)-(?:E|Q)')")
 @click.option("--region-alias-re", type=str, default=r"region_([^/_]+)_", help="Regular expression to extract region alias from folder names (default: r'region_([^/_]+)_')")
 @click.option("--include-lab", is_flag=True, default=False, help="Include lab alias in the manifest (default: False). Uses --lab-alias-re if provided, otherwise defaults to extracting text after the last underscore.")
@@ -255,10 +261,7 @@ def generate_data_manifest(
     """
     import csv
 
-    if site_dir is None:
-        site_dir = os.getenv("SPIDA_SITE_DIR", None)
-    if isinstance(site_dir, str):
-        site_dir = Path(site_dir)
+    site_dir = run_config(ctx, site_dir=site_dir).require("site_dir")
     IMAGES_DIR = site_dir / "images" # absolutes
     DATA_DIR = site_dir / "data" # absolutes
     OUTPUT_FILE = site_dir / "data.json" # absolutes
