@@ -71,19 +71,30 @@ _STORE_ROOTS = [
 
 
 #### BACKUP ####
-@cli.command(name="backup-adata", cls=RichCommand)
+_SYNC = [
+    click.option('--suffix', type=click.STRING, default='_filt', help='Table suffix. Defaults to "_filt".'),
+    click.option('--reference', type=click.STRING, default=None, help='Only sync this reference (mmc_<reference>_* / allcools_<reference>_*). Default: every annotation column.'),
+    click.option('--columns', type=click.STRING, multiple=True, help='Sync exactly these obs columns instead (repeatable).'),
+    click.option('--overwrite', is_flag=True, default=False, help='Replace columns that already exist in the zarr table.'),
+]
+
+
+@cli.command(name="sync-annotations", cls=RichCommand)
 @click.argument('prefix_name', type=click.STRING)
-@click.option('--suffix', type=click.STRING, default='', help='Table suffix. Defaults to none.')
-@click.option('--adata_file', type=click.Path(exists=True, path_type=str), default=None, help="AnnData to write (default: the region's file in the AnnData store).")
+@_options(_SYNC)
+@click.option('--adata_file', type=click.Path(exists=True, path_type=str), default=None, help="AnnData to sync from (default: the region's file in the AnnData store).")
 @dataset_options
 @_options(_STORE_ROOTS)
 @dataset_overrides
 @table_options
 @click.pass_context
-def backup_adata_region(
+def sync_annotations_region(
     ctx,
     prefix_name: str,
-    suffix: str = "",
+    suffix: str = "_filt",
+    reference: str | None = None,
+    columns: tuple = (),
+    overwrite: bool = False,
     adata_file: str | None = None,
     exp: str | None = None,
     reg: str | None = None,
@@ -96,51 +107,53 @@ def backup_adata_region(
     **roots,
 ):
     """
-    Write the AnnData file of segmentation PREFIX_NAME back into the region's spatialdata zarr store.
-    Can serve to bring annotations made outside spatialdata (i.e. mapmycells) back into the store.
-    Needs an env with spatialdata.
+    Copy the annotation columns of segmentation PREFIX_NAME's AnnData file into the region's zarr table (obs only).
+    Runs in any env with anndata (the mmc env included); does not need spatialdata.
 
     Parameters:\n
         prefix_name: Segmentation name, e.g. cellpose_cell.\n
-        suffix: Table suffix, e.g. _filt.\n
-        adata_file: AnnData to write instead of the one in the AnnData store.\n
     """
-    from spida.io.layout import table_key
-    from spida.I._io import read_adata, backup_table
+    from spida.I._io import sync_annotations
 
     d = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, anndata_path, annotations_path, **roots)
-    key = table_key(prefix_name, suffix)
-    backup_table(d, read_adata(adata_file or d.table_h5ad(key)), key)
+    sync_annotations(d, prefix_name, suffix, adata_file=adata_file, reference=reference,
+                     columns=columns or None, overwrite=overwrite)
 
 
-@cli.command(name='backup-adata-experiment', cls=RichCommand)
+@cli.command(name='sync-annotations-experiment', cls=RichCommand)
 @click.argument('prefix_name', type=str)
 @click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
-@click.option('--suffix', type=click.STRING, default='', help='Table suffix. Defaults to none.')
+@_options(_SYNC)
 @_options(_STORE_ROOTS)
 @click.pass_context
-def backup_adata_experiment(
+def sync_annotations_experiment(
     ctx,
     prefix_name: str,
     exp_name: str,
-    suffix: str = "",
+    suffix: str = "_filt",
+    reference: str | None = None,
+    columns: tuple = (),
+    overwrite: bool = False,
     **roots,
 ):
     """
-    Backup the AnnData files of segmentation PREFIX_NAME for every region of an entire experiment --exp.
+    sync-annotations for every region of --exp; regions whose columns are already in the zarr table
+    are skipped unless --overwrite.
 
     Parameters:\n
         prefix_name: Segmentation name, e.g. cellpose_cell.\n
         exp_name: Name of the experiment.\n
     """
-    from spida.io.layout import TreeLayout, table_key
-    from spida.I._io import read_adata, backup_table
+    from spida.io.layout import TreeLayout
+    from spida.I._io import sync_annotations
 
     layout = TreeLayout(run_config(ctx, **roots))
-    key = table_key(prefix_name, suffix)
     for reg in layout.units(exp_name):
-        d = layout.dataset(exp_name, reg)
-        backup_table(d, read_adata(d.table_h5ad(key)), key)
+        try:
+            sync_annotations(layout.dataset(exp_name, reg), prefix_name, suffix, reference=reference,
+                             columns=columns or None, overwrite=overwrite)
+        except FileExistsError as e:
+            logger.warning("Skipping %s: %s", reg, e)
 
 
 #### ALLCools INTEGRATION ####
@@ -165,7 +178,7 @@ _ALLCOOLS_OPTIONS = [
     click.option("--confusion_matrix_cluster_resolution", type=float, default=1.5, help='Resolution for clustering the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 1.5.'),
     click.option("--qry_only_cluster_threshold", type=int, default=50, help='Min Reference cell number for defining query-only clusters during cluster-to-cluster label transfer. Defaults to 50.'),
     click.option("--ref_only_cluster_threshold", type=int, default=20, help='Min Query cell number for defining reference-only clusters during cluster-to-cluster label transfer. Defaults to 20.'),
-    click.option("--backup_to_spatialdata/--no-backup_to_spatialdata", default=True, help='Whether to write the annotated table back to the zarr store. Defaults to True.'),
+    click.option("--backup_to_spatialdata/--no-backup_to_spatialdata", default=False, help='Deprecated: rewrites the whole zarr table. Use sync-annotations instead. Defaults to False.'),
     click.option("--plot", is_flag=True, default=False, help='Whether to plot the results of the ALLCools integration. Defaults to False.'),
 ]
 

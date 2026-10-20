@@ -945,6 +945,7 @@ def integrate_region(
     logger.info(f"adata shape: {adata.shape}")
     qry, comb, names = integrate_adata(adata, ref_path, reference, query_path, output_dir, **kwargs)
     if backup_to_spatialdata:
+        logger.warning("--backup_to_spatialdata is deprecated and will be removed; use sync-annotations")
         logger.info("Backing up the AnnData object to the spatialdata object")
         backup_table(dataset, qry, key)
     return qry, comb, query_path, output_dir, names

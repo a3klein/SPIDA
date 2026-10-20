@@ -51,6 +51,24 @@ def test_load_table_copies_then_reuses(tmp_path):
     assert "mmc_r_Class" not in load_table(d, "p", "_filt", refresh=True)[0].obs
 
 
+def test_refresh_table_logs_dropped_annotations(tmp_path, caplog):
+    from spida.I._io import load_table
+
+    d = dataset_from(SpidaConfig(), zarr=tmp_path / "s.zarr", anndata=tmp_path / "ad")
+    _zarr_with_table(tmp_path / "s.zarr", "p_table_filt")
+    a, path = load_table(d, "p", "_filt")
+    with caplog.at_level("WARNING"):
+        load_table(d, "p", "_filt", refresh=True)  # nothing to drop yet
+    assert "drops" not in caplog.text
+    a.obs["mmc_r_Class"] = "x"
+    a.obs["allcools_AIT_Subclass"] = "y"
+    a.obs["base_leiden"] = "0"
+    a.write_h5ad(path)
+    with caplog.at_level("WARNING"):
+        load_table(d, "p", "_filt", refresh=True)
+    assert "drops 2 annotation columns: mmc_r_Class, allcools_AIT_Subclass" in caplog.text
+
+
 def test_load_table_adata_file_needs_no_store(tmp_path):
     from spida.I._io import load_table
 
