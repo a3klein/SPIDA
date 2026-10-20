@@ -115,3 +115,177 @@ def test_align_geometries_goes_native(monkeypatch, tmp_path):
     b, o, k = seen["custom"]
     assert o == tmp_path / "seg" / "align" and k["boundaries_space"] == "pixel"
     assert k["images_dir"] == tmp_path / "raw" / "images"
+
+
+# ---- ingest --overwrite (phase 2) ----
+
+def _store(path):
+    path.mkdir(parents=True)
+    (path / "zarr.json").write_text("{}")
+
+
+def test_ingest_region_refuses_existing_store(monkeypatch, tmp_path):
+    from spida.S.io import main as m
+    from spida.io.layout import Dataset
+    called = []
+    monkeypatch.setattr(m, "read_merscope", lambda *a, **k: called.append(1))
+    d = Dataset(zarr=tmp_path / "x.zarr", raw=tmp_path / "r")
+    _store(d.zarr)
+    with pytest.raises(FileExistsError, match="x.zarr"):
+        m.ingest_region(d)
+    assert not called  # stops before reading the raw data
+
+
+def test_ingest_region_overwrite_proceeds(monkeypatch, tmp_path):
+    from spida.S.io import main as m
+    from spida.io.layout import Dataset
+    monkeypatch.setattr(m, "read_merscope", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("reached")))
+    d = Dataset(zarr=tmp_path / "x.zarr", raw=tmp_path / "r")
+    _store(d.zarr)
+    with pytest.raises(RuntimeError, match="reached"):
+        m.ingest_region(d, overwrite=True)
+
+
+def test_ingest_all_skips_existing(monkeypatch, cfg, tmp_path):
+    from spida.S.io import main as m
+    for r in ("region_1", "region_2"):
+        (tmp_path / "raw" / "E" / "out" / r).mkdir(parents=True)
+    _store(tmp_path / "z" / "E" / "region_1")
+    seen = []
+    monkeypatch.setattr(m, "ingest_region", lambda d, **k: seen.append((d.reg, k["overwrite"])))
+    res = CliRunner().invoke(cli_module.cli, ["--config", str(cfg), "ingest-all", "--exp", "E"])
+    assert res.exit_code == 0, res.output
+    assert seen == [("region_2", False)]
+    res = CliRunner().invoke(cli_module.cli, ["--config", str(cfg), "ingest-all", "--exp", "E", "--overwrite"])
+    assert sorted(seen[1:]) == [("region_1", True), ("region_2", True)]
+
+
+# ---- load-segmentation --overwrite (phase 2) ----
+
+def _seg_store(path):
+    import anndata as ad
+    import dask.dataframe as dd
+    import geopandas as gpd
+    import numpy as np
+    import pandas as pd
+    import spatialdata as sd
+    from shapely.geometry import Point
+    from spatialdata.models import PointsModel, ShapesModel, TableModel
+    from spida._constants import POINTS_KEY, SHAPES_KEY, TABLE_KEY
+    from spida.io.layout import element_keys
+
+    keys = element_keys("seg", None)
+    shapes = gpd.GeoDataFrame({"EntityID": [0, 1]}, geometry=[Point(0, 0).buffer(1), Point(5, 5).buffer(1)], index=["0", "1"])
+    pts = dd.from_pandas(pd.DataFrame({"x": [0.0, 5.0], "y": [0.0, 5.0], "gene": ["A", "B"]}), npartitions=1)
+    obs = pd.DataFrame({"cells_region": pd.Categorical([keys[SHAPES_KEY]] * 2), "EntityID": [0, 1], "v": [1, 1]}, index=["0", "1"])
+    table = TableModel.parse(ad.AnnData(np.ones((2, 2), dtype=np.float32), obs=obs),
+                             region=keys[SHAPES_KEY], region_key="cells_region", instance_key="EntityID")
+    s = sd.SpatialData(shapes={keys[SHAPES_KEY]: ShapesModel.parse(shapes)},
+                       points={keys[POINTS_KEY]: PointsModel.parse(pts)}, tables={keys[TABLE_KEY]: table})
+    s.attrs["spida"] = {"namespace": "", "exp": None, "reg": None}  # as ingest-region records it
+    s.write(path)
+    return keys
+
+
+def _reload_with_v2(path, keys):
+    import numpy as np
+    import spatialdata as sd
+    from spatialdata.transformations import Affine, set_transformation
+    from spida._constants import SHAPES_KEY, TABLE_KEY
+
+    s = sd.read_zarr(path)
+    t = s[keys[TABLE_KEY]].copy()
+    t.obs["v"] = 2
+    s[keys[TABLE_KEY]] = t
+    set_transformation(s[keys[SHAPES_KEY]], Affine(np.diag([2.0, 2.0, 1.0]), ("x", "y"), ("x", "y")), "global")
+    return s
+
+
+def test_finalize_rerun_without_overwrite_raises(tmp_path):
+    import spatialdata as sd
+    from spatialdata.transformations import Identity
+    from spida.S.io.ingest_exp import _finalize_and_write
+    from spida._constants import TABLE_KEY
+
+    path = tmp_path / "s.zarr"
+    keys = _seg_store(path)
+    with pytest.raises(FileExistsError):
+        _finalize_and_write(_reload_with_v2(path, keys), keys, Identity(), {})
+    assert (sd.read_zarr(path)[keys[TABLE_KEY]].obs["v"] == 1).all()
+
+
+def test_finalize_rerun_with_overwrite_replaces_and_keeps_transforms(tmp_path):
+    import numpy as np
+    import spatialdata as sd
+    from spatialdata.transformations import Identity, get_transformation
+    from spida.S.io.ingest_exp import _finalize_and_write
+    from spida._constants import POINTS_KEY, SHAPES_KEY, TABLE_KEY
+
+    path = tmp_path / "s.zarr"
+    keys = _seg_store(path)
+    out = _finalize_and_write(_reload_with_v2(path, keys), keys, Identity(), {}, overwrite=True)
+    r = sd.read_zarr(path)
+    assert (r[keys[TABLE_KEY]].obs["v"] == 2).all() and (out[keys[TABLE_KEY]].obs["v"] == 2).all()
+    for k in (POINTS_KEY, SHAPES_KEY):
+        assert "pixel" in get_transformation(r[keys[k]], get_all=True)
+    g = get_transformation(r[keys[SHAPES_KEY]], to_coordinate_system="global")
+    assert np.allclose(g.to_affine_matrix(("x", "y"), ("x", "y")), np.diag([2.0, 2.0, 1.0]))
+    assert not any("__tmp" in p for p in r.elements_paths_on_disk())
+
+
+def test_load_segmentation_region_refuses_before_loading(monkeypatch, tmp_path):
+    from spida.S.io import main as m
+    from spida.io.layout import Dataset
+
+    d = Dataset(zarr=tmp_path / "s.zarr", seg=tmp_path / "seg")
+    _seg_store(d.zarr)
+    (d.seg / "seg").mkdir(parents=True)
+    called = []
+    monkeypatch.setattr(m, "load_segmentation", lambda *a, **k: called.append(k))
+    with pytest.raises(FileExistsError, match="seg_table"):
+        m.load_segmentation_region(d, type="cellpose", prefix_name="seg")
+    assert not called
+    m.load_segmentation_region(d, type="cellpose", prefix_name="seg", overwrite=True)
+    assert called[0]["overwrite"] is True
+
+
+def test_load_segmentation_all_skips_loaded(monkeypatch, cfg, tmp_path):
+    from spida.S.io import main as m
+    import spida.io.layout as layout
+
+    for r in ("region_1", "region_2"):
+        (tmp_path / "seg" / "E" / r / "seg").mkdir(parents=True)
+    keys = layout.element_keys("seg", "E_region_1")
+    from spida._constants import TABLE_KEY
+    (tmp_path / "z" / "E" / "region_1" / "tables" / keys[TABLE_KEY]).mkdir(parents=True)
+    seen = []
+    monkeypatch.setattr(m, "load_segmentation_region", lambda d, **k: seen.append((d.reg, k["overwrite"])))
+    res = CliRunner().invoke(cli_module.cli, ["--config", str(cfg), "load-segmentation-all", "--exp", "E",
+                                              "--type", "cellpose", "--prefix_name", "seg"])
+    assert res.exit_code == 0, res.output
+    assert seen == [("region_2", False)]
+
+
+# ---- load-deconvolution --overwrite (phase 2) ----
+
+def test_load_decon_refuses_then_swaps(monkeypatch, tmp_path):
+    import numpy as np
+    import spatialdata as sd
+    from spatialdata.models import Image2DModel
+    import spida.S.io.ingest_exp as ie
+    from spida.S.io import main as m
+    from spida.io.layout import Dataset
+
+    d = Dataset(zarr=tmp_path / "s.zarr", raw=tmp_path / "r")
+    _seg_store(d.zarr)
+    img = lambda v: Image2DModel.parse(np.full((1, 64, 64), v, np.uint8), dims=("c", "y", "x"), scale_factors=[2], chunks=32)
+    monkeypatch.setattr(ie, "_read_decon_images", lambda *a, **k: img(1))
+    m.load_deconvolution_region(d, image_dir=tmp_path)
+    called = []
+    monkeypatch.setattr(ie, "_read_decon_images", lambda *a, **k: called.append(1) or img(2))
+    with pytest.raises(FileExistsError, match="images/decon_image"):
+        m.load_deconvolution_region(d, image_dir=tmp_path)
+    assert not called  # stops before reading the images
+    m.load_deconvolution_region(d, image_dir=tmp_path, overwrite=True)
+    r = sd.read_zarr(d.zarr)
+    assert int(r["decon_image"]["scale0"]["image"].values.min()) == 2 and "decon_image__tmp" not in r.images

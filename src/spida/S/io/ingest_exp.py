@@ -18,6 +18,7 @@ with warnings.catch_warnings():
 
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 from .filt_to_qc import apply_qc_filter_to_segmentation
+from spida.io.store import write_element
 
 logger = logging.getLogger(__package__)
 
@@ -175,17 +176,18 @@ def _finalize_and_write(
     KEYS: dict,
     identity,
     qc_kwargs: dict,
+    overwrite: bool = False,
 ):
     """
-    Shared loader tail: dedup multipolygons, optionally apply a transcript-QC
-    filter, set the pixel coordinate system, then idempotently write the three
-    elements and their transformations.
+    Shared loader: dedup multipolygons, optionally apply a transcript-QC filter,
+    set the pixel coordinate system, then write the three elements (replaced with ``overwrite``).
 
     Parameters:
     sdata (spatialdata.SpatialData): The spatialdata object being populated.
     KEYS (dict): The element-key mapping for this prefix/experiment/region.
     identity (Identity): The identity transformation used for the pixel coordinate system.
     qc_kwargs (dict): Transcript-QC filter arguments (applied only if any qc region/key is set).
+    overwrite (bool): Replace elements already on disk (default is False).
 
     Returns:
     spatialdata.SpatialData: The finalized, on-disk-written spatialdata object.
@@ -209,18 +211,9 @@ def _finalize_and_write(
     set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
     set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
 
-    for key, kind in (
-        (KEYS[POINTS_KEY], "points"),
-        (KEYS[SHAPES_KEY], "shapes"),
-        (KEYS[TABLE_KEY], "tables"),
-    ):
-        if f"{kind}/{key}" not in sdata.elements_paths_on_disk():
-            sdata.write_element(key)
-        else:
-            logger.warning("%s %r already exists on disk; not overwriting.", kind, key)
-
-    sdata.write_transformations()  # spatialdata >= 0.8 is pinned
-    return sdata
+    for key in (KEYS[POINTS_KEY], KEYS[SHAPES_KEY], KEYS[TABLE_KEY]):
+        write_element(sdata.path, key, sdata[key], overwrite=overwrite)
+    return sd.read_zarr(sdata.path)
 
 
 def _load_proseg_native(
@@ -335,6 +328,7 @@ def load_segmentation(
     qc_pass_value: bool | int | str = False,
     table_cell_id_col: str | None = None,
     points_cell_id_col: str | None = None,
+    overwrite: bool = False,
     **kwargs,
 ):
     """
@@ -367,6 +361,7 @@ def load_segmentation(
     qc_pass_value (bool | int | str): The value in ``qc_filter_col`` marking a passing cell (default is False).
     table_cell_id_col (str | None): Override for the table's cell-id column during QC (default is None).
     points_cell_id_col (str | None): Override for the points' cell-id column during QC (default is None).
+    overwrite (bool): Replace existing elements of this prefix (default is False).
 
     Returns:
     spatialdata.SpatialData: The spatialdata object with the loaded segmentation elements written to disk.
@@ -418,7 +413,7 @@ def load_segmentation(
         table.obs.index.name = "index"
         sdata[KEYS[TABLE_KEY]] = table
 
-    return _finalize_and_write(sdata, KEYS, identity, qc_kwargs)
+    return _finalize_and_write(sdata, KEYS, identity, qc_kwargs, overwrite=overwrite)
 
 
 def load_decon_images(
@@ -427,6 +422,7 @@ def load_decon_images(
     z_layer: int | str = 3,
     image_name: str = "decon_images",
     suffix: str = ".decon.tif",
+    overwrite: bool = False,
     **image_models_kwargs,
 ):
     """
@@ -437,23 +433,17 @@ def load_decon_images(
     exp_name (str): The name of the experiment.
     reg_name (str): The name of the region.
     image_path (str|Path): The path to the deconvolution images.
+    overwrite (bool): Replace ``image_name`` if it already exists (default is False).
     """
 
     image_models_kwargs.setdefault("chunks", (1, 4906, 4906))
     image_models_kwargs.setdefault("scale_factors", [2, 2, 2, 2])
 
-    sdata[image_name] = _read_decon_images(
+    image = _read_decon_images(
         image_dir, suffix=suffix,  z_layer=z_layer, **image_models_kwargs
     )
-    if f"images/{image_name}" not in sdata.elements_paths_on_disk():
-        sdata.write_element(image_name)
-        sdata.write_metadata(image_name)
-    else:
-        logger.warning(
-            f"Images {image_name} already exists in the spatialdata object. Not overwriting it."
-        )
-
-    return sdata
+    write_element(sdata.path, image_name, image, overwrite=overwrite)
+    return sd.read_zarr(sdata.path)
 
 
 def _read_decon_images(

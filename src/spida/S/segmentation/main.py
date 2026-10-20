@@ -1,6 +1,8 @@
 from pathlib import Path
 import logging
 
+from spida.io.store import is_writeable
+
 logger = logging.getLogger(__package__)
 
 
@@ -15,6 +17,7 @@ def align_geometries(
     out_dir_name: str = "align",
     micron_per_z: float = 1.5,
     n_jobs: int = 7,
+    overwrite: bool = False,
 ):
     """Reconcile two segmentations (e.g. nuclear ``cellpose_nuc`` vs whole-cell
     ``cellpose_cell``) into one boundary set by spatial overlap, then build the
@@ -35,12 +38,21 @@ def align_geometries(
     out_dir_name (str): Label of the aligned segmentation under the dataset's seg dir (default "align").
     micron_per_z (float): Micron thickness per z-plane (default 1.5).
     n_jobs (int): sum-signals workers (default 7).
+    overwrite (bool): Replace an existing aligned segmentation (default False).
     """
     from spida._constants import SHAPES_KEY
     from .align import align_segmentations
+    from .backends.base import (
+        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA,
+        SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
+    )
 
     raw = dataset.require("raw")
     out_dir = dataset.seg_dir(out_dir_name)
+    is_writeable(files=[out_dir / f for f in (f"aligned_{prefix1}_{prefix2}_polygons.parquet",
+                                              SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS,
+                                              SCHEMA_CELL_METADATA, SCHEMA_SUM_SIGNALS)],
+                 overwrite=overwrite)
     ret = align_segmentations(
         zarr_path=dataset.require("zarr"),
         shape_key1=dataset.keys(prefix1)[SHAPES_KEY],
@@ -68,6 +80,7 @@ def align_geometries(
         cell_id_col=f"{prefix1}_id",
         transcripts_path=transcripts,
         images_dir=raw / "images",
+        overwrite=overwrite,
         n_jobs=n_jobs,
     )
 
@@ -125,6 +138,7 @@ def segment_region(
     prefix_name: str | None = None,
     rust_bin_path: str | Path | None = None,
     tissue_mask_path: str | Path | None = None,
+    overwrite: bool = False,
     **kwargs,
 ):
     """Run only the segmentation *backend* for a region (produces raw boundaries).
@@ -142,6 +156,7 @@ def segment_region(
         segmentation runs, as written by ``tissue-mask``. Default None auto-discovers
         ``<raw images dir>/tissue_mask.tif`` and proceeds ungated if it is absent;
         an explicit path that does not exist raises.
+    overwrite (bool): Replace this segmentation's raw backend output if present (default False).
     """
     from .backends import get_spec
 
@@ -154,6 +169,9 @@ def segment_region(
     input_dir = str(raw_region.parent)
     images_dir = str(dataset.raw_images())
     output_dir = str(dataset.seg_dir(label))
+    raw_files = [f for f in (spec.boundaries_file, spec.counts_file, spec.metadata_file,
+                             spec.transcripts_file, spec.spatialdata_file) if f]  # from the method's spec
+    is_writeable(files=[Path(output_dir) / f for f in raw_files], overwrite=overwrite)
     logger.info("segment_region: %s v%s on %s -> %s",
                 method, spec.version, raw_region, output_dir)
 
@@ -192,6 +210,7 @@ def process_segmentation_region(
     n_z_planes: int = 7,
     n_jobs: int = 7,
     vpt_bin_path: str | Path | None = None,
+    overwrite: bool = False,
     **kwargs,
 ):
     """Normalize + post-process a segmenter's raw output into the segmentation schema.
@@ -205,6 +224,7 @@ def process_segmentation_region(
     dataset (Dataset): The dataset (raw region dir, segmentation dir).
     prefix_name (str | None): Segmentation name / directory leaf; must match what was
         passed to ``segment-region``. Defaults to the method name (default is None).
+    overwrite (bool): Replace existing segmentation-schema files (default is False).
     """
     import pandas as pd
     from .backends import get_spec
@@ -222,6 +242,14 @@ def process_segmentation_region(
     m2m = images_dir / "micron_to_mosaic_pixel_transform.csv"
     # where segment-region wrote the raw output (current layout, legacy fallback)
     seg_region = dataset.seg_dir(label, must_exist=True)
+    if backend == "vpt":
+        outputs = [kwargs.get("output_boundaries", "cellpose_micron_space.parquet"), SCHEMA_CELL_BY_GENE,
+                   SCHEMA_TRANSCRIPTS, SCHEMA_CELL_METADATA, SCHEMA_SUM_SIGNALS]
+    else:
+        outputs = [SCHEMA_BOUNDARIES, SCHEMA_SUM_SIGNALS, SCHEMA_CELL_METADATA]
+        if "partition_transcripts" in spec.needs:
+            outputs += [SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS]
+    is_writeable(files=[seg_region / f for f in outputs], overwrite=overwrite)
 
     logger.info("process_segmentation_region: %s v%s (%s backend) needs=%s -> %s",
                 method, spec.version, backend, spec.needs, seg_region)
@@ -294,6 +322,7 @@ def process_custom_segmentation(
     metadata_path: str | Path | None = None,
     metadata_cell_id_col: str | None = None,
     n_jobs: int = 7,
+    overwrite: bool = False,
 ) -> None:
     """Process a *user-provided* segmentation into the segmentation schema (native, no VPT).
 
@@ -357,6 +386,8 @@ def process_custom_segmentation(
     )
 
     out = Path(output_dir)
+    is_writeable(files=[out / f for f in (SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS,
+                                          SCHEMA_CELL_METADATA, SCHEMA_SUM_SIGNALS)], overwrite=overwrite)
     out.mkdir(parents=True, exist_ok=True)
     boundaries_out = out / SCHEMA_BOUNDARIES
     if images_dir is not None and micron_to_mosaic_path is None:

@@ -71,6 +71,7 @@ def test_command(
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
 @click.option("source", "--source", default="machine", type=str, help="Source of the data (default: machine)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
+@click.option("overwrite", "--overwrite", is_flag=True, default=False, help="Replace this region's existing zarr store, including everything added after ingest (default: False)")
 @click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
@@ -83,6 +84,7 @@ def ingest_region(
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
+    overwrite: bool = False,
     root_path : str | Path | None = None,
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
@@ -94,7 +96,7 @@ def ingest_region(
     cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .io.main import ingest_region as func
-    func(dataset, type=type, prefix_name=prefix_name, source=source, plot=plot, **kwargs)
+    func(dataset, type=type, prefix_name=prefix_name, source=source, plot=plot, overwrite=overwrite, **kwargs)
 
 @click.command(cls=RichCommand, help="Ingest every region of --exp found under PROCESSED_ROOT_PATH.")
 @click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
@@ -102,6 +104,7 @@ def ingest_region(
 @click.option("prefix_name", "--prefix_name", default="default", type=str, help="Prefix for the keys in the spatialdata object (default: default)")
 @click.option("source", "--source", default="machine", type=str, help="Source of the data (default: machine)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
+@click.option("overwrite", "--overwrite", is_flag=True, default=False, help="Replace existing zarr stores; without it, regions that already have one are skipped (default: False)")
 @click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
@@ -113,6 +116,7 @@ def ingest_all(
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
+    overwrite: bool = False,
     root_path : str | Path | None = None,
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
@@ -123,7 +127,7 @@ def ingest_all(
     """
     cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
     from .io.main import ingest_all as func
-    func(cfg, exp_name, type=type, prefix_name=prefix_name, source=source, plot=plot, **kwargs)
+    func(cfg, exp_name, type=type, prefix_name=prefix_name, source=source, plot=plot, overwrite=overwrite, **kwargs)
 
 @click.command(cls=RichCommand, help="Load one segmentation into a region's zarr store (--exp/--reg, or the path options).")
 @dataset_options
@@ -133,6 +137,7 @@ def ingest_all(
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
 @click.option("qc_shapes_key", "--qc_shapes_key", default="qc_mask", type=str,help="Shapes key holding the QC pass-region mask to apply (default: qc_mask; e.g. transcript_qc_shapes for the legacy hex mask)")
+@click.option("overwrite", "--overwrite", is_flag=True, default=False, help="Replace this segmentation's points, shapes and table if already loaded (default: False)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @dataset_overrides
@@ -145,6 +150,7 @@ def load_segmentation_region(
     prefix_name: str = "default",
     plot: bool = False,
     use_transcript_qc: bool = False,
+    overwrite: bool = False,
     qc_shapes_key: str = "qc_mask",
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
@@ -166,7 +172,7 @@ def load_segmentation_region(
     cfg = run_config(ctx, segmentation_store=segmentation_store, zarr_store=zarr_store, image_store=image_store)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .io.main import load_segmentation_region as func
-    func(dataset, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
+    func(dataset, type=type, prefix_name=prefix_name, plot=plot, overwrite=overwrite, **load_kwargs)
 
 @click.command(cls=RichCommand, help="Load one segmentation for every region of --exp that has it.")
 @click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
@@ -176,6 +182,7 @@ def load_segmentation_region(
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
 @click.option("use_transcript_qc", "--transcript-qc", is_flag=True, default=False, help="Apply QC filtering at load-time using transcript QC regions. (default: False)")
 @click.option("qc_shapes_key", "--qc_shapes_key", default="qc_mask", type=str,help="Shapes key holding the QC pass-region mask to apply (default: qc_mask; e.g. transcript_qc_shapes for the legacy hex mask)")
+@click.option("overwrite", "--overwrite", is_flag=True, default=False, help="Replace segmentations already loaded; without it, those regions are skipped (default: False)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.pass_context
@@ -187,6 +194,7 @@ def load_segmentation_all(
     prefix_name: str = "default",
     plot: bool = False,
     use_transcript_qc: bool = False,
+    overwrite: bool = False,
     qc_shapes_key: str = "qc_mask",
     zarr_store : str | Path | None = None,
     image_store : str | Path | None = None,
@@ -206,7 +214,7 @@ def load_segmentation_all(
         )
     cfg = run_config(ctx, segmentation_store=segmentation_store, zarr_store=zarr_store, image_store=image_store)
     from .io.main import load_segmentation_all as func
-    func(cfg, exp_name, type=type, prefix_name=prefix_name, plot=plot, **load_kwargs)
+    func(cfg, exp_name, type=type, prefix_name=prefix_name, plot=plot, overwrite=overwrite, **load_kwargs)
 
 @click.command(
     name="load-decon-images",
@@ -223,6 +231,7 @@ def load_segmentation_all(
 @click.option("suffix", "--suffix", default=".decon.tif", type=str, help="Suffix of the deconvolution image files (default: .decon.tif)")
 @click.option("z_layer", "--z_layer", default=3, type=str, help="Z-layer to read from the deconvolution images (default: 3)")
 @click.option("plot", "--plot", is_flag=True, default=False, help="Whether to generate plots (default: False)")
+@click.option("overwrite", "--overwrite", is_flag=True, default=False, help="Replace the image if already loaded (default: False)")
 @click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.option("image_store", "--image_store", default=None, type=click.Path(), help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
@@ -236,6 +245,7 @@ def load_deconvolution_region(
     suffix: str = ".decon.tif",
     z_layer: int | str = 3,
     plot: bool = False,
+    overwrite: bool = False,
     root_path: str | Path | None = None,
     zarr_store: str | Path | None = None,
     image_store: str | Path | None = None,
@@ -254,7 +264,7 @@ def load_deconvolution_region(
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .io.main import load_deconvolution_region as func
     func(dataset, image_dir=image_dir, image_name=image_name, suffix=suffix,
-         z_layer=z_layer, plot=plot, **load_kwargs)
+         z_layer=z_layer, plot=plot, overwrite=overwrite, **load_kwargs)
 
 
 @cli.command(
@@ -300,11 +310,12 @@ def test_vpt(ctx):
 @click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
 @click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Directory holding the proseg binary (default: RUST_BIN_PATH in the config)")
 @click.option("--tissue_mask_path", "tissue_mask_path", default=None, type=click.Path(), help="Tissue mask restricting where segmentation runs (default: auto-discover <images_dir>/tissue_mask.tif, else ungated).")
+@click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Replace this segmentation's existing raw output (default: False)")
 @dataset_overrides
 @click.pass_context
 def segment_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures_path,
                    list_params, prefix_name, root_path, segmentation_store, rust_bin_path,
-                   tissue_mask_path):
+                   tissue_mask_path, overwrite):
     # Method-specific run parameters are NOT exposed as Click options.
     # `--list-params` makes them discoverable instead, from the method's own config class.
     if list_params:
@@ -319,7 +330,7 @@ def segment_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .segmentation.main import segment_region as func
     func(method, dataset, prefix_name=prefix_name,
-         rust_bin_path=cfg.rust_bin_path, tissue_mask_path=tissue_mask_path, **kwargs)
+         rust_bin_path=cfg.rust_bin_path, tissue_mask_path=tissue_mask_path, overwrite=overwrite, **kwargs)
 
 
 @cli.command(
@@ -341,18 +352,19 @@ def segment_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures
 @click.option("--n_z_planes", "n_z_planes", default=7, type=int, help="Number of z-planes for 2D->3D replication")
 @click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7; IO-bound step, more is slower + costs more SUs)")
 @click.option("--vpt_bin_path", "vpt_bin_path", default=None, type=click.Path(), help="Directory holding the VPT binary, --backend vpt only (default: VPT_BIN_PATH in the config)")
+@click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Replace existing segmentation-schema files (default: False)")
 @dataset_overrides
 @click.pass_context
 def process_segmentation_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures_path,
                                 version, prefix_name, backend, root_path, segmentation_store,
-                                micron_per_z, n_z_planes, n_jobs, vpt_bin_path):
+                                micron_per_z, n_z_planes, n_jobs, vpt_bin_path, overwrite):
     kwargs = parse_click_kwargs(ctx.args)
     cfg = run_config(ctx, root_path=root_path, segmentation_store=segmentation_store, vpt_bin_path=vpt_bin_path)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .segmentation.main import process_segmentation_region as func
     func(method, dataset, version=version, prefix_name=prefix_name, backend=backend,
          micron_per_z=micron_per_z, n_z_planes=n_z_planes, n_jobs=n_jobs,
-         vpt_bin_path=cfg.vpt_bin_path, **kwargs)
+         vpt_bin_path=cfg.vpt_bin_path, overwrite=overwrite, **kwargs)
 
 
 @cli.command(
@@ -378,12 +390,13 @@ def process_segmentation_region(ctx, method, exp, reg, zarr_path, raw_path, seg_
 @click.option("--metadata_path", "metadata_path", default=None, type=click.Path(), help="Optional user cell-metadata CSV merged onto derived metadata")
 @click.option("--metadata_cell_id_col", "metadata_cell_id_col", default=None, type=str, help="Cell-id column in metadata_path if it differs from cell_id_col")
 @click.option("--n_jobs", "n_jobs", default=7, type=int, help="sum-signals parallel workers (default 7)")
+@click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Replace existing segmentation-schema files in OUTPUT_DIR (default: False)")
 @click.pass_context
 def process_custom_segmentation(ctx, boundaries_path, output_dir, boundaries_space,
                                 micron_to_mosaic_path, z_spacing, n_z_planes, cell_id_col,
                                 boundary_z_col, transcripts_path, transcript_z_col,
                                 transcript_z_in_microns, images_dir, segmentation_z_index,
-                                metadata_path, metadata_cell_id_col, n_jobs):
+                                metadata_path, metadata_cell_id_col, n_jobs, overwrite):
     kwargs = parse_click_kwargs(ctx.args)
     from .segmentation.main import process_custom_segmentation as func
     func(boundaries_path, output_dir, boundaries_space=boundaries_space,
@@ -392,7 +405,7 @@ def process_custom_segmentation(ctx, boundaries_path, output_dir, boundaries_spa
          transcripts_path=transcripts_path, transcript_z_col=transcript_z_col,
          transcript_z_in_microns=transcript_z_in_microns, images_dir=images_dir,
          segmentation_z_index=segmentation_z_index, metadata_path=metadata_path,
-         metadata_cell_id_col=metadata_cell_id_col, n_jobs=n_jobs, **kwargs)
+         metadata_cell_id_col=metadata_cell_id_col, n_jobs=n_jobs, overwrite=overwrite, **kwargs)
 
 
 
@@ -416,18 +429,19 @@ def process_custom_segmentation(ctx, boundaries_path, output_dir, boundaries_spa
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.option("segmentation_store", "--segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
 @click.option("root_path", "--root_path", default=None, type=click.Path(), help="Root of the raw MERSCOPE output (default: PROCESSED_ROOT_PATH in the config)")
+@click.option("overwrite", "--overwrite", is_flag=True, default=False, help="Replace an existing aligned segmentation (default: False)")
 @dataset_overrides
 @click.pass_context
 def align_geometries(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, prefix1, prefix2, geometry_mode,
                      cell_id, min_intersection_area, coordinate_system, out_dir_name, micron_per_z, n_jobs,
-                     zarr_store, segmentation_store, root_path):
+                     zarr_store, segmentation_store, root_path, overwrite):
     """Align two segmentations of one region and build the aligned segmentation's output files."""
     cfg = run_config(ctx, zarr_store=zarr_store, segmentation_store=segmentation_store, root_path=root_path)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .segmentation.main import align_geometries as func
     func(dataset, prefix1=prefix1, prefix2=prefix2, geometry_mode=geometry_mode, cell_id=cell_id,
          min_intersection_area=min_intersection_area, coordinate_system=coordinate_system,
-         out_dir_name=out_dir_name, micron_per_z=micron_per_z, n_jobs=n_jobs)
+         out_dir_name=out_dir_name, micron_per_z=micron_per_z, n_jobs=n_jobs, overwrite=overwrite)
 
 
 @cli.command(

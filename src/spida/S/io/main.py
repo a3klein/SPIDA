@@ -1,6 +1,7 @@
 from spida._constants import *
 from spida.config import SpidaConfig
 from spida.io.layout import Dataset, TreeLayout, dataset_from, element_keys
+from spida.io.store import is_writeable
 from .ingest_exp import (
     read_merscope,
     load_segmentation,
@@ -27,6 +28,7 @@ def ingest_region(
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
+    overwrite: bool = False,
     **kwargs,
 ):
     """
@@ -38,10 +40,12 @@ def ingest_region(
     prefix_name (str): Prefix for the keys in the spatialdata object (default is "default").
     source (str): Source of the data (default is "machine").
     plot (bool): Whether to generate plots (default is False).
+    overwrite (bool): Replace an existing zarr store for this region (default is False).
     """
     namespace = f"{dataset.exp}_{dataset.reg}" if dataset.named else ""
     logger.info("INGESTING REGION %s -> %s (element names suffix %r)", dataset.raw, dataset.zarr, namespace)
     KEYS = element_keys(prefix_name, namespace)
+    is_writeable(files=[dataset.require("zarr")], overwrite=overwrite)
 
     if type == "merscope" and source == "machine":
         sdata = read_merscope(
@@ -106,24 +110,34 @@ def ingest_all(
     prefix_name: str = "default",
     source: str = "machine",
     plot: bool = False,
+    overwrite: bool = False,
     **kwargs,
 ):
     """
     Ingest every region of an experiment found under the raw root.
+    Regions that already have a zarr store are skipped unless ``overwrite``.
 
     Parameters:
     config (SpidaConfig): Store roots.
     exp_name (str): Name of the experiment.
+    overwrite (bool): Replace existing zarr stores (default is False).
     """
     logger.info("INGESTING ALL REGIONS; EXPERIMENT %s" % (exp_name))
     if type == "merscope" and source == "machine":
         for reg in TreeLayout(config).units(exp_name, under="raw"):
+            dataset = dataset_from(config, exp_name, reg)
+            try:
+                is_writeable(files=[dataset.require("zarr")], overwrite=overwrite)
+            except FileExistsError:
+                logger.warning("Skipping %s: zarr store %s already exists (pass --overwrite to replace)", reg, dataset.zarr)
+                continue
             ingest_region(
-                dataset_from(config, exp_name, reg),
+                dataset,
                 type=type,
                 prefix_name=prefix_name,
                 source=source,
                 plot=plot,
+                overwrite=overwrite,
             )
 
 
@@ -132,6 +146,7 @@ def load_segmentation_region(
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
+    overwrite: bool = False,
     **load_kwargs,
 ):
     """
@@ -145,6 +160,7 @@ def load_segmentation_region(
     type (str): Type of the segmentation data to load (default is "vpt").
     prefix_name (str): Segmentation name; used both as the storage label and the spatialdata
         key prefix (default is "default").
+    overwrite (bool): Replace this segmentation's points, shapes and table if already loaded (default is False).
     """
 
     load_kwargs = load_kwargs.get("load_kwargs", load_kwargs)
@@ -172,6 +188,7 @@ def load_segmentation_region(
     label = prefix_name if prefix_name and prefix_name != "default" else method
     seg_region = dataset.seg_dir(label, must_exist=True)
     KEYS = dataset.keys(prefix_name)
+    is_writeable(zarr_path, [KEYS[POINTS_KEY], KEYS[SHAPES_KEY], KEYS[TABLE_KEY]], overwrite=overwrite)
 
     sdata = load_segmentation(
         sdata,
@@ -183,6 +200,7 @@ def load_segmentation_region(
         reg_name=dataset.reg,
         dataset_id=dataset.namespace,
         prefix_name=prefix_name,
+        overwrite=overwrite,
         **load_kwargs,
     )
 
@@ -229,25 +247,36 @@ def load_segmentation_all(
     type: str = "vpt",
     prefix_name: str = "default",
     plot: bool = False,
+    overwrite: bool = False,
     **load_kwargs,
 ):
     """
     Load one segmentation for every region of an experiment that has it under the segmentation store.
+    Regions where it is already loaded are skipped unless ``overwrite``.
 
     Parameters:
     config (SpidaConfig): Store roots.
     exp_name (str): Name of the experiment.
     type (str): Type of the segmentation data to load (default is "vpt").
     prefix_name (str): Segmentation name (storage label + key prefix) (default is "default").
+    overwrite (bool): Replace segmentations already loaded (default is False).
     """
     _METHOD = {"vpt": "cellpose", "cellpose": "cellpose", "mesmer": "mesmer", "proseg": "proseg"}
     label = prefix_name if prefix_name and prefix_name != "default" else _METHOD.get(type, type)
     for reg_name in TreeLayout(config).units(exp_name, under="seg", label=label):
+        dataset = dataset_from(config, exp_name, reg_name)
+        try:
+            K = dataset.keys(prefix_name)
+            is_writeable(dataset.zarr, [K[POINTS_KEY], K[SHAPES_KEY], K[TABLE_KEY]], overwrite=overwrite)
+        except FileExistsError:
+            logger.warning("Skipping %s: %s already loaded (pass --overwrite to replace)", reg_name, prefix_name)
+            continue
         load_segmentation_region(
-            dataset_from(config, exp_name, reg_name),
+            dataset,
             type=type,
             prefix_name=prefix_name,
             plot=plot,
+            overwrite=overwrite,
             **load_kwargs,
         )
 
@@ -259,6 +288,7 @@ def load_deconvolution_region(
     suffix: str = ".decon.tif",
     z_layer: int | str = 3,
     plot: bool = False,
+    overwrite: bool = False,
     **load_kwargs,
 ):
     """
@@ -270,10 +300,12 @@ def load_deconvolution_region(
     image_name (str): Name of the image key in the spatialdata object (default is "decon_image").
     suffix (str): Suffix of the deconvolution image files (default is ".decon.tif").
     plot (bool): Whether to generate plots (default is False).
+    overwrite (bool): Replace ``image_name`` if it already exists (default is False).
     load_kwargs: Additional keyword arguments for the load_decon_images function.
     """
     image_dir = Path(image_dir) if image_dir is not None else dataset.raw_images()
     zarr_path = dataset.require("zarr")
+    is_writeable(zarr_path, [image_name], overwrite=overwrite)
     logger.info("LOADING DECONVOLUTION IMAGES from %s into %s", image_dir, zarr_path)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
@@ -285,6 +317,7 @@ def load_deconvolution_region(
         image_name=image_name,
         suffix=suffix,
         z_layer=z_layer,
+        overwrite=overwrite,
         **load_kwargs
     )
 
