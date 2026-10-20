@@ -136,7 +136,7 @@ def test_main_forwards_consensus_to_run_setup(monkeypatch, value):
     monkeypatch.setattr(setup_adata, "run_setup", fake_run_setup)
     monkeypatch.setattr(p_main, "_get_adata", lambda *a, **k: object())
     monkeypatch.setattr(p_main, "_region_to_donor", lambda *a, **k: "donor")
-    monkeypatch.setattr(p_main, "_assign_new_table", lambda *a, **k: None)
+    monkeypatch.setattr(p_main, "_backup_adata", lambda *a, **k: None)  # phase 2: setup writes via _backup_adata
 
     p_main.setup_adata_region(Dataset(exp="exp", reg="reg", zarr=Path("/nonexistent.zarr")), "pfx",
                               consensus_cluster=value)

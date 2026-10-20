@@ -332,7 +332,7 @@ def compute_qc_metrics(
     features = filter_instance.get_features()
 
     try:
-        ff = adata.obs.reset_index().set_index(CELL_ID)
+        ff = adata.obs.reset_index(drop=True).set_index(CELL_ID)  # old index is rebuilt as Index
     except (KeyError, ValueError):
         ff = adata.obs.copy()
 
@@ -448,7 +448,7 @@ def run_filtering(
 
     # To handle both the new filtering and refiltering cases
     try:
-        ff = adata.obs.reset_index().set_index(CELL_ID)
+        ff = adata.obs.reset_index(drop=True).set_index(CELL_ID)  # old index is rebuilt as Index
     except (KeyError, ValueError):
         ff = adata.obs.copy()
 

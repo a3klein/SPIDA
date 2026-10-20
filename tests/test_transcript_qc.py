@@ -32,35 +32,6 @@ class _FakeSData:
         self.written.append(key)
 
 
-class _FakeSDataPersist(_FakeSData):
-    def __init__(self, points):
-        super().__init__(points)
-        self._elements = {}
-        self._on_disk = set()
-        self.deleted = []
-
-    def __setitem__(self, key, value):
-        self._elements[key] = value
-
-    def __getitem__(self, key):
-        if key == "points":
-            return self._points
-        if key in self._elements:
-            return self._elements[key]
-        raise KeyError(key)
-
-    def elements_paths_on_disk(self):
-        return list(self._on_disk)
-
-    def delete_element_from_disk(self, key):
-        self.deleted.append(key)
-        self._on_disk.discard(f"shapes/{key}")
-
-    def write_element(self, key):
-        super().write_element(key)
-        self._on_disk.add(f"shapes/{key}")
-
-
 @pytest.fixture
 def points_df():
     # points strictly inside [0, 0, 10, 10]
@@ -205,6 +176,7 @@ def test_run_transcript_qc(monkeypatch):
         sdata=sdata,
         points_key="points",
         min_transcripts=50,
+        persist_qc_shapes=False,  # QC logic only; saving is tested on a real store in tests/io
     )
 
     assert key == "adata_hex_s30_o0"
@@ -214,42 +186,59 @@ def test_run_transcript_qc(monkeypatch):
     assert bool(grid.loc["h2", "filtered"]) is True
 
 
-def test_run_transcript_qc_persists_qc_shapes(monkeypatch):
-    sdata = _FakeSDataPersist(points=pd.DataFrame({"x": [1], "y": [1], "gene": ["A"]}))
-    sdata._on_disk.add("shapes/transcript_qc_shapes")
+def _real_store(tmp_path):
+    import spatialdata as sd
+    import dask.dataframe as dd
+    from spatialdata.models import PointsModel
 
-    obs = pd.DataFrame(
-        {
-            "geometry": [geom.Point(1, 1), geom.Point(2, 2)],
-            "tz_count": [100, 5],
-            "n_genes": [10, 2],
-            "density": [2.0, 0.1],
-        },
-        index=["h1", "h2"],
-    )
+    pts = pd.DataFrame({"x": [1.0, 2.0], "y": [1.0, 2.0], "gene": ["A", "B"]})
+    path = tmp_path / "s.zarr"
+    sd.SpatialData(points={"points": PointsModel.parse(dd.from_pandas(pts, npartitions=1))}).write(path)
+    return sd.read_zarr(path)
+
+
+def _hex_obs():
+    # hexagon polygons, as overlay_hexes produces (not points: ShapesModel needs a radius for those)
+    hexes = [geom.Point(x, 0).buffer(15, resolution=2) for x in (0, 40)]
+    obs = pd.DataFrame({"geometry": hexes, "tz_count": [100, 5], "n_genes": [10, 2], "density": [2.0, 0.1]},
+                       index=["h1", "h2"])
     adata_hex = ad.AnnData(X=np.array([[1, 2], [0, 1]]), obs=obs, var=pd.DataFrame(index=["A", "B"]))
     adata_hex.uns["hexgrid"] = {"hex_size": 30, "hex_overlap": 0, "hex_area_um2": hex_area_from_size(30)}
+    return adata_hex
 
-    def _fake_get_or_create(*args, **kwargs):
-        return adata_hex, "adata_hex_s30_o0"
 
-    monkeypatch.setattr(tq, "get_or_create_hex_adata", _fake_get_or_create)
+def test_run_transcript_qc_persists_qc_shapes(monkeypatch, tmp_path):
+    import spatialdata as sd
 
-    _, grid, _ = tq.run_transcript_qc(
-        sdata=sdata,
-        points_key="points",
-        min_transcripts=50,
-    )
+    sdata = _real_store(tmp_path)
+    adata_hex = _hex_obs()
+    monkeypatch.setattr(tq, "get_or_create_hex_adata", lambda *a, **k: (adata_hex, "adata_hex_s30_o0"))
 
-    assert "transcript_qc_shapes" in sdata.deleted
-    assert "transcript_qc_shapes" in sdata.written
-    assert "transcript_qc_shapes" in sdata._elements
-    assert "filtered" in sdata._elements["transcript_qc_shapes"].columns
+    _, grid, _ = tq.run_transcript_qc(sdata=sdata, points_key="points", min_transcripts=50)
+
+    saved = sd.read_zarr(sdata.path)["transcript_qc_shapes"]
+    assert list(saved["filtered"]) == [False, True]
     assert "filtered" in grid.columns
 
 
-def test_run_cluster_hexes_saves_clustered_table(monkeypatch):
-    sdata = _FakeSData(points=pd.DataFrame({"x": [1], "y": [1], "gene": ["A"]}))
+def test_run_transcript_qc_save_failure_raises(monkeypatch, tmp_path):
+    """Saving the QC shapes used to fail into a warning; it now raises and leaves the store as it was."""
+    import spatialdata as sd
+
+    sdata = _real_store(tmp_path)
+    adata_hex = _hex_obs()
+    adata_hex.obs["geometry"] = [geom.Point(1, 1), geom.Point(2, 2)]  # not valid shapes without a radius
+    monkeypatch.setattr(tq, "get_or_create_hex_adata", lambda *a, **k: (adata_hex, "adata_hex_s30_o0"))
+
+    with pytest.raises(ValueError, match="radius"):
+        tq.run_transcript_qc(sdata=sdata, points_key="points", min_transcripts=50)
+    assert "transcript_qc_shapes" not in sd.read_zarr(sdata.path).shapes
+
+
+def test_run_cluster_hexes_saves_clustered_table(monkeypatch, tmp_path):
+    import spatialdata as sd
+
+    sdata = _real_store(tmp_path)
 
     obs = pd.DataFrame(
         {
@@ -281,7 +270,6 @@ def test_run_cluster_hexes_saves_clustered_table(monkeypatch):
     )
 
     assert cluster_key == "adata_hex_s30_o0_clustered"
-    assert cluster_key in sdata.tables
-    assert cluster_key in sdata.written
+    assert cluster_key in sd.read_zarr(sdata.path).tables
     assert "leiden" in clustered.obs.columns
     assert list(clustered.obs.index) == ["h1"]

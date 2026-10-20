@@ -77,3 +77,42 @@ def test_tissue_mask_output_path_override(monkeypatch, cfg, tmp_path):
     assert res.exit_code == 0, res.output
     (d,), k = calls[0]
     assert k["mask_dir"] == str(tmp_path / "masks") and d.raw == tmp_path / "raw" / "E" / "out" / "region_1"
+
+
+# ---- filter-cells --overwrite (phase 2) ----
+
+def test_filter_cells_guard(monkeypatch, tmp_path):
+    import json
+    from spida.P import main as m
+    from spida.io.layout import Dataset
+
+    d = Dataset(zarr=tmp_path / "s.zarr")
+    obs = d.zarr / "tables" / "cellpose_cell_table" / "obs"
+    obs.mkdir(parents=True)
+    (obs / "zarr.json").write_text(json.dumps({"attributes": {"column-order": ["CELL_ID", "pass_qc"]}}))
+    (d.zarr / "zarr.json").write_text(json.dumps({"attributes": {"spida": {"namespace": "", "exp": None, "reg": None}}}))
+    read = []
+    monkeypatch.setattr(m, "_get_adata", lambda *a: read.append(a) or (_ for _ in ()).throw(RuntimeError("reached")))
+    with pytest.raises(FileExistsError, match="pass_qc"):
+        m.filter_cells_region(d, "cellpose_cell")
+    assert not read  # stops before reading the table
+    with pytest.raises(RuntimeError, match="reached"):
+        m.filter_cells_region(d, "cellpose_cell", overwrite=True)
+
+
+def test_filter_cells_all_skips_filtered(monkeypatch, cfg, tmp_path):
+    import json
+    from spida.P import main as m
+    from spida.io.layout import element_keys
+    from spida._constants import TABLE_KEY
+
+    for r in ("region_1", "region_2"):
+        (tmp_path / "z" / "E" / r).mkdir(parents=True)
+    obs = tmp_path / "z" / "E" / "region_1" / "tables" / element_keys("cellpose_cell", "E_region_1")[TABLE_KEY] / "obs"
+    obs.mkdir(parents=True)
+    (obs / "zarr.json").write_text(json.dumps({"attributes": {"column-order": ["pass_qc"]}}))
+    seen = []
+    monkeypatch.setattr(m, "filter_cells_region", lambda d, p, **k: seen.append((d.reg, k["overwrite"])))
+    res = CliRunner().invoke(p_cli.cli, ["--config", str(cfg), "filter-cells-all", "cellpose_cell", "--exp", "E"])
+    assert res.exit_code == 0, res.output
+    assert seen == [("region_2", False)]

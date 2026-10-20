@@ -29,6 +29,8 @@ from rasterio.transform import Affine as RioAffine
 from scipy.ndimage import binary_closing, binary_erosion, gaussian_filter, label
 from shapely.affinity import affine_transform
 
+from spida.io.store import write_element
+
 logger = logging.getLogger(__package__)
 
 # --- Calibrated defaults (validated in spida_dev/v1/tissue_mask) ---
@@ -154,20 +156,6 @@ def _mosaic_shape(images_dir: Path, channel: str = "DAPI") -> tuple[int, int]:
 
 # --------------------------------------------------------------------------- persist
 
-def _overwrite_element(sdata, key: str, element) -> None:
-    """Set + write a SpatialData element, replacing any on-disk copy (transcript_qc pattern)."""
-    try:
-        if hasattr(sdata, "elements_paths_on_disk"):
-            paths = sdata.elements_paths_on_disk()
-            if any(p.endswith(key) for p in paths) and hasattr(sdata, "delete_element_from_disk"):
-                sdata.delete_element_from_disk(key)
-    except Exception:
-        pass
-    sdata[key] = element
-    if hasattr(sdata, "write_element"):
-        sdata.write_element(key)
-
-
 def run_tissue_mask(
     sdata,
     points_key: str,
@@ -186,12 +174,14 @@ def run_tissue_mask(
     m2m_path: str | Path | None = None,
     persist: bool = True,
     mask_dir: str | Path | None = None,
+    overwrite: bool = False,
 ):
     """Compute the tissue mask and (optionally) persist polygon + labels + images-dir tif.
 
     Returns (stages, grid_polygons, x0, y0). ``images_dir`` holds the raw mosaics and the
     ``micron_to_mosaic_pixel_transform.csv``; the boolean ``tissue_mask.tif`` is written to
     ``mask_dir`` (default: ``images_dir``).
+    ``overwrite`` replaces existing shapes / labels (the caller checks the tif up front).
     """
     images_dir = Path(images_dir)
     logger.info("run_tissue_mask started (points_key=%s)", points_key)
@@ -215,12 +205,12 @@ def run_tissue_mask(
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        _overwrite_element(sdata, shapes_key, ShapesModel.parse(grid))
+        write_element(sdata.path, shapes_key, ShapesModel.parse(grid), overwrite=overwrite)
         labels = Labels2DModel.parse(
             final.astype(np.uint8), dims=("y", "x"),
             transformations={"global": _labels_transformation(x0, y0, gb)},
         )
-        _overwrite_element(sdata, labels_key, labels)
+        write_element(sdata.path, labels_key, labels, overwrite=overwrite)
     logger.info("Persisted shapes '%s' and labels '%s'", shapes_key, labels_key)
 
     if write_raster:

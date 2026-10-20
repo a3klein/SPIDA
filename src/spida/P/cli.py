@@ -91,6 +91,7 @@ def test_command(
 @click.option("--cutoffs_path", type=click.Path(exists=True, file_okay=True), default=None, help="QC cutoffs JSON (default: CUTOFFS_PATH in the config)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to save the plot")
+@click.option("--overwrite", is_flag=True, default=False, help="Re-filter a table that was already filtered (default: False)")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @dataset_overrides
@@ -103,6 +104,7 @@ def filter_cells_region(
     cutoffs_path: Path = None,
     plot: bool = False,
     image_path: Path = None,
+    overwrite: bool = False,
     image_store: Path = None,
     zarr_store: Path = None,
 ):
@@ -116,7 +118,7 @@ def filter_cells_region(
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from spida.P.main import filter_cells_region as func
     func(dataset, prefix_name, seg_fam=seg_fam, cutoffs_path=cfg.cutoffs_path,
-         plot=plot, image_path=image_path)
+         plot=plot, image_path=image_path, overwrite=overwrite)
 
 @cli.command(
     name="filter-cells-all",
@@ -129,6 +131,7 @@ def filter_cells_region(
 @click.option("--seg_fam", type=str, default=None, help="Which preset of column names to use when running filtering (default is None which uses vpt outputs)")
 @click.option("--cutoffs_path", type=click.Path(exists=True), default=None, help="QC cutoffs JSON (default: CUTOFFS_PATH in the config)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
+@click.option("--overwrite", is_flag=True, default=False, help="Re-filter regions already filtered; without it they are skipped (default: False)")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.pass_context
@@ -139,6 +142,7 @@ def filter_cells_all(
     cutoffs_path: Path = None,
     seg_fam:str = None,
     plot: bool = False,
+    overwrite: bool = False,
     image_store: Path = None,
     zarr_store: Path = None,
 ):
@@ -147,7 +151,7 @@ def filter_cells_all(
     """
     cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store, cutoffs_path=cutoffs_path)
     from spida.P.main import filter_cells_all as func
-    func(cfg, exp_name, prefix_name, seg_fam=seg_fam, cutoffs_path=cfg.cutoffs_path, plot=plot)
+    func(cfg, exp_name, prefix_name, seg_fam=seg_fam, cutoffs_path=cfg.cutoffs_path, plot=plot, overwrite=overwrite)
 
 @cli.command(
     name="plot-filtering-region",
@@ -192,6 +196,7 @@ def plot_filtering_region(
 @click.option("--suffix", type=str, default="", help="Table suffix, e.g. _filt (default: none)")
 @click.option("anndata_store", "--anndata_store", default=None, type=click.Path(), help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Replace existing h5ad copies; without it, one region raises and all regions skip existing files (default: False)")
 @click.pass_context
 def write_adata(
     ctx,
@@ -201,13 +206,14 @@ def write_adata(
     suffix: str = "",
     anndata_store: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     """
     Export segmentation tables to AnnData files, ANNDATA_STORE_PATH/<exp>/<reg>/<prefix>_table<suffix>.h5ad.
     """
     cfg = run_config(ctx, zarr_store=zarr_store, anndata_store=anndata_store)
     from spida.P.main import write_adata as func
-    func(cfg, exp_name, reg_name=reg_name, prefix_names=prefix_names, suffix=suffix)
+    func(cfg, exp_name, reg_name=reg_name, prefix_names=prefix_names, suffix=suffix, overwrite=overwrite)
 
 @cli.command(
     name="setup-adata-region",
@@ -224,6 +230,7 @@ def write_adata(
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Rebuild PREFIX_NAME's table+suffix if it exists; drops doublet / RESOLVI results on it (default: False)")
 @dataset_overrides
 @click.pass_context
 def setup_adata_region(
@@ -237,6 +244,7 @@ def setup_adata_region(
     image_path: Path = None,
     image_store: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     """
     Setup the AnnData object for downstream analysis.
@@ -246,7 +254,7 @@ def setup_adata_region(
                        zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import setup_adata_region as func
     func(dataset, prefix_name, suffix=suffix, plot=plot, do_tsne=do_tsne,
-         consensus_cluster=consensus_cluster, image_path=image_path)
+         consensus_cluster=consensus_cluster, image_path=image_path, overwrite=overwrite)
 
 
 @cli.command(
@@ -262,6 +270,7 @@ def setup_adata_region(
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Rebuild existing tables; without it, those regions are skipped (default: False)")
 @click.pass_context
 def setup_adata_all(
     ctx,
@@ -272,13 +281,14 @@ def setup_adata_all(
     image_path: Path = None,
     image_store: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     """
     Setup the AnnData objects for every region of an experiment.
     """
     cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import setup_adata_all as func
-    func(cfg, exp_name, prefix_name, suffix=suffix, plot=plot, image_path=image_path)
+    func(cfg, exp_name, prefix_name, suffix=suffix, plot=plot, image_path=image_path, overwrite=overwrite)
 
 @cli.command(
     name="plot-setup-region",
@@ -328,6 +338,7 @@ def plot_setup_region(
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Re-run on a table that already has doublet calls (default: False)")
 @dataset_overrides
 @click.pass_context
 def remove_doublets_region(
@@ -339,6 +350,7 @@ def remove_doublets_region(
     plot: bool = False,
     image_store: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     """
     Remove doublets from the AnnData object for a specific region in an experiment.
@@ -351,7 +363,7 @@ def remove_doublets_region(
     dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
                        zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import remove_doublets_region as func
-    func(dataset, prefix_name, threshold=threshold, suffix=suffix, plot=plot, model_kwargs=kwargs)
+    func(dataset, prefix_name, threshold=threshold, suffix=suffix, plot=plot, model_kwargs=kwargs, overwrite=overwrite)
 
 @cli.command(
     name="remove-doublets-all",
@@ -370,6 +382,7 @@ def remove_doublets_region(
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Re-run regions that already have doublet calls; without it, they are skipped (default: False)")
 @click.pass_context
 def remove_doublets_all(
     ctx,
@@ -380,6 +393,7 @@ def remove_doublets_all(
     plot: bool = False,
     image_store: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     """
     Remove doublets from all regions in an experiment
@@ -391,7 +405,7 @@ def remove_doublets_all(
 
     cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import remove_doublets_all as func
-    func(cfg, exp_name, prefix_name, threshold=threshold, suffix=suffix, plot=plot, model_kwargs=kwargs)
+    func(cfg, exp_name, prefix_name, threshold=threshold, suffix=suffix, plot=plot, model_kwargs=kwargs, overwrite=overwrite)
 
 @cli.command(
     name="resolvi-region",
@@ -415,6 +429,7 @@ def remove_doublets_all(
 @click.option("--batch_key", type=str, default=None, help="Key for batch information in the AnnData object (default: None)")
 @click.option("--categorical_covariates", type=parse_list, default=None, help="List of categorical covariates to use (default: [])")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Re-run on a table that already has RESOLVI results (default: False)")
 @dataset_overrides
 @click.pass_context
 def resolvi_region(
@@ -431,6 +446,7 @@ def resolvi_region(
     batch_key: str = None,
     categorical_covariates: list = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     """
     Perform RESOLVI clustering on the AnnData object for a specific region in an experiment.
@@ -455,6 +471,7 @@ def resolvi_region(
         batch_key=batch_key,
         categorical_covariates=categorical_covariates,
         model_kwargs=kwargs,
+        overwrite=overwrite,
     )
 
 @cli.command(
@@ -474,6 +491,7 @@ def resolvi_region(
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("--model_save_path", type=click.Path(), default=None, help="Path to save the ResolVI model")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Re-run regions that already have RESOLVI results; without it, they are skipped (default: False)")
 @click.pass_context
 def resolvi_all(
     ctx,
@@ -484,6 +502,7 @@ def resolvi_all(
     image_store: Path = None,
     model_save_path: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     """
     Run the Resolvi algorithm for all regions in an experiment.
@@ -496,7 +515,7 @@ def resolvi_all(
     cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import resolvi_cluster_all as func
     func(cfg, exp_name, prefix_name, suffix=suffix, plot=plot,
-         model_save_path=model_save_path, model_kwargs=kwargs)
+         model_save_path=model_save_path, model_kwargs=kwargs, overwrite=overwrite)
 
 @cli.command(
     name="plot-resolvi-region",
@@ -690,6 +709,7 @@ def plot_dataset(
 @click.option("--image_path", type=click.Path(), default=None, help="Path to save the plots (default: None)")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Replace existing GEOMS_NAME shapes (and --save_geoms_path) (default: False)")
 @dataset_overrides
 @click.pass_context
 def call_region_tz(
@@ -709,7 +729,8 @@ def call_region_tz(
     plot : bool = False,
     image_path: Path = None,
     image_store: Path = None,
-    zarr_store: str | Path | None = None
+    zarr_store: str | Path | None = None,
+    overwrite: bool = False,
 ): 
     """
     Call the transcript-based spatial regions for a specific region in an experiment.
@@ -732,6 +753,7 @@ def call_region_tz(
         top_n_comp=top_n_comp,
         gen_plots=plot,
         image_path=image_path,
+        overwrite=overwrite,
     )
 
 @cli.command(
@@ -753,6 +775,7 @@ def call_region_tz(
 @click.option("--plot", is_flag=True, help="Whether to plot the results (default: False)")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Replace existing QC shapes; the shared hex table is reused either way (default: False)")
 @dataset_overrides
 @click.pass_context
 def transcript_qc(
@@ -770,6 +793,7 @@ def transcript_qc(
     plot: bool = False,
     image_store: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
                        zarr_store=zarr_store, image_store=image_store)
@@ -786,6 +810,7 @@ def transcript_qc(
         min_transcripts=min_transcripts,
         min_density=min_density,
         plot=plot,
+        overwrite=overwrite,
     )
 
 @cli.command(
@@ -807,6 +832,7 @@ def transcript_qc(
 @click.option("--shapes_key", type=str, default="qc_mask", help="Key for the pass-region polygon shapes (default: 'qc_mask')")
 @click.option("--labels_key", type=str, default="tissue_mask", help="Key for the boolean labels layer (default: 'tissue_mask')")
 @click.option("--no_raster", is_flag=True, default=False, help="Skip writing the pixel tissue_mask.tif")
+@click.option("--overwrite", is_flag=True, default=False, help="Replace an existing qc_mask, tissue_mask and tissue_mask.tif (default: False)")
 @click.option("--tissue_mask_output_path", "tissue_mask_output_path", type=click.Path(file_okay=False), default=None, help="Directory to write tissue_mask.tif into (default: the region's raw images dir, where segment-region looks for it)")
 @click.option("--plot", is_flag=True, help="Whether to plot the mask overview (default: False)")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
@@ -829,6 +855,7 @@ def tissue_mask(
     shapes_key: str = "qc_mask",
     labels_key: str = "tissue_mask",
     no_raster: bool = False,
+    overwrite: bool = False,
     tissue_mask_output_path: Path = None,
     plot: bool = False,
     image_store: Path = None,
@@ -854,6 +881,7 @@ def tissue_mask(
         write_raster=not no_raster,
         plot=plot,
         mask_dir=tissue_mask_output_path,
+        overwrite=overwrite,
     )
 
 @cli.command(
@@ -879,6 +907,7 @@ def tissue_mask(
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--overwrite", is_flag=True, default=False, help="Replace the existing clustered hex table; the shared hex table is reused either way (default: False)")
 @dataset_overrides
 @click.pass_context
 def cluster_hexes(
@@ -900,6 +929,7 @@ def cluster_hexes(
     plot: bool = False,
     image_store: Path = None,
     zarr_store: Path = None,
+    overwrite: bool = False,
 ):
     dataset = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
                        zarr_store=zarr_store, image_store=image_store)
@@ -920,6 +950,7 @@ def cluster_hexes(
         n_top_genes=n_top_genes,
         pca_comps=pca_comps,
         plot=plot,
+        overwrite=overwrite,
     )
 
 cli.add_command(test_command)

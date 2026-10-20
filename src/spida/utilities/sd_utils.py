@@ -97,7 +97,7 @@ def _validate_adata(adata):
 
 def _backup_adata(zarr_path, element: ad.AnnData, element_name: str):
     """
-    Replace a table in the store at ``zarr_path`` (delete, then write).
+    Replace a table in the store at ``zarr_path`` (temp-swap: a crash never leaves it missing).
     Parameters:
     zarr_path (str | Path): The dataset's zarr store.
     element: The new element to write to the spatialdata object.
@@ -107,20 +107,13 @@ def _backup_adata(zarr_path, element: ad.AnnData, element_name: str):
     ### TODO: Verify this works correctly for all element types (Points / Shapes / Tables)
     # Main use case is going to be for tables
     # It Does not work for all elements :(
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        import spatialdata as sd
-
-    sdata = sd.read_zarr(zarr_path)
+    from spida.io.store import write_element
 
     if element.raw:
         logger.info("Removing Raw data from AnnData object before writing to disk.")
         del element.raw
 
-    sdata.delete_element_from_disk(element_name)  # Remove the old table from disk
-    sdata[element_name] = element
-    sdata.write_element(element_name)
+    write_element(zarr_path, element_name, element, overwrite=True)
 
 
 

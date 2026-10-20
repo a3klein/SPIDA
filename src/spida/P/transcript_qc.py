@@ -12,6 +12,7 @@ import geopandas as gpd
 import shapely as shp
 
 from spida.utilities.tiling import create_hexagonal_grid, hex_area_from_size
+from spida.io.store import write_element
 
 
 logger = logging.getLogger(__package__)
@@ -303,6 +304,7 @@ def run_transcript_qc(
     qc_shapes_key: str = "transcript_qc_shapes",
     persist_qc_shapes: bool = True,
     force_recompute: bool = False,
+    overwrite: bool = False,
 ):
     logger.info("run_transcript_qc started (points_key=%s)", points_key)
     adata_hex, table_key = get_or_create_hex_adata(
@@ -323,32 +325,13 @@ def run_transcript_qc(
     )
     logger.info("Transcript QC finished for table '%s'", table_key)
 
-    if persist_qc_shapes and hasattr(sdata, "__setitem__"):
+    if persist_qc_shapes:
         logger.info("Persisting QC shapes to key '%s'", qc_shapes_key)
-        try:
-            # Override existing on-disk element when available.
-            if hasattr(sdata, "elements_paths_on_disk") and hasattr(
-                sdata, "delete_element_from_disk"
-            ):
-                shapes_path = f"shapes/{qc_shapes_key}"
-                if shapes_path in sdata.elements_paths_on_disk():
-                    sdata.delete_element_from_disk(qc_shapes_key)
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore")
-                from spatialdata.models import ShapesModel
-            grid_shapes = ShapesModel.parse(grid)
-            sdata[qc_shapes_key] = grid_shapes
-            if hasattr(sdata, "write_element"):
-                sdata.write_element(qc_shapes_key)
-            logger.info("QC shapes persisted to '%s'", qc_shapes_key)
-        except Exception as e:
-            logger.warning(
-                "Failed to persist transcript QC shapes '%s': %s",
-                qc_shapes_key,
-                e,
-                exc_info=True,
-            )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            from spatialdata.models import ShapesModel
+        write_element(sdata.path, qc_shapes_key, ShapesModel.parse(grid), overwrite=overwrite)
+        logger.info("QC shapes persisted to '%s'", qc_shapes_key)
 
     logger.info("run_transcript_qc completed")
     return adata_qc, grid, table_key
@@ -371,6 +354,7 @@ def run_cluster_hexes(
     table_key: str | None = None,
     cluster_table_key: str | None = None,
     force_recompute: bool = False,
+    overwrite: bool = False,
 ):
     logger.info("run_cluster_hexes started (points_key=%s)", points_key)
     adata_hex, table_key = get_or_create_hex_adata(
@@ -403,13 +387,7 @@ def run_cluster_hexes(
 
     cluster_key = cluster_table_key or f"{_hex_table_key(hex_size, hex_overlap)}_clustered"
     
-    if cluster_key in sdata.tables:
-        warning_msg = f"Overwriting existing table with key '{cluster_key}' in sdata.tables."
-        warnings.warn(warning_msg)
-        logger.warning(warning_msg)
-        sdata.delete_element_from_disk(cluster_key)  # Remove the old table from disk
-    sdata.tables[cluster_key] = adata_clustered
-    sdata.write_element(cluster_key)
+    write_element(sdata.path, cluster_key, adata_clustered, overwrite=overwrite)
     logger.info("Clustered table persisted to key '%s'", cluster_key)
 
     return adata_clustered, cluster_key

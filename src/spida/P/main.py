@@ -4,6 +4,7 @@ import logging
 
 from spida.config import SpidaConfig
 from spida.io.layout import Dataset, TreeLayout, dataset_from, table_key
+from spida.io.store import is_writeable, obs_columns
 from spida.utilities.sd_utils import (
     _region_to_donor,
     _write_adata,
@@ -30,6 +31,21 @@ def _figure(dataset: Dataset, label: str, name: str, image_path=None) -> Path:
     return path
 
 
+_FILTER_COLUMNS = ["nCount_RNA", "nFeature_RNA", "nBlank", "nCount_RNA_per_Volume", "pass_qc_pre", "pass_qc"]
+_DOUBLET_COLUMNS = ["doublet_score", "doublet_bool"]
+_RESOLVI_COLUMNS = ["true_proportion", "diffusion_proportion", "background_proportion", "resolvi_leiden", "corr_leiden"]
+
+
+def _skip_if_written(reg_name, what, **check) -> bool:
+    # -all loops: True (with a warning) when this region's outputs already exist
+    try:
+        is_writeable(**check)
+        return False
+    except FileExistsError:
+        logger.warning("Skipping %s: %s already done (pass --overwrite to redo)", reg_name, what)
+        return True
+
+
 def filter_cells_region(
     dataset: Dataset,
     prefix_name: str,
@@ -37,6 +53,7 @@ def filter_cells_region(
     cutoffs_path: Path = None,
     plot: bool = False,
     image_path: Path = None,
+    overwrite: bool = False,
 ):
     """
     Filter the cells of one segmentation table.
@@ -46,6 +63,7 @@ def filter_cells_region(
     seg_fam (str, optional): Which preset of column names to use when running filtering (default is None which uses a constant map)
     cutoffs_path (Path, optional): Path to the cutoffs JSON file.
     plot (bool, optional): Whether to plot the results. Defaults to False.
+    overwrite (bool, optional): Re-filter a table that was already filtered. Defaults to False.
     """
     from spida.P.filtering import run_filtering
 
@@ -56,6 +74,7 @@ def filter_cells_region(
 
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
+    is_writeable(zarr_path, columns={KEYS[TABLE_KEY]: _FILTER_COLUMNS}, overwrite=overwrite)
     adata = _get_adata(zarr_path, KEYS[TABLE_KEY])
     # Run the filtering
     adata = run_filtering(
@@ -112,24 +131,32 @@ def filter_cells_all(
     seg_fam:str = None,
     plot: bool = False,
     image_path: Path = None,
+    overwrite: bool = False,
 ):
     """
     Filter cells for every region of an experiment in the zarr store.
+    Regions already filtered are skipped unless ``overwrite``.
     Parameters:
     config (SpidaConfig): Store roots.
     exp_name (str): Name of the experiment.
     prefix_name (str): Prefix for the keys in the spatialdata object.
     cutoffs_path (Path, optional): Path to the cutoffs JSON file.
     plot (bool, optional): Whether to plot the results. Defaults to False.
+    overwrite (bool, optional): Re-filter regions already filtered. Defaults to False.
     """
     for reg_name in TreeLayout(config).units(exp_name):
+        dataset = dataset_from(config, exp_name, reg_name)
+        if _skip_if_written(reg_name, f"{prefix_name} filtering", zarr_path=dataset.zarr, overwrite=overwrite,
+                            columns={dataset.keys(prefix_name)[TABLE_KEY]: _FILTER_COLUMNS}):
+            continue
         filter_cells_region(
-            dataset_from(config, exp_name, reg_name),
+            dataset,
             prefix_name,
             seg_fam=seg_fam,
             cutoffs_path=cutoffs_path,
             plot=plot,
             image_path=image_path,
+            overwrite=overwrite,
         )
 
 
@@ -139,10 +166,12 @@ def write_adata(
     reg_name: str = None,
     prefix_names: list[str] = None,
     suffix: str = "",
+    overwrite: bool = False,
 ):
     """
     Export tables ``{prefix}_table{suffix}`` to their h5ad copies, ``{anndata}/{table_key}.h5ad``.
     One region if ``reg_name`` is given, else every region of the experiment.
+    An existing h5ad is replaced only with ``overwrite`` (one region: raises; all regions: skipped).
     """
     regions = [reg_name] if reg_name else TreeLayout(config).units(exp_name)
     logger.info(f"{exp_name}, {regions}, {prefix_names}")
@@ -151,7 +180,12 @@ def write_adata(
         key = table_key(p, suffix)
         for reg in regions:
             dataset = dataset_from(config, exp_name, reg)
-            _write_adata(dataset.require("zarr"), key, dataset.table_h5ad(key))
+            out = dataset.table_h5ad(key)
+            if reg_name:
+                is_writeable(files=[out], overwrite=overwrite)
+            elif _skip_if_written(reg, out.name, files=[out], overwrite=overwrite):
+                continue
+            _write_adata(dataset.require("zarr"), key, out)
 
 
 def setup_adata_region(
@@ -162,6 +196,7 @@ def setup_adata_region(
     do_tsne: bool = False,
     image_path: Path = None,
     consensus_cluster: bool = True,
+    overwrite: bool = False,
 ):
     """
     Setup the AnnData object for downstream analysis.
@@ -174,6 +209,8 @@ def setup_adata_region(
     do_tsne (bool, optional): Also compute the tSNE embedding (needed by the setup plots). Defaults to False.
     consensus_cluster (bool, optional): Use consensus clustering rather than a single
         Leiden run. Defaults to True. See `run_setup` for the memory/runtime tradeoff.
+    overwrite (bool, optional): Rebuild ``{prefix}_table{suffix}`` if it exists (drops doublet / resolvi
+        results on it). Defaults to False.
     """
     from spida.P.setup_adata import run_setup
 
@@ -183,17 +220,17 @@ def setup_adata_region(
     donor_name = _region_to_donor(dataset.reg or "")
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
+    out = f"{KEYS[TABLE_KEY]}{suffix}"
+    is_writeable(zarr_path, [out], overwrite=overwrite)
+    lost = [c for c in obs_columns(zarr_path, out) if c in _DOUBLET_COLUMNS + _RESOLVI_COLUMNS]
+    if lost:
+        logger.warning("Rebuilding %s drops these columns from later steps: %s", out, ", ".join(lost))
     adata = _get_adata(zarr_path, KEYS[TABLE_KEY])
     # Run the setup
     adata = run_setup(adata, dataset.exp or "", dataset.reg or "", prefix_name, donor_name, do_tsne=do_tsne,
                       consensus_cluster=consensus_cluster)
     # backup the adata object
-    try:
-        _assign_new_table(zarr_path, adata, f"{KEYS[TABLE_KEY]}{suffix}")  # double the storage but allows for iteration on filts.
-    except Exception as e:
-        logger.warning(f"Error: {e}", exc_info=True)
-        logger.warning("Failed to assign new table, using backup instead")
-        _backup_adata(zarr_path, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+    _backup_adata(zarr_path, adata, out)  # new table, or swap when overwriting
 
     logger.info("DONE SETUP")
     if plot:
@@ -207,23 +244,31 @@ def setup_adata_all(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    overwrite: bool = False,
 ):
     """
     Setup the AnnData objects for every region of an experiment in the zarr store.
+    Regions whose ``{prefix}_table{suffix}`` exists are skipped unless ``overwrite``.
 
     Parameters:
     config (SpidaConfig): Store roots.
     exp_name (str): Name of the experiment.
     prefix_name (str): Prefix for the keys in the spatialdata object.
     plot (bool, optional): Whether to plot the results. Defaults to False.
+    overwrite (bool, optional): Rebuild existing tables. Defaults to False.
     """
     for reg_name in TreeLayout(config).units(exp_name):
+        dataset = dataset_from(config, exp_name, reg_name)
+        out = f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}"
+        if _skip_if_written(reg_name, out, zarr_path=dataset.zarr, elements=[out], overwrite=overwrite):
+            continue
         setup_adata_region(
-            dataset_from(config, exp_name, reg_name),
+            dataset,
             prefix_name,
             suffix=suffix,
             plot=plot,
             image_path=image_path,
+            overwrite=overwrite,
         )
 
 
@@ -259,6 +304,7 @@ def remove_doublets_region(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    overwrite: bool = False,
     **model_kwargs,
 ):
     """
@@ -269,6 +315,7 @@ def remove_doublets_region(
     prefix_name (str): Prefix for the keys in the spatialdata object.
     threshold (float, optional): Threshold for doublet detection. Defaults to 0.5.
     plot (bool, optional): Whether to plot the results. Defaults to False.
+    overwrite (bool, optional): Re-run on a table that already has doublet calls. Defaults to False.
     """
     from spida.P.scvi_toolkit import identify_doublets  # , remove_doublets
 
@@ -276,6 +323,7 @@ def remove_doublets_region(
 
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
+    is_writeable(zarr_path, columns={f"{KEYS[TABLE_KEY]}{suffix}": _DOUBLET_COLUMNS}, overwrite=overwrite)
     adata = _get_adata(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
 
     # Identify doublets
@@ -322,10 +370,12 @@ def remove_doublets_all(
     suffix: str = "",
     plot: bool = False,
     image_path: Path = None,
+    overwrite: bool = False,
     **model_kwargs,
 ):
     """
     Flag doublets for every region of an experiment in the zarr store.
+    Regions that already have doublet calls are skipped unless ``overwrite``.
 
     Parameters:
     config (SpidaConfig): Store roots.
@@ -333,16 +383,23 @@ def remove_doublets_all(
     prefix_name (str): Prefix for the keys in the spatialdata object.
     threshold (float, optional): Threshold for doublet detection. Defaults to 0.5.
     plot (bool, optional): Whether to plot the results. Defaults to False.
+    overwrite (bool, optional): Re-run regions that already have doublet calls. Defaults to False.
     """
     logger.info("REMOVING DOUBLETS FOR ALL REGIONS IN EXPERIMENT %s" % exp_name)
     for reg_name in TreeLayout(config).units(exp_name):
+        dataset = dataset_from(config, exp_name, reg_name)
+        key = f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}"
+        if _skip_if_written(reg_name, f"doublets on {key}", zarr_path=dataset.zarr,
+                            columns={key: _DOUBLET_COLUMNS}, overwrite=overwrite):
+            continue
         remove_doublets_region(
-            dataset_from(config, exp_name, reg_name),
+            dataset,
             prefix_name,
             threshold=threshold,
             plot=plot,
             image_path=image_path,
             suffix=suffix,
+            overwrite=overwrite,
             **model_kwargs,
         )
 
@@ -359,6 +416,7 @@ def resolvi_cluster_region(
     layer: str = "raw",
     batch_key: str = None,
     categorical_covariates: list = None,
+    overwrite: bool = False,
     **model_kwargs,
 ):
     """
@@ -370,6 +428,7 @@ def resolvi_cluster_region(
     suffix (str, optional): Suffix for the AnnData object. Defaults to "".
     plot (bool, optional): Whether to plot the results. Defaults to False.
     image_path (Path, optional): Path to save the plot. If None, uses a default path.
+    overwrite (bool, optional): Re-run on a table that already has RESOLVI results. Defaults to False.
     """
     from spida.P.scvi_toolkit import resolvi_cluster
     from spida.utilities.ad_utils import _calc_embeddings
@@ -382,6 +441,7 @@ def resolvi_cluster_region(
 
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
+    is_writeable(zarr_path, columns={f"{KEYS[TABLE_KEY]}{suffix}": _RESOLVI_COLUMNS}, overwrite=overwrite)
     adata = _get_adata(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
     model_save_ext = "_".join(p for p in (dataset.namespace, prefix_name) if p)
 
@@ -430,10 +490,12 @@ def resolvi_cluster_all(
     plot: bool = False,
     image_path: Path = None,
     model_save_path : Path = None,
+    overwrite: bool = False,
     **model_kwargs,
 ):
     """
     Perform RESOLVI clustering for every region of an experiment in the zarr store.
+    Regions that already have RESOLVI results are skipped unless ``overwrite``.
     Parameters:
     config (SpidaConfig): Store roots.
     exp_name (str): Name of the experiment.
@@ -441,15 +503,22 @@ def resolvi_cluster_all(
     suffix (str, optional): Suffix for the AnnData object. Defaults to "".
     plot (bool, optional): Whether to plot the results. Defaults to False.
     image_path (Path, optional): Path to save the plot. If None, uses a default path.
+    overwrite (bool, optional): Re-run regions that already have RESOLVI results. Defaults to False.
     """
     for reg_name in TreeLayout(config).units(exp_name):
+        dataset = dataset_from(config, exp_name, reg_name)
+        key = f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}"
+        if _skip_if_written(reg_name, f"RESOLVI on {key}", zarr_path=dataset.zarr,
+                            columns={key: _RESOLVI_COLUMNS}, overwrite=overwrite):
+            continue
         resolvi_cluster_region(
-            dataset_from(config, exp_name, reg_name),
+            dataset,
             prefix_name,
             suffix=suffix,
             plot=plot,
             image_path=image_path,
             model_save_path=model_save_path,
+            overwrite=overwrite,
             **model_kwargs,
         )
 
@@ -660,15 +729,19 @@ def call_region_tz(
     top_n_comp : int = 1,
     gen_plots : bool = False,
     image_path: Path = None,
+    overwrite: bool = False,
 ):
     """
     Call spatial regions (e.g. white matter) from transcript density of ``use_genes``.
 
     ``image_path`` is the plot directory (default ``{figures}/{prefix}``).
+    Existing ``geoms_name`` shapes (and ``save_geoms_path``) are replaced only with ``overwrite``.
     """
     from spida.P.call_regions import call_regions
 
     KEYS = dataset.keys(prefix_name)
+    is_writeable(dataset.require("zarr"), [geoms_name],
+                 files=[save_geoms_path] if save_geoms_path else [], overwrite=overwrite)
     image_path = Path(image_path) if image_path is not None else dataset.figures_dir(prefix_name)
     image_path.mkdir(parents=True, exist_ok=True)
 
@@ -688,6 +761,7 @@ def call_region_tz(
         gen_plots = gen_plots,
         plot_save_path = image_path,
         image_key = KEYS[IMAGE_KEY],
+        overwrite = overwrite,
     )
 
 def transcript_qc_region(
@@ -703,12 +777,14 @@ def transcript_qc_region(
     min_density: float | None = None,
     plot: bool = False,
     image_path: Path | None = None,
+    overwrite: bool = False,
 ):
     import spatialdata as sd
     from spida.P.transcript_qc import run_transcript_qc
     from spida.pl import plot_hex_qc
 
     KEYS = dataset.keys(prefix_name)
+    is_writeable(dataset.require("zarr"), [qc_shapes_key], overwrite=overwrite)  # hex table is shared, reused
     sdata = sd.read_zarr(dataset.require("zarr"))
 
     adata_qc, grid, _ = run_transcript_qc(
@@ -722,6 +798,7 @@ def transcript_qc_region(
         y_col=y_col,
         min_transcripts=min_transcripts,
         min_density=min_density,
+        overwrite=overwrite,
     )
 
     if plot:
@@ -747,13 +824,19 @@ def tissue_mask_region(
     plot: bool = False,
     image_path: Path | None = None,
     mask_dir: Path | None = None,
+    overwrite: bool = False,
 ):
-    """Compute the KDE tissue mask; persist polygon + labels, and the tif to ``mask_dir`` (default: raw images dir)."""
+    """Compute the KDE tissue mask; persist polygon + labels, and the tif to ``mask_dir`` (default: raw images dir).
+    Existing polygon / labels / tif are replaced only with ``overwrite``."""
     import spatialdata as sd
-    from spida.P.tissue_mask import run_tissue_mask
+    from spida.P.tissue_mask import run_tissue_mask, QC_MASK_TIF_NAME
+    from spida.io.store import is_writeable
 
     images_dir = dataset.raw_images()
     KEYS = dataset.keys(prefix_name)
+    tif = Path(mask_dir or images_dir) / QC_MASK_TIF_NAME
+    is_writeable(dataset.require("zarr"), [shapes_key, labels_key],
+                 files=[tif] if write_raster else [], overwrite=overwrite)
     sdata = sd.read_zarr(dataset.require("zarr"))
 
     stages, grid, x0, y0 = run_tissue_mask(
@@ -772,6 +855,7 @@ def tissue_mask_region(
         labels_key=labels_key,
         write_raster=write_raster,
         mask_dir=mask_dir,
+        overwrite=overwrite,
     )
 
     if plot:
@@ -816,13 +900,16 @@ def cluster_hexes_region(
     pca_comps: int = 50,
     plot: bool = False,
     image_path: Path | None = None,
+    overwrite: bool = False,
 ):
     import spatialdata as sd
     import geopandas as gpd
-    from spida.P.transcript_qc import run_cluster_hexes, _obs_to_grid_geodf
+    from spida.P.transcript_qc import run_cluster_hexes, _obs_to_grid_geodf, _hex_table_key
     from spida.pl import plot_hex_clusters, save_cluster_panels_pdf
 
     KEYS = dataset.keys(prefix_name)
+    is_writeable(dataset.require("zarr"), [f"{_hex_table_key(hex_size, hex_overlap)}_clustered"],
+                 overwrite=overwrite)  # hex table is shared, reused
     sdata = sd.read_zarr(dataset.require("zarr"))
 
     adata_clustered, _ = run_cluster_hexes(
@@ -840,6 +927,7 @@ def cluster_hexes_region(
         min_genes=min_genes,
         n_top_genes=n_top_genes,
         pca_comps=pca_comps,
+        overwrite=overwrite,
     )
 
     if plot:

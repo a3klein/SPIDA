@@ -14,6 +14,7 @@ import libpysal as lps
 import networkx as nx
 
 from spida.utilities.tiling import create_hexagonal_grid
+from spida.io.store import write_element
 
 logger = logging.getLogger(__package__)
 warnings.filterwarnings("ignore", category=UserWarning, module="zarr")
@@ -35,6 +36,7 @@ def call_regions(
     gen_plots: bool = False,
     plot_save_path : str | Path = None,
     image_key : str = None,
+    overwrite : bool = False,
 ):
     """
     Call regions based on specific gene expression in space using hexagonal tiling and GMM clustering
@@ -102,6 +104,7 @@ def call_regions(
         run_goodness_of_fit=run_goodness_of_fit,
         top_n_comp=top_n_comp,
         plot=gen_plots,
+        overwrite=overwrite,
     )
 
     #TODO: import .pl workers for plotting if gen_plots is True
@@ -178,6 +181,7 @@ def call_region_worker(
     run_goodness_of_fit : bool = False,
     top_n_comp: int = 1,
     plot : bool = False,
+    overwrite : bool = False,
 ): 
     """
     Call regions based on specific gene expression in space using hexagonal tiling and GMM clustering.
@@ -206,6 +210,8 @@ def call_region_worker(
         Portion of genes that must agree to call a hexagon as part of the region. Default is 0.75.
     dsc_comp_min_size : int, optional
         Minimum number of hexes in a disconnected component to consider as a region. Default is 5.
+    overwrite : bool, optional
+        Replace an existing ``geoms_name`` element. Default is False.
     """
     # TODO: Figure out how the plotting mechanism will work here. 
 
@@ -319,23 +325,20 @@ def call_region_worker(
 
     print(f"Final geometries created: {len(gdf_geoms)}. Saving to spatialdata")
 
-    if geoms_name in sdata.shapes.keys():
-        logger.warning(f"Overwriting existing geometries at {geoms_name} in SpatialData.")
-        sdata.delete_element_from_disk(geoms_name)  # Remove the old table from disk
-
-    sdata[geoms_name] = sd.models.ShapesModel().parse(gdf_geoms)
+    geoms = sd.models.ShapesModel().parse(gdf_geoms)
     sd.transformations.set_transformation(
-        sdata[geoms_name],
+        geoms,
         sd.transformations.get_transformation(sdata[points_key], to_coordinate_system="pixel"),
         to_coordinate_system="pixel"
     )
 
     sd.transformations.set_transformation(
-        sdata[geoms_name],
+        geoms,
         sd.transformations.get_transformation(sdata[points_key], to_coordinate_system="global"),
         to_coordinate_system="global"
     )
-    sdata.write_element(geoms_name, overwrite=True)
+    write_element(sdata.path, geoms_name, geoms, overwrite=overwrite)
+    sdata[geoms_name] = geoms
 
     if plot: 
         return df_gene_dict, grid

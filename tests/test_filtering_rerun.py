@@ -101,3 +101,42 @@ def test_partial_prior_state(missing):
     meta = _filter(obs).load_metadata()
     assert meta.height == 3
     assert meta["CELL_ID"].to_list() == ["c1", "c2", "c3"]
+
+
+# ---- re-filter keeps the same columns (phase 2, 2026-10-15) ----
+# reset_index() used to turn the composite index into an extra `Index` column on every
+# second run (17 -> 18 -> 17 columns); the old index is now dropped, since it is rebuilt.
+
+CUTOFFS = {"volume_min": 100, "volume_max": 4000, "vol_max_mult": 3, "max_vol_by_median": False,
+           "n_count_min": 20, "n_count_max": 2000, "n_count_max_mult": 5, "n_count_by_median": False,
+           "n_gene_min": 5, "n_gene_max": 1000, "n_blank_min": -1, "n_blank_max": 5,
+           "ncpv_min_quantile": 0.02, "ncpv_max_quantile": 1, "DAPI_quantile": 0.05}
+
+
+def _loaded(n=200):
+    import scipy.sparse as sp
+    rng = np.random.default_rng(0)
+    ids = [str(1000 + i) for i in range(n)]
+    obs = pd.DataFrame({"EntityID": ids, "center_x": rng.uniform(0, 100, n), "center_y": rng.uniform(0, 100, n),
+                        "volume": rng.uniform(200, 2000, n), "fov": 0, "DAPI_high_pass": rng.uniform(0, 1, n)},
+                       index=pd.Index(ids, name="index"))
+    a = ad.AnnData(sp.csr_matrix(rng.poisson(3, (n, 50)).astype(np.float32)), obs=obs)
+    a.obsm["blank"] = rng.poisson(0.2, (n, 3))
+    return a
+
+
+def test_refilter_is_stable(tmp_path):
+    import json
+    from spida.P.filtering import run_filtering
+
+    cut = tmp_path / "cutoffs.json"
+    cut.write_text(json.dumps(CUTOFFS))
+    run = lambda a: run_filtering(a.copy(), "E", "R", "cellpose_cell", donor_name="D", cutoffs_path=cut)
+    first = run(_loaded())
+    second = run(first)
+    third = run(second)
+    for again in (second, third):
+        assert list(again.obs.columns) == list(first.obs.columns)
+        assert list(again.obs_names) == list(first.obs_names)
+        assert (again.obs["pass_qc"] == first.obs["pass_qc"]).all()
+    assert "Index" not in first.obs.columns
