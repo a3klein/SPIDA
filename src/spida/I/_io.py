@@ -124,11 +124,12 @@ def sync_annotations(
     """
     import zarr
     from anndata.io import read_elem
-    from spida.io.store import is_writeable, update_obs
+    from spida.io.store import is_writeable, require, update_obs
 
     key = table_key(prefix, suffix)
     zarr_path = dataset.require("zarr")
     src_path = Path(adata_file) if adata_file is not None else dataset.table_h5ad(key)
+    require(zarr_path, [key], files=[src_path])
     if src_path.is_dir():
         src = ad.read_zarr(src_path).obs
     else:
