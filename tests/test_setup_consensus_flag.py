@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+from spida.io.layout import RegionMeta
 from spida.utilities import ad_utils
 
 
@@ -113,7 +114,7 @@ def test_run_setup_forwards_consensus_to_calc_embeddings(monkeypatch, value):
     adata.obs["CENTER_X"] = 0.0
     adata.obs["CENTER_Y"] = 0.0
 
-    setup_adata.run_setup(adata, "exp", "reg", "seg", consensus_cluster=value)
+    setup_adata.run_setup(adata, RegionMeta("exp", "reg", "seg"), consensus_cluster=value)
     assert seen["consensus_cluster"] is value
 
 
@@ -135,8 +136,8 @@ def test_main_forwards_consensus_to_run_setup(monkeypatch, value):
 
     monkeypatch.setattr(setup_adata, "run_setup", fake_run_setup)
     monkeypatch.setattr(p_main, "_get_adata", lambda *a, **k: object())
-    monkeypatch.setattr(p_main, "_region_to_donor", lambda *a, **k: "donor")
     monkeypatch.setattr(p_main, "_backup_adata", lambda *a, **k: None)  # phase 2: setup writes via _backup_adata
+    monkeypatch.setattr(p_main, "require", lambda *a, **k: True)        # phase 3e: store is fake here
 
     p_main.setup_adata_region(Dataset(exp="exp", reg="reg", zarr=Path("/nonexistent.zarr")), "pfx",
                               consensus_cluster=value)

@@ -227,3 +227,23 @@ def test_write_adata_guard(ds, tmp_path, monkeypatch):
     t0 = out.stat().st_mtime_ns
     m.write_adata(SpidaConfig(), "E", reg_name="R", prefix_names=["cellpose_cell"], overwrite=True)
     assert out.stat().st_mtime_ns > t0
+
+
+# ---- inputs checked before any work (phase 3e) ----
+
+def test_setup_without_filter_stops_before_reading(ds, monkeypatch):
+    import anndata as ad
+    s = sd.read_zarr(ds.zarr)
+    t = s[TABLE].copy()
+    t.obs = t.obs.drop(columns=["pass_qc"])
+    from spida.io.store import write_element
+    write_element(ds.zarr, TABLE, t, overwrite=True)
+    monkeypatch.setattr(m, "_get_adata", lambda *a: pytest.fail("read the table"))
+    with pytest.raises(FileNotFoundError, match="obs: pass_qc"):
+        _setup(ds)
+
+
+def test_doublets_without_setup_stops(ds, monkeypatch):
+    monkeypatch.setattr(m, "_get_adata", lambda *a: pytest.fail("read the table"))
+    with pytest.raises(FileNotFoundError, match=FILT):
+        _doublets(ds)

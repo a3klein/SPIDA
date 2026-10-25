@@ -4,9 +4,8 @@ import logging
 
 from spida.config import SpidaConfig
 from spida.io.layout import Dataset, TreeLayout, dataset_from, table_key
-from spida.io.store import is_writeable, obs_columns
+from spida.io.store import is_writeable, obs_columns, require
 from spida.utilities.sd_utils import (
-    _region_to_donor,
     _write_adata,
     _backup_adata,
     _get_adata,
@@ -69,20 +68,15 @@ def filter_cells_region(
 
     logger.info("FILTERING CELLS, %s, PREFIX %s" % (dataset.zarr, prefix_name))
 
-    # determining donor from region name
-    donor_name = _region_to_donor(dataset.reg or "")
-
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
+    require(zarr_path, [KEYS[TABLE_KEY]])
     is_writeable(zarr_path, columns={KEYS[TABLE_KEY]: _FILTER_COLUMNS}, overwrite=overwrite)
     adata = _get_adata(zarr_path, KEYS[TABLE_KEY])
     # Run the filtering
     adata = run_filtering(
         adata=adata,
-        exp_name=dataset.exp or "",
-        reg_name=dataset.reg or "",
-        prefix_name=prefix_name,
-        donor_name=donor_name,
+        meta=dataset.meta(prefix_name),
         seg_fam=seg_fam,
         cutoffs_path=cutoffs_path
     )
@@ -118,7 +112,7 @@ def plot_filtering_region(
     image_path = _figure(dataset, prefix_name, "pixi_filt.pdf", image_path)
 
     pdf_file = PdfPages(image_path)
-    fig, ax = plot_filtering(adata, dataset.exp or "", dataset.reg or "", prefix_name)
+    fig, ax = plot_filtering(adata, dataset.meta(prefix_name))
     pdf_file.savefig(fig)
     pdf_file.close()
 
@@ -181,6 +175,7 @@ def write_adata(
         for reg in regions:
             dataset = dataset_from(config, exp_name, reg)
             out = dataset.table_h5ad(key)
+            require(dataset.require("zarr"), [key])
             if reg_name:
                 is_writeable(files=[out], overwrite=overwrite)
             elif _skip_if_written(reg, out.name, files=[out], overwrite=overwrite):
@@ -216,18 +211,17 @@ def setup_adata_region(
 
     logger.info("SETTING UP ADATA, %s, PREFIX %s" % (dataset.zarr, prefix_name))
 
-    # determining donor from region name
-    donor_name = _region_to_donor(dataset.reg or "")
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
     out = f"{KEYS[TABLE_KEY]}{suffix}"
+    require(zarr_path, columns={KEYS[TABLE_KEY]: ["pass_qc"]})
     is_writeable(zarr_path, [out], overwrite=overwrite)
     lost = [c for c in obs_columns(zarr_path, out) if c in _DOUBLET_COLUMNS + _RESOLVI_COLUMNS]
     if lost:
         logger.warning("Rebuilding %s drops these columns from later steps: %s", out, ", ".join(lost))
     adata = _get_adata(zarr_path, KEYS[TABLE_KEY])
     # Run the setup
-    adata = run_setup(adata, dataset.exp or "", dataset.reg or "", prefix_name, donor_name, do_tsne=do_tsne,
+    adata = run_setup(adata, dataset.meta(prefix_name), do_tsne=do_tsne,
                       consensus_cluster=consensus_cluster)
     # backup the adata object
     _backup_adata(zarr_path, adata, out)  # new table, or swap when overwriting
@@ -293,7 +287,7 @@ def plot_setup_region(
     image_path = _figure(dataset, prefix_name, "pixi_setup.pdf", image_path)
 
     pdf_file = PdfPages(image_path)
-    plot_setup(adata, dataset.exp or "", dataset.reg or "", prefix_name, pdf_file=pdf_file)
+    plot_setup(adata, dataset.meta(prefix_name), pdf_file=pdf_file)
     pdf_file.close()
 
 
@@ -323,6 +317,7 @@ def remove_doublets_region(
 
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
+    require(zarr_path, [f"{KEYS[TABLE_KEY]}{suffix}"])
     is_writeable(zarr_path, columns={f"{KEYS[TABLE_KEY]}{suffix}": _DOUBLET_COLUMNS}, overwrite=overwrite)
     adata = _get_adata(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
 
@@ -441,6 +436,7 @@ def resolvi_cluster_region(
 
     KEYS = dataset.keys(prefix_name)
     zarr_path = dataset.require("zarr")
+    require(zarr_path, [f"{KEYS[TABLE_KEY]}{suffix}"])
     is_writeable(zarr_path, columns={f"{KEYS[TABLE_KEY]}{suffix}": _RESOLVI_COLUMNS}, overwrite=overwrite)
     adata = _get_adata(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
     model_save_ext = "_".join(p for p in (dataset.namespace, prefix_name) if p)
@@ -544,7 +540,7 @@ def plot_resolvi_region(
     image_path = _figure(dataset, prefix_name, "pixi_resolvi.pdf", image_path)
 
     pdf_file = PdfPages(image_path)
-    plot_resolvi(adata, dataset.exp or "", dataset.reg or "", prefix_name, pdf_file=pdf_file)
+    plot_resolvi(adata, dataset.meta(prefix_name), pdf_file=pdf_file)
     pdf_file.close()
 
 
@@ -740,6 +736,7 @@ def call_region_tz(
     from spida.P.call_regions import call_regions
 
     KEYS = dataset.keys(prefix_name)
+    require(dataset.require("zarr"), [KEYS[POINTS_KEY]] + ([KEYS[IMAGE_KEY]] if gen_plots else []))
     is_writeable(dataset.require("zarr"), [geoms_name],
                  files=[save_geoms_path] if save_geoms_path else [], overwrite=overwrite)
     image_path = Path(image_path) if image_path is not None else dataset.figures_dir(prefix_name)
@@ -784,6 +781,7 @@ def transcript_qc_region(
     from spida.pl import plot_hex_qc
 
     KEYS = dataset.keys(prefix_name)
+    require(dataset.require("zarr"), [KEYS[POINTS_KEY]])
     is_writeable(dataset.require("zarr"), [qc_shapes_key], overwrite=overwrite)  # hex table is shared, reused
     sdata = sd.read_zarr(dataset.require("zarr"))
 
@@ -830,11 +828,14 @@ def tissue_mask_region(
     Existing polygon / labels / tif are replaced only with ``overwrite``."""
     import spatialdata as sd
     from spida.P.tissue_mask import run_tissue_mask, QC_MASK_TIF_NAME
-    from spida.io.store import is_writeable
+    from spida.io.formats.merscope import TRANSFORM_FILE
+    from spida.io.store import is_writeable, require
 
     images_dir = dataset.raw_images()
     KEYS = dataset.keys(prefix_name)
     tif = Path(mask_dir or images_dir) / QC_MASK_TIF_NAME
+    require(dataset.require("zarr"), [KEYS[POINTS_KEY]],
+            files=[images_dir / TRANSFORM_FILE, images_dir] if write_raster else [])
     is_writeable(dataset.require("zarr"), [shapes_key, labels_key],
                  files=[tif] if write_raster else [], overwrite=overwrite)
     sdata = sd.read_zarr(dataset.require("zarr"))
@@ -908,6 +909,7 @@ def cluster_hexes_region(
     from spida.pl import plot_hex_clusters, save_cluster_panels_pdf
 
     KEYS = dataset.keys(prefix_name)
+    require(dataset.require("zarr"), [KEYS[POINTS_KEY]])
     is_writeable(dataset.require("zarr"), [f"{_hex_table_key(hex_size, hex_overlap)}_clustered"],
                  overwrite=overwrite)  # hex table is shared, reused
     sdata = sd.read_zarr(dataset.require("zarr"))

@@ -62,6 +62,7 @@ def test_call_region_tz_positionals(monkeypatch, cfg):
 def test_write_adata_defaults_to_anndata_store(monkeypatch, cfg, tmp_path):
     seen = []
     monkeypatch.setattr("spida.P.main._write_adata", lambda zarr, key, out: seen.append((zarr, key, out)))
+    (tmp_path / "z" / "E" / "region_1" / "tables" / "cellpose_cell_table_filt").mkdir(parents=True)
     res = CliRunner().invoke(p_cli.cli, ["--config", str(cfg), "write-adata", "--exp", "E", "--reg", "region_1",
                                          "--prefix_names", "cellpose_cell", "--suffix", "_filt"])
     assert res.exit_code == 0, res.output

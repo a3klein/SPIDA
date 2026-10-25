@@ -4,6 +4,7 @@ import polars as pl
 from numpy import quantile as np_quant
 import anndata as ad
 
+from spida.io.layout import RegionMeta
 from spida.utilities.sd_utils import _validate_adata
 from spida._constants import (
     CELL_ID,
@@ -21,17 +22,14 @@ class Filter:
     def __init__(
         self,
         adata: ad.AnnData,
-        exp_name: str,
-        reg_name: str,
-        seg_name: str,
-        donor_name: str = None,
+        meta: RegionMeta,
         PRESET: dict = DEFAULT_PRESET,
     ):
         self.adata = adata
-        self.exp_name = exp_name
-        self.reg_name = reg_name
-        self.seg_name = seg_name
-        self.donor_name = donor_name
+        self.exp_name = meta.experiment
+        self.reg_name = meta.region
+        self.seg_name = meta.segmentation
+        self.donor_name = meta.donor
         self.PRESET = PRESET
 
     def load_info(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -296,10 +294,7 @@ _CUTOFF_NULL_DEFAULTS: dict[str, None] = {
 
 def compute_qc_metrics(
     adata: ad.AnnData,
-    exp_name: str,
-    reg_name: str,
-    prefix_name: str,
-    donor_name: str | None = None,
+    meta: RegionMeta,
     seg_fam: str | None = None,
 ) -> ad.AnnData:
     """
@@ -314,20 +309,18 @@ def compute_qc_metrics(
     ----------
     adata :
         Must contain adata.obsm["blank"] for blank-gene counting.
-    exp_name, reg_name, prefix_name :
-        Passed to Filter for compound index construction.
-    donor_name :
-        Optional donor label forwarded to Filter.
+    meta :
+        Experiment / region / segmentation / donor names (compound index, metadata columns).
     seg_fam :
         Preset family override ("default" or "proseg").  Inferred from
-        prefix_name via _SEG_FAM_MAP when None.
+        meta.segmentation via _SEG_FAM_MAP when None.
     """
     if seg_fam is None:
-        seg_fam = _SEG_FAM_MAP.get(prefix_name, "default")
+        seg_fam = _SEG_FAM_MAP.get(meta.segmentation, "default")
     PRESET = PROSEG_PRESET if seg_fam == "proseg" else DEFAULT_PRESET
 
     filter_instance = Filter(
-        adata, exp_name, reg_name, prefix_name, donor_name=donor_name, PRESET=PRESET
+        adata, meta, PRESET=PRESET
     )
     features = filter_instance.get_features()
 
@@ -358,10 +351,7 @@ def compute_qc_metrics(
 
 def ensure_qc_metrics(
     adata: ad.AnnData,
-    exp_name: str,
-    reg_name: str,
-    prefix_name: str,
-    donor_name: str | None = None,
+    meta: RegionMeta,
     seg_fam: str | None = None,
 ) -> ad.AnnData:
     """
@@ -377,10 +367,7 @@ def ensure_qc_metrics(
     run_filtering().
     """
     if any(col not in adata.obs.columns for col in _QC_METRIC_COLS):
-        adata = compute_qc_metrics(
-            adata, exp_name, reg_name, prefix_name,
-            donor_name=donor_name, seg_fam=seg_fam,
-        )
+        adata = compute_qc_metrics(adata, meta, seg_fam=seg_fam)
 
     cutoffs = dict(adata.uns.get("cutoffs", {}))
     for key in _CUTOFF_NULL_DEFAULTS:
@@ -395,10 +382,7 @@ def ensure_qc_metrics(
 
 def run_filtering(
     adata: ad.AnnData,
-    exp_name: str,
-    reg_name: str,
-    prefix_name: str,
-    donor_name=None,
+    meta: RegionMeta,
     seg_fam:str=None,
     cutoffs_path: str | None = None,
 ):
@@ -407,11 +391,8 @@ def run_filtering(
     This function initializes the Filter class and returns the filtered features.
 
     Parameters:
-    sdata (sd.SpatialData): The spatialdata object containing the data to be filtered.
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Name of the segmentation.
-    donor_name (str, optional): Name of the donor. Defaults to None.
+    adata (AnnData): The table to filter.
+    meta (RegionMeta): Experiment / region / segmentation / donor names.
     """
 
     ## Defining the filtering params
@@ -426,7 +407,7 @@ def run_filtering(
         "mesmer": "default",
     }
     if seg_fam is None:
-        seg_fam = seg_fam_map.get(prefix_name, "default")
+        seg_fam = seg_fam_map.get(meta.segmentation, "default")
     PRESET = (
         PROSEG_PRESET if seg_fam == "proseg" else DEFAULT_PRESET
     )  # PRESET for column names
@@ -440,7 +421,7 @@ def run_filtering(
 
     # Initialize the filter class
     filter_instance = Filter(
-        adata, exp_name, reg_name, prefix_name, donor_name=donor_name, PRESET=PRESET
+        adata, meta, PRESET=PRESET
     )
 
     # Perform the filtering

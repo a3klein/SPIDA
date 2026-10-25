@@ -22,6 +22,7 @@ import pytest
 
 from spida._constants import DEFAULT_PRESET
 from spida.P.filtering import Filter
+from spida.io.layout import RegionMeta
 
 
 def _adata(obs: pd.DataFrame) -> ad.AnnData:
@@ -54,7 +55,7 @@ def _refiltered_obs() -> pd.DataFrame:
 
 
 def _filter(obs: pd.DataFrame) -> Filter:
-    return Filter(_adata(obs), "exp", "reg", "seg", donor_name="donor",
+    return Filter(_adata(obs), RegionMeta("exp", "reg", "seg", "donor"),
                   PRESET=DEFAULT_PRESET)
 
 
@@ -131,7 +132,7 @@ def test_refilter_is_stable(tmp_path):
 
     cut = tmp_path / "cutoffs.json"
     cut.write_text(json.dumps(CUTOFFS))
-    run = lambda a: run_filtering(a.copy(), "E", "R", "cellpose_cell", donor_name="D", cutoffs_path=cut)
+    run = lambda a: run_filtering(a.copy(), RegionMeta("E", "R", "cellpose_cell", "D"), cutoffs_path=cut)
     first = run(_loaded())
     second = run(first)
     third = run(second)
@@ -140,3 +141,15 @@ def test_refilter_is_stable(tmp_path):
         assert list(again.obs_names) == list(first.obs_names)
         assert (again.obs["pass_qc"] == first.obs["pass_qc"]).all()
     assert "Index" not in first.obs.columns
+
+
+def test_filter_guard_columns_are_produced(tmp_path):
+    """Drift: every column filter-cells' guard checks is one run_filtering actually writes (phase 3d)."""
+    import json
+    from spida.P.filtering import run_filtering
+    from spida.P.main import _FILTER_COLUMNS
+
+    cut = tmp_path / "cutoffs.json"
+    cut.write_text(json.dumps(CUTOFFS))
+    out = run_filtering(_loaded(), RegionMeta("E", "R", "cellpose_cell", "D"), cutoffs_path=cut)
+    assert set(_FILTER_COLUMNS) <= set(out.obs.columns)

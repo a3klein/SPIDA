@@ -1,4 +1,6 @@
 import scanpy as sc
+
+from spida.io.layout import RegionMeta
 import scanpy.external as sce
 import anndata as ad
 import scipy.sparse as scp
@@ -14,10 +16,7 @@ from ..utilities.ad_utils import (
 # Individual adatas
 def run_setup(
     adata: ad.AnnData,
-    exp_name: str,
-    reg_name: str,
-    seg_name: str,
-    donor_name: str = None,
+    meta: RegionMeta,
     do_tsne: bool = False,
     consensus_cluster: bool = True,
 ):
@@ -26,10 +25,7 @@ def run_setup(
 
     Parameters:
     adata (AnnData): The AnnData object to be set up.
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    seg_name (str): Name of the segmentation.
-    donor_name (str, optional): Name of the donor. Defaults to None.
+    meta (RegionMeta): Experiment / region / segmentation / donor names (stored in uns).
     do_tsne (bool, optional): Whether to also compute the tSNE embedding (in addition to UMAP). Defaults to False.
     consensus_cluster (bool, optional): Use ALLCools consensus clustering (200 Leiden
         repeats across `n_jobs` workers) rather than a single Leiden run. Defaults to True.
@@ -42,10 +38,10 @@ def run_setup(
     if "doublet_bool" in adata.obs.columns:
         adata = adata[~adata.obs["doublet_bool"]].copy()
     # Set metadata
-    adata.uns["experiment"] = exp_name
-    adata.uns["region"] = reg_name
-    adata.uns["segmentation"] = seg_name
-    adata.uns["donor"] = donor_name
+    adata.uns["experiment"] = meta.experiment
+    adata.uns["region"] = meta.region
+    adata.uns["segmentation"] = meta.segmentation
+    adata.uns["donor"] = meta.donor
 
     # backup raw
     adata.layers["raw"] = adata.X.copy()

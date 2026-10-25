@@ -23,12 +23,13 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
-import tifffile
 from rasterio.features import rasterize, shapes as rio_shapes
 from rasterio.transform import Affine as RioAffine
 from scipy.ndimage import binary_closing, binary_erosion, gaussian_filter, label
 from shapely.affinity import affine_transform
 
+from spida.io.formats.merscope import TRANSFORM_FILE, raw_mosaic_shape, read_transform
+from spida.io.schema import tissue_mask as mask_file
 from spida.io.store import write_element
 
 logger = logging.getLogger(__package__)
@@ -42,7 +43,7 @@ ERODE_SIGMA = 1.0   # boundary erosion in reference-sigma units; erosion_um = er
 
 QC_MASK_SHAPES_KEY = "qc_mask"
 QC_MASK_LABELS_KEY = "tissue_mask"
-QC_MASK_TIF_NAME = "tissue_mask.tif"
+QC_MASK_TIF_NAME = mask_file.FILENAME
 
 
 # --------------------------------------------------------------------------- compute
@@ -116,13 +117,6 @@ def mask_to_polygons(mask: np.ndarray, x0: float, y0: float, gb: float = GB) -> 
     return gpd.GeoDataFrame({"filtered": [False] * len(geoms)}, geometry=geoms, crs=None)
 
 
-def read_micron_to_mosaic(path: str | Path) -> np.ndarray:
-    """Read the 3x3 micron->mosaic-pixel affine (whitespace-delimited, MERSCOPE/SPIDA format)."""
-    with open(path) as fh:
-        rows = [list(map(float, ln.split())) for ln in fh if ln.strip()]
-    return np.asarray(rows, dtype=float)
-
-
 def rasterize_pixel_mask(gdf_micron: gpd.GeoDataFrame, m2m: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     """Transform micron pass-polygons to mosaic-pixel space and rasterize to ``shape`` (rows, cols)."""
     sx, _, tx = m2m[0]
@@ -139,19 +133,6 @@ def _labels_transformation(x0: float, y0: float, gb: float):
     """SpatialData transformation mapping the native grid -> global (micron): x=x0+gb*col."""
     from spatialdata.transformations import Scale, Sequence, Translation
     return Sequence([Scale([gb, gb], axes=("x", "y")), Translation([x0, y0], axes=("x", "y"))])
-
-
-def _mosaic_shape(images_dir: Path, channel: str = "DAPI") -> tuple[int, int]:
-    """(rows, cols) of a raw mosaic image (excluding decon outputs), header-only."""
-    cands = sorted(
-        p for p in images_dir.glob(f"mosaic_{channel}_z*.tif")
-        if ".decon." not in p.name and "_z_stack_" not in p.name
-    )
-    if not cands:
-        cands = sorted(p for p in images_dir.glob("mosaic_*_z*.tif")
-                       if ".decon." not in p.name and "_z_stack_" not in p.name)
-    with tifffile.TiffFile(cands[0]) as f:
-        return tuple(f.series[0].shape)
 
 
 # --------------------------------------------------------------------------- persist
@@ -215,13 +196,11 @@ def run_tissue_mask(
 
     if write_raster:
         if m2m_path is None:
-            m2m_path = images_dir / "micron_to_mosaic_pixel_transform.csv"
-        m2m = read_micron_to_mosaic(m2m_path)
-        shape = _mosaic_shape(images_dir)
+            m2m_path = images_dir / TRANSFORM_FILE
+        m2m = read_transform(m2m_path)
+        shape = raw_mosaic_shape(images_dir)
         px_mask = rasterize_pixel_mask(grid, m2m, shape)
-        out_tif = Path(mask_dir or images_dir) / QC_MASK_TIF_NAME
-        out_tif.parent.mkdir(parents=True, exist_ok=True)
-        tifffile.imwrite(out_tif, (px_mask.astype(np.uint8) * 255), compression="deflate")
+        out_tif = mask_file.write(Path(mask_dir or images_dir) / QC_MASK_TIF_NAME, px_mask)
         logger.info("Wrote pixel mask %s (%s, %.1f MB, tissue=%.1f%%)",
                     out_tif, px_mask.shape, out_tif.stat().st_size / 1e6, 100 * px_mask.mean())
 

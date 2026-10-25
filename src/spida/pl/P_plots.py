@@ -7,7 +7,7 @@ import seaborn as sns
 
 from spida._constants import CELL_X, CELL_Y
 from spida.pl import plot_scatter # TODO: depreceate this! 
-from spida.utilities.sd_utils import _region_to_donor
+from spida.io.layout import RegionMeta
 from ._scatteplot import plot_categorical, plot_continuous
 from ._spatial import plot_spatial_continuous, plot_spatial_categorical
 
@@ -73,15 +73,13 @@ def plot_filt_cells(df_feature: pd.DataFrame, title="", pdfFile=None, ax=None):
     return ax
 
 
-def plot_filtering(adata: ad.AnnData, exp_name: str, reg_name: str, prefix_name: str):
+def plot_filtering(adata: ad.AnnData, meta: RegionMeta):
     """
     Plot filtering results (summary of filtering features with their cutoffs)
 
     Parameters:
     adata (anndata.AnnData): The AnnData object containing the filtered data.
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
+    meta (RegionMeta): Experiment / region / segmentation names for the title.
     """
     plt.rcParams["axes.facecolor"] = "white"
     fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(16, 8), constrained_layout=True)
@@ -129,27 +127,25 @@ def plot_filtering(adata: ad.AnnData, exp_name: str, reg_name: str, prefix_name:
     plot_filt_cells(adata.obs, ax=axes[1][2], title="Filtered Cells")
     plt.suptitle(
         "QC_Summary - Exp %s; - Region %s; - Segmentation %s"
-        % (exp_name, reg_name, prefix_name)
+        % (meta.experiment, meta.region, meta.segmentation)
     )
 
     return fig, axes
 
 
 def plot_setup(
-    adata: ad.AnnData, exp_name: str, reg_name: str, prefix_name: str, pdf_file=None
+    adata: ad.AnnData, meta: RegionMeta, pdf_file=None
 ):
     """
     Plot the setup results (summary of setup features with their cutoffs).
 
     Parameters:
     adata (anndata.AnnData): The AnnData object containing the setup data.
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
+    meta (RegionMeta): Experiment / region / segmentation / donor names (the donor goes in titles).
     pdf_file (str, optional): Path to save the plot as a PDF file. Defaults to None.
     """
     plt.rcParams["axes.facecolor"] = "white"
-    donor = _region_to_donor(reg_name)
+    donor = meta.donor
     # Plot the UMAP embeddings
     fig, axes = plt.subplots(3, 3, figsize=(20, 20), dpi=300)
     plot_continuous(adata, coord_base="base_umap", color_by="volume", ax=axes[0][0], show=False, title="umap - Cell Volume")
@@ -210,19 +206,17 @@ def plot_setup(
 
 
 def plot_resolvi(
-    adata: ad.AnnData, exp_name: str, reg_name: str, prefix_name: str, pdf_file=None
+    adata: ad.AnnData, meta: RegionMeta, pdf_file=None
 ):
     """
     Plot the results of the RESOLVI clustering.
     Parameters:
     adata (anndata.AnnData): The AnnData object containing the RESOLVI clustering results.
-    exp_name (str): Name of the experiment.
-    reg_name (str): Name of the region.
-    prefix_name (str): Prefix for the keys in the spatialdata object.
+    meta (RegionMeta): Experiment / region / segmentation / donor names (the donor goes in titles).
     pdf_file (str, optional): Path to save the plot as a PDF file. Defaults to None.
     """
     plt.rcParams["axes.facecolor"] = "white"
-    donor = _region_to_donor(reg_name)
+    donor = meta.donor
     # Plot the UMAP embeddings
     fig, axes = plt.subplots(3, 3, figsize=(20, 20), dpi=300)
     plot_categorical(adata, coord_base="umap", cluster_col="leiden", text_anno=False, coding=True, show=False, ax=axes[0][0])
