@@ -24,7 +24,8 @@ from spatialdata.transformations import Identity
 from spida.S.io._seg_readers import (
     get_polygons, get_table, get_table_from_adata, _CELL_KEY,
 )
-from spida.S.io.ingest_exp import _resolve_file, _cast_multipolygons_to_polygons
+from spida.S.io.ingest_exp import _cast_multipolygons_to_polygons
+from spida.io.schema.segmentation import resolve as _resolve_file
 
 DATA = Path(__file__).parent / "data" / "segmentation_utils"
 TX = {"global": Identity()}

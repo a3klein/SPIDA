@@ -15,6 +15,7 @@ CELLPOSE = SegmentationClass(
     env="cellpose",
     dim="auto",                                   # 2D or 3D detected from input
     boundaries_file="polygons.parquet",
+    native_format="cellpose",
     columns=ColumnMap(cell_id="ID"),
     legacy_boundaries_file="cellpose_micron_space.parquet",
 )
@@ -25,6 +26,7 @@ MESMER = SegmentationClass(
     env="cellpose",                               # Change to deepcell env when that one becomes active
     dim="2d",
     boundaries_file="polygons.parquet",
+    native_format="cellpose",
     columns=ColumnMap(cell_id="ID"),
     legacy_boundaries_file="cellpose_micron_space.parquet",
 )
@@ -37,6 +39,8 @@ PROSEG_V2 = SegmentationClass(
     env="preprocessing",                          # just shells the rust binary
     dim="3d",
     boundaries_file="cell-polygons-layers.geojson.gz",
+    boundaries_space="micron",
+    native_format="proseg",
     counts_file="expected-counts.csv.gz",
     metadata_file="cell-metadata.csv.gz",
     transcripts_file="transcript-metadata.csv.gz",
@@ -54,6 +58,8 @@ PROSEG_V3 = SegmentationClass(
     env="preprocessing",
     dim="3d",
     boundaries_file="cell-polygons-layers.geojson.gz",
+    boundaries_space="micron",
+    native_format="proseg",
     metadata_file="cell-metadata.csv.gz",
     spatialdata_file="proseg_outputs.zarr",       # bundles counts + assigned transcripts
     columns=ColumnMap(

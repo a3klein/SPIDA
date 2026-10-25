@@ -1,18 +1,14 @@
-"""Spec-driven readers for loading a segmenter's post-processed output into a
-SpatialData object. Collapses the old ``read_vpt.py`` + ``read_proseg.py`` into
-one set of helpers parametrized by the cell-id column.
+"""
+Readers for loading a segmenter's post-processed output into a SpatialData object.
+Collapses the old ``read_vpt.py`` + ``read_proseg.py`` into one set of helpers 
+parametrized by the cell-id column + the segmenter's specs.
 
-Post-Stage-2 the process step writes segmentation schema files
-(``boundaries_micron.parquet``, ``cell_by_gene.csv``, ``detected_transcripts.csv``,
-``cell_metadata.csv``) all keyed on ``EntityID`` (proseg ``EntityID == cell``), so
-these readers key everything on ``EntityID`` uniformly. proseg additionally keeps
-its native counts/transcripts in ``proseg_outputs.zarr`` (v3) or CSVs (v2), read
-via the assignment-native path.
+The process step writes segmentation schema files all keyed on ``EntityID``
+(proseg ``EntityID == cell``), so these readers key everything on ``EntityID`` uniformly.
 """
 
 from __future__ import annotations
 
-import gzip
 from pathlib import Path
 import warnings
 
@@ -27,6 +23,7 @@ import geopandas as gpd
 from shapely.geometry import MultiPolygon
 
 from spida._constants import DEFAULT_PRESET, PROSEG_PRESET, REGION_KEY, GEOMETRY_COL
+from spida.io.schema.segmentation import read_boundaries
 
 # cell-id key across all segmentation schema files (proseg cell id == EntityID)
 _CELL_KEY = DEFAULT_PRESET["METADATA_CELL_KEY"]  # "EntityID"
@@ -37,19 +34,6 @@ def _cast_to_mp(x):
         return MultiPolygon(x.geoms)
     except Exception:
         return MultiPolygon([x.convex_hull])
-
-
-def _read_boundaries(boundaries_path: str | Path) -> gpd.GeoDataFrame:
-    """Read a boundaries file (parquet or [gzipped] geojson) into a GeoDataFrame."""
-    path = str(boundaries_path)
-    if path.endswith(".parquet"):
-        gdf = gpd.read_parquet(path)
-    elif path.endswith(".gz"):
-        with gzip.open(path, "rt") as f:
-            gdf = gpd.read_file(f)
-    else:
-        gdf = gpd.read_file(path)
-    return gdf
 
 
 def get_polygons(
@@ -63,7 +47,7 @@ def get_polygons(
     Multi-z segmentation schema boundaries are collapsed downstream by
     ``_cast_multipolygons_to_polygons`` (dedup-to-largest per cell id).
     """
-    gdf = _read_boundaries(boundaries_path)
+    gdf = read_boundaries(boundaries_path)
     if gdf.geometry.name != GEOMETRY_COL:
         gdf = gdf.rename_geometry(GEOMETRY_COL)
     gdf.geometry = gdf.geometry.make_valid()

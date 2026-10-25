@@ -29,9 +29,10 @@ import pyarrow.parquet as pq
 from shapely import affinity, make_valid, geometry
 from shapely.ops import unary_union
 from shapely.affinity import affine_transform, translate
-from fsspec.implementations.local import LocalFileSystem
 
 from spida._constants import DEFAULT_PRESET, GEOMETRY_COL  # noqa: F401
+from spida.io.formats.merscope import read_transform
+from spida.io.schema.segmentation import write_boundaries
 
 logger = logging.getLogger(__package__)
 
@@ -415,15 +416,6 @@ def _to_multipoly(shape):
     return geometry.MultiPolygon()
 
 
-def _read_micron_to_mosaic_transform(path: str | Path) -> np.ndarray:
-    fs = LocalFileSystem()
-    lines = fs.open(str(path), "r", lambda f: f.readlines())
-    transform = [list(map(float, ln.split())) for ln in lines]
-    if len(transform) != 3 or not all(len(r) == 3 for r in transform):
-        raise ValueError("Micron to mosaic transform should be a 3x3 matrix")
-    return np.array(transform)
-
-
 def _overlap_pairs(g: gpd.GeoDataFrame) -> list[tuple[int, int]]:
     """Unordered unique positional pairs of intersecting polygons (single plane)."""
     res = g.sindex.query(g.geometry, predicate="intersects")
@@ -478,7 +470,7 @@ def harmonize_polygons(
 
 
 def convert_geometry(
-    input_boundaries: str | Path,
+    input_boundaries: str | Path | gpd.GeoDataFrame,
     output_boundaries: str | Path,
     input_micron_to_mosaic: str | Path | None = None,
     *,
@@ -509,7 +501,8 @@ def convert_geometry(
     and VPT's order is itself arbitrary (set-hash over differently-assigned
     EntityIDs). Both results are valid, fully non-overlapping partitions.
     """
-    pq_df = gpd.read_parquet(input_boundaries)
+    pq_df = input_boundaries if isinstance(input_boundaries, gpd.GeoDataFrame) \
+        else gpd.read_parquet(input_boundaries)
     geoms = gpd.GeoSeries([_to_multipoly(_get_valid(s)) for s in pq_df.geometry.values])
     g = gpd.GeoDataFrame(
         {_ENTITY_COL: np.arange(len(pq_df), dtype=np.int64), _GEOM: geoms},
@@ -530,7 +523,7 @@ def convert_geometry(
     out = gpd.GeoDataFrame(pd.concat(planes, ignore_index=True), geometry=_GEOM)
 
     if input_micron_to_mosaic is not None:
-        m2m = _read_micron_to_mosaic_transform(input_micron_to_mosaic)
+        m2m = read_transform(input_micron_to_mosaic)
         mat = np.linalg.inv(m2m)
         flat = [*mat[:2, :2].flatten(), *mat[:2, 2].flatten()]
         out[_GEOM] = out[_GEOM].apply(
@@ -549,7 +542,7 @@ def convert_geometry(
                _ZINDEX_COL, "ZLevel"]]
 
     Path(output_boundaries).parent.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(output_boundaries)
+    write_boundaries(out, output_boundaries)
     return out
 
 
@@ -666,7 +659,7 @@ def sum_signals(
     across GDAL versions; the reimplementation uses the installed GDAL.
     """
     boundaries = gpd.read_parquet(boundaries_path)
-    m2m = _read_micron_to_mosaic_transform(micron_to_mosaic_path)
+    m2m = read_transform(micron_to_mosaic_path)
     tform = [*m2m[:2, :2].flatten(), *m2m[:2, 2].flatten()]
     all_ids = np.sort(boundaries[_ENTITY_COL].unique())
 

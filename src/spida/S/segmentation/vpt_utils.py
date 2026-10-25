@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from pyarrow.parquet import ParquetFile
-from fsspec.implementations.local import LocalFileSystem
+from spida.io.formats.merscope import read_transform
 from typing import Callable
 from shapely import affinity, geometry, MultiPolygon
 import datetime
@@ -13,21 +13,7 @@ counter_digits_num = 8
 counter = 0
 process_id = ""
 
-# Functions pulled from VPT
-def read_micron_to_mosaic_transform(path):
-    fs = LocalFileSystem()
-    lines = fs.open(path, "r", lambda f: f.readlines())
-
-    def process_line(line: str): 
-        return list(map(float, line.split()))
-
-    transform = list(map(process_line, lines))
-
-    if len(transform) != 3 or not all(map(lambda row: len(row) == 3, transform)):
-        raise ValueError("Micron to mosaic transform should be a 3x3 matrix")
-    
-    return transform
-
+# Functions pulled form VPT.
 def convert_to_multipoly(shape):
     if type(shape) is geometry.Polygon:
         return geometry.multipolygon.MultiPolygon([shape])
@@ -95,7 +81,7 @@ def _3d_convert_geometry(
     
     if convert_micron:
         mic_to_mos_path = f"{raw_dir}/images/micron_to_mosaic_pixel_transform.csv"
-        micron_to_mosaic = read_micron_to_mosaic_transform(mic_to_mos_path)
+        micron_to_mosaic = read_transform(mic_to_mos_path)
         mosaic_to_micron_mat = np.linalg.inv(micron_to_mosaic)
         gdf_inp = transform_geoms(gdf_inp, mosaic_to_micron_mat)
 

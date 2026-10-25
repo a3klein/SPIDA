@@ -15,6 +15,8 @@ import skimage as ski
 import imageio.v3 as iio
 import tifffile
 
+from spida.io.schema import tissue_mask
+
 # TODO: Implement some image normalization pre and post tiling to normalize the images (right now specific
 # patches of the reuslting images are very dark, and others very bright, which doesn't affect cellpose becuase it looks
 # at local contrast, but it does affect visualization and it might affect other segmentation methods.)
@@ -215,7 +217,7 @@ def transform_image(
         method = select_tiles_method or ("otsu" if thr_tiles else "none")
         select_kw = {}
         if method == "tissue_mask":
-            mask_tif = Path(mask_path) if mask_path else Path(image_path) / "tissue_mask.tif"
+            mask_tif = Path(mask_path) if mask_path else Path(image_path) / tissue_mask.FILENAME
             select_kw["mask_tif"] = mask_tif
             logger.info(f"tissue_mask tile filter using mask: {mask_tif}")
         tiles, sub_tile_info, tile_maxes, thr = select_tiles(

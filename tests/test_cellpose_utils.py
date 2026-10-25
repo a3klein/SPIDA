@@ -29,7 +29,7 @@ def _load_region(images_dir: Path, **cfg_kw) -> np.ndarray:
     `test_untiled_path_squeezes_a_single_plane_stain` in
     test_cellpose_backend_wiring.py, which asserts on the shape the MODEL sees.
     """
-    from spida.S.io.mosaic import read_stains
+    from spida.io.images import read_stains
 
     cfg = CellposeConfig.from_kwargs(**cfg_kw)
     stains = cellpose._resolve_stains(cfg, images_dir)
@@ -41,7 +41,7 @@ def test_read_stains_downscale_2d_single_channel(tmp_path: Path):
     """`read_stains` is always 4D -- Z=1 here. The collapse to (C, Y, X) is the
     caller's, tested via `_load_region` below and on the model input in
     test_cellpose_backend_wiring.py."""
-    from spida.S.io.mosaic import read_stains
+    from spida.io.images import read_stains
 
     img = np.arange(16, dtype=np.uint16).reshape(4, 4)
     _write_tif(tmp_path / "img_DAPI.tif", img)

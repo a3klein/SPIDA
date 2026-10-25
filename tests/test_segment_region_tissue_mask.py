@@ -33,6 +33,8 @@ def region(tmp_path) -> tuple[Path, Path]:
     """``(root, images_dir)`` for a minimal EXP/region layout."""
     images = tmp_path / "root" / "EXP" / "out" / "REG" / "images"
     images.mkdir(parents=True)
+    (images / "mosaic_DAPI_z0.tif").write_bytes(b"")                     # inputs segment-region requires
+    (images.parent / "detected_transcripts.csv").write_text("")
     return tmp_path / "root", images
 
 

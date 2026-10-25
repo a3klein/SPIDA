@@ -1,7 +1,7 @@
 from spida._constants import *
 from spida.config import SpidaConfig
 from spida.io.layout import Dataset, TreeLayout, dataset_from, element_keys
-from spida.io.store import is_writeable
+from spida.io.store import is_writeable, require
 from .ingest_exp import (
     read_merscope,
     load_segmentation,
@@ -45,6 +45,7 @@ def ingest_region(
     namespace = f"{dataset.exp}_{dataset.reg}" if dataset.named else ""
     logger.info("INGESTING REGION %s -> %s (element names suffix %r)", dataset.raw, dataset.zarr, namespace)
     KEYS = element_keys(prefix_name, namespace)
+    require(files=[dataset.require("raw")])
     is_writeable(files=[dataset.require("zarr")], overwrite=overwrite)
 
     if type == "merscope" and source == "machine":
@@ -141,6 +142,36 @@ def ingest_all(
             )
 
 
+def _load_inputs(
+    spec,
+    seg_region: Path,
+    load_kwargs: dict,
+) -> list[Path]:
+    """
+    Files load-segmentation reads from a segmentation's folder (names overridable via ``load_kwargs``).
+    Parameters:
+    spec (SegmentationClass): The method.
+    seg_region (Path): The segmentation's folder.
+    load_kwargs (dict): The loader's keyword arguments.
+    """
+    from spida.io.schema.segmentation import (
+        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA, SCHEMA_TRANSCRIPTS, resolve,
+    )
+
+    meta = load_kwargs.get("cell_metadata_fname", SCHEMA_CELL_METADATA)
+    if spec.provides_assignment:
+        if spec.spatialdata_file:                                    # proseg v3: the zarr (metadata optional)
+            return [seg_region / spec.spatialdata_file]
+        return [seg_region / spec.transcripts_file, seg_region / spec.counts_file,
+                seg_region / "cell-polygons.geojson.gz",
+                resolve(seg_region, meta, "cell_metadata_with_signals.csv")]
+    boundaries = load_kwargs.get("boundaries_fname") or SCHEMA_BOUNDARIES
+    return [resolve(seg_region, boundaries, spec.legacy_boundaries_file),
+            seg_region / load_kwargs.get("cell_by_gene_fname", SCHEMA_CELL_BY_GENE),
+            seg_region / meta,
+            seg_region / load_kwargs.get("detected_transcripts_fname", SCHEMA_TRANSCRIPTS)]
+
+
 def load_segmentation_region(
     dataset: Dataset,
     type: str = "vpt",
@@ -166,9 +197,6 @@ def load_segmentation_region(
     load_kwargs = load_kwargs.get("load_kwargs", load_kwargs)
     zarr_path = dataset.require("zarr")
     logger.info("LOADING SEGMENTATION %s (%s) into %s", prefix_name, type, zarr_path)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        sdata = sd.read_zarr(zarr_path)
 
     # Map the legacy `type` to a segmentation method; the spec then drives the
     # read path (boundary-only segmentation schema vs proseg-native) and legacy filename fallback.
@@ -188,7 +216,11 @@ def load_segmentation_region(
     label = prefix_name if prefix_name and prefix_name != "default" else method
     seg_region = dataset.seg_dir(label, must_exist=True)
     KEYS = dataset.keys(prefix_name)
+    require(zarr_path, [dataset.keys("default")[SHAPES_KEY]], files=_load_inputs(spec, seg_region, load_kwargs))
     is_writeable(zarr_path, [KEYS[POINTS_KEY], KEYS[SHAPES_KEY], KEYS[TABLE_KEY]], overwrite=overwrite)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        sdata = sd.read_zarr(zarr_path)
 
     sdata = load_segmentation(
         sdata,
@@ -305,6 +337,7 @@ def load_deconvolution_region(
     """
     image_dir = Path(image_dir) if image_dir is not None else dataset.raw_images()
     zarr_path = dataset.require("zarr")
+    require(files=[image_dir])
     is_writeable(zarr_path, [image_name], overwrite=overwrite)
     logger.info("LOADING DECONVOLUTION IMAGES from %s into %s", image_dir, zarr_path)
     with warnings.catch_warnings():

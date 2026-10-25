@@ -18,17 +18,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__package__)
 
-# SPIDA imports
-from spida.io.layout import resolve_region_dir  # noqa: E402,F401
-
-# segmentation schema output filenames. The loader resolves these first, then falls back
-# to each method's legacy name for read-compatibility with older SPIDA data.
-SCHEMA_BOUNDARIES = "boundaries_micron.parquet"
-SCHEMA_CELL_BY_GENE = "cell_by_gene.csv"
-SCHEMA_CELL_METADATA = "cell_metadata.csv"
-SCHEMA_TRANSCRIPTS = "detected_transcripts.csv"
-SCHEMA_SUM_SIGNALS = "sum_signals.csv"
-
+# The segmentation schema itself (file names, readers) lives in spida.io.schema.segmentation.
 
 @dataclass
 class ColumnMap:
@@ -64,6 +54,8 @@ class SegmentationClass:
 
     # ---- artifacts the method PRODUCES (region-relative names; None == absent) ----
     boundaries_file: str | None = None    # raw polygons (all methods)
+    boundaries_space: str = "pixel"       # raw polygons in "pixel" (mosaic) or "micron" coordinates
+    native_format: str | None = None      # section of spida.io.formats.segmenters that reads them
     counts_file: str | None = None        # cell-by-gene, if the method computes it
     metadata_file: str | None = None      # per-cell metadata (volume…), if native
     transcripts_file: str | None = None   # assigned transcripts, if native
@@ -79,6 +71,18 @@ class SegmentationClass:
     legacy_boundaries_file: str | None = None
 
     # ---- capabilities, derived from what's populated ----
+    def native_reader(self, what: str):
+        """
+        This method's reader ``read_<native_format>_<what>`` (boundaries / metadata / assigned).
+        Parameters:
+        what (str): Which reader.
+        """
+        from spida.io.formats import segmenters
+
+        if self.native_format is None:
+            raise ValueError(f"{self.name}: no native_format in its spec")
+        return getattr(segmenters, f"read_{self.native_format}_{what}")
+
     @property
     def provides_assignment(self) -> bool:
         return self.transcripts_file is not None or self.spatialdata_file is not None

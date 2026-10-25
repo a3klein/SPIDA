@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..io.mosaic import DEFAULT_STRIP_ROWS, read_stains
+from spida.io.images import DEFAULT_STRIP_ROWS, read_stains
 from ...utilities.tiling import (
     DEFAULT_TILE_MAX,
     DEFAULT_TILE_MIN,

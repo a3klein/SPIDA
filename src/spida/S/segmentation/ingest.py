@@ -13,7 +13,6 @@ ParentType, Type, ZIndex, ZLevel`` in micron space, one polygon per cell per z-p
 
 from __future__ import annotations
 
-import gzip
 import logging
 from pathlib import Path
 
@@ -22,10 +21,12 @@ import pandas as pd
 import geopandas as gpd
 from shapely.affinity import affine_transform
 
+from spida.io.formats.merscope import read_transform
+from spida.io.schema.segmentation import read_boundaries, write_boundaries
+
 from .backends.base import SegmentationClass
 from .postprocess import (
     convert_geometry,
-    _read_micron_to_mosaic_transform,
     _to_multipoly,
     _get_valid,
     _set_process_id,
@@ -61,7 +62,7 @@ def _ingest_3d_pixel(pq, micron_to_mosaic, micron_per_z, entity_type, zcol):
         geometry=_GEOM,
     )
     if micron_to_mosaic is not None:
-        mat = np.linalg.inv(_read_micron_to_mosaic_transform(micron_to_mosaic))
+        mat = np.linalg.inv(read_transform(micron_to_mosaic))
         flat = [*mat[:2, :2].flatten(), *mat[:2, 2].flatten()]
         g[_GEOM] = g[_GEOM].apply(lambda x: _to_multipoly(affine_transform(x, flat)))
         g = g.set_geometry(_GEOM)
@@ -73,15 +74,9 @@ def _ingest_3d_pixel(pq, micron_to_mosaic, micron_per_z, entity_type, zcol):
     return _finalize(g.drop(columns=["_cell"]), entity_ids, entity_type)
 
 
-def _ingest_proseg(boundaries_path, micron_per_z, entity_type, cell_col, z_col):
-    """proseg: micron-space per-layer geojson. Assign ZIndex/ZLevel/EntityID; no
-    transform. EntityID stays tied to proseg's cell id (counts/tx are keyed by it)."""
-    path = str(boundaries_path)
-    if path.endswith(".gz"):
-        with gzip.open(path, "rb") as f:
-            shapes = gpd.read_file(f)
-    else:
-        shapes = gpd.read_file(path)
+def _ingest_layers(shapes, micron_per_z, entity_type, cell_col, z_col):
+    """Micron-space per-layer polygons (proseg). Assign ZIndex/ZLevel/EntityID; no
+    transform. EntityID stays tied to the method's cell id (counts/tx are keyed by it)."""
     geoms = gpd.GeoSeries([_to_multipoly(_get_valid(s)) for s in shapes.geometry.values])
     g = gpd.GeoDataFrame(
         {"_cell": shapes[cell_col].to_numpy(), _ZINDEX_COL: shapes[z_col].to_numpy(),
@@ -115,13 +110,14 @@ def ingest_polygons(
     """
     logger.info("ingest_polygons: %s (v%s)", spec.name, spec.version)
 
-    if spec.name == "proseg":
-        out = _ingest_proseg(
-            boundaries_path, micron_per_z, entity_type,
+    raw = spec.native_reader("boundaries")(boundaries_path)
+    if spec.boundaries_space == "micron":
+        out = _ingest_layers(
+            raw, micron_per_z, entity_type,
             cell_col=spec.columns.cell_id, z_col=spec.columns.z_index,
         )
-    elif spec.name in ("cellpose", "mesmer"):
-        pq = gpd.read_parquet(boundaries_path)
+    elif spec.boundaries_space == "pixel":
+        pq = raw
         zcol = "z" if "z" in pq.columns else _ZINDEX_COL
         is_3d = zcol in pq.columns and pq[zcol].nunique() > 1
         if is_3d:
@@ -129,27 +125,15 @@ def ingest_polygons(
         else:
             # 2D: the validated convert_geometry does harmonize + replicate + transform
             return convert_geometry(
-                boundaries_path, output_path, micron_to_mosaic,
+                pq, output_path, micron_to_mosaic,
                 n_z_planes=n_z_planes, spacing_z=micron_per_z, entity_type=entity_type,
             )
     else:
-        raise ValueError(f"ingest_polygons: unsupported method {spec.name!r}")
+        raise ValueError(f"ingest_polygons: unsupported boundaries_space {spec.boundaries_space!r} ({spec.name})")
 
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(output_path)
+    write_boundaries(out, output_path)
     logger.info("ingest_polygons: wrote %d rows -> %s", len(out), output_path)
     return out
-
-
-def _read_boundaries(boundaries_path: str | Path) -> gpd.GeoDataFrame:
-    """Read a user-provided boundaries file (``.parquet`` or ``.geojson``/``.geojson.gz``)."""
-    path = str(boundaries_path)
-    if path.endswith(".parquet"):
-        return gpd.read_parquet(path)
-    if path.endswith(".gz"):
-        with gzip.open(path, "rb") as f:
-            return gpd.read_file(f)
-    return gpd.read_file(path)
 
 
 def ingest_custom_polygons(
@@ -202,7 +186,7 @@ def ingest_custom_polygons(
         raise ValueError("boundaries_space='pixel' requires micron_to_mosaic (path to "
                          "micron_to_mosaic_pixel_transform.csv)")
 
-    raw = _read_boundaries(boundaries_path)
+    raw = read_boundaries(boundaries_path)
     geoms = gpd.GeoSeries([_to_multipoly(_get_valid(s)) for s in raw.geometry.values])
 
     # cell grouping key -> one EntityID per cell
@@ -239,7 +223,7 @@ def ingest_custom_polygons(
                     "%d plane(s) %s", len(base), len(planes), planes.tolist())
 
     if boundaries_space == "pixel":
-        mat = np.linalg.inv(_read_micron_to_mosaic_transform(micron_to_mosaic))
+        mat = np.linalg.inv(read_transform(micron_to_mosaic))
         flat = [*mat[:2, :2].flatten(), *mat[:2, 2].flatten()]
         out[_GEOM] = out[_GEOM].apply(lambda x: _to_multipoly(affine_transform(x, flat)))
         out = out.set_geometry(_GEOM)
@@ -255,8 +239,7 @@ def ingest_custom_polygons(
         # keep the caller's identifier so the EntityID <-> cell-id mapping is inherent
         out[cell_id_col] = orig_cell
 
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(output_path)
+    write_boundaries(out, output_path)
     logger.info("ingest_custom_polygons: assigned %d EntityIDs; wrote %d rows -> %s",
                 len(id_map), len(out), output_path)
     return out

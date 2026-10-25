@@ -110,6 +110,11 @@ def test_align_geometries_goes_native(monkeypatch, tmp_path):
                         {"output_path": str(k["output_dir"] / "aligned.parquet"), "n_aligned": 1})
     monkeypatch.setattr(m, "process_custom_segmentation", lambda b, o, **k: seen.update(custom=(b, o, k)))
     d = Dataset(exp="E", reg="R", zarr=tmp_path / "z", raw=tmp_path / "raw", seg=tmp_path / "seg")
+    (tmp_path / "raw" / "images").mkdir(parents=True)                     # inputs align requires
+    (tmp_path / "raw" / "images" / "mosaic_DAPI_z0.tif").write_text("")
+    (tmp_path / "raw" / "detected_transcripts.csv").write_text("")
+    for p in ("nuc", "cell"):
+        (tmp_path / "z" / "shapes" / f"{p}_E_R_polygons").mkdir(parents=True)
     m.align_geometries(d, prefix1="nuc", prefix2="cell")
     assert seen["align"]["shape_key1"] == "nuc_E_R_polygons" and seen["align"]["output_dir"] == tmp_path / "seg" / "align"
     b, o, k = seen["custom"]
@@ -130,6 +135,8 @@ def test_ingest_region_refuses_existing_store(monkeypatch, tmp_path):
     called = []
     monkeypatch.setattr(m, "read_merscope", lambda *a, **k: called.append(1))
     d = Dataset(zarr=tmp_path / "x.zarr", raw=tmp_path / "r")
+    (d.raw).mkdir()
+    (d.raw / "detected_transcripts.csv").write_text("")
     _store(d.zarr)
     with pytest.raises(FileExistsError, match="x.zarr"):
         m.ingest_region(d)
@@ -141,6 +148,8 @@ def test_ingest_region_overwrite_proceeds(monkeypatch, tmp_path):
     from spida.io.layout import Dataset
     monkeypatch.setattr(m, "read_merscope", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("reached")))
     d = Dataset(zarr=tmp_path / "x.zarr", raw=tmp_path / "r")
+    (d.raw).mkdir()
+    (d.raw / "detected_transcripts.csv").write_text("")
     _store(d.zarr)
     with pytest.raises(RuntimeError, match="reached"):
         m.ingest_region(d, overwrite=True)
@@ -240,6 +249,9 @@ def test_load_segmentation_region_refuses_before_loading(monkeypatch, tmp_path):
     d = Dataset(zarr=tmp_path / "s.zarr", seg=tmp_path / "seg")
     _seg_store(d.zarr)
     (d.seg / "seg").mkdir(parents=True)
+    for f in ("boundaries_micron.parquet", "cell_by_gene.csv", "cell_metadata.csv", "detected_transcripts.csv"):
+        (d.seg / "seg" / f).write_text("")                     # the schema files load-segmentation requires
+    (d.zarr / "shapes" / "default_polygons").mkdir(parents=True)
     called = []
     monkeypatch.setattr(m, "load_segmentation", lambda *a, **k: called.append(k))
     with pytest.raises(FileExistsError, match="seg_table"):

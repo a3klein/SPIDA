@@ -18,7 +18,7 @@ from click.testing import CliRunner
 
 from spida.io.layout import Dataset
 from spida.S.segmentation import main as seg_main
-from spida.S.segmentation.backends.base import (
+from spida.io.schema.segmentation import (
     SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA, SCHEMA_SUM_SIGNALS, SCHEMA_TRANSCRIPTS,
 )
 
@@ -32,6 +32,11 @@ def _any_pixi_env(monkeypatch):
 def ds(tmp_path):
     raw = tmp_path / "raw" / "E" / "out" / "region_1"
     (raw / "images").mkdir(parents=True)
+    for f in ("images/mosaic_DAPI_z0.tif", "images/micron_to_mosaic_pixel_transform.csv",
+              "detected_transcripts.parquet", "detected_transcripts.csv"):      # inputs the steps require
+        (raw / f).write_text("")
+    for prefix in ("cellpose_nuc", "cellpose_cell"):                            # align reads these shapes
+        (tmp_path / "z.zarr" / "shapes" / f"{prefix}_E_region_1_polygons").mkdir(parents=True)
     return Dataset(exp="E", reg="region_1", raw=raw, seg=tmp_path / "seg" / "E" / "region_1",
                    zarr=tmp_path / "z.zarr")
 
@@ -215,3 +220,47 @@ def test_segment_cli_overwrite_not_a_backend_param(monkeypatch, tmp_path):
                                          "--reg", "region_1", "--overwrite", "--voxel-size", "2"])
     assert res.exit_code == 0, res.output
     assert seen["overwrite"] is True and "voxel-size" in str(seen) and list(seen).count("overwrite") == 1
+
+
+# ---- drift: what a step writes is what its guard lists (phase 3d) ----
+
+def test_files_written_per_method():
+    from spida.io.schema.segmentation import SCHEMA_FILES, files_written
+    from spida.S.segmentation.backends import get_spec
+    assert set(files_written(get_spec("cellpose"))) == set(SCHEMA_FILES)       # partitions transcripts
+    assert set(files_written(get_spec("proseg"))) == {SCHEMA_BOUNDARIES, SCHEMA_SUM_SIGNALS, SCHEMA_CELL_METADATA}
+    assert files_written(get_spec("cellpose"), "vpt")[0] == "cellpose_micron_space.parquet"
+    assert set(files_written()) == set(SCHEMA_FILES)
+
+
+def test_custom_writes_nothing_outside_its_guard(tmp_path):
+    from spida.io.schema.segmentation import files_written
+    tx = tmp_path / "tx.csv"
+    pd.DataFrame([{"global_x": i * 20 + 7, "global_y": 7, "global_z": 0, "gene": f"g{i % 2}", "barcode_id": i % 2}
+                  for i in range(3)]).to_csv(tx, index=False)
+    out = tmp_path / "out"
+    seg_main.process_custom_segmentation(_boxes(tmp_path), out, cell_id_col="my_cell", transcripts_path=tx)
+    written = {p.name for p in out.iterdir() if p.is_file()}
+    assert written and written <= set(files_written())  # a re-run would be refused for every file it wrote
+
+
+# ---- inputs checked before any work (phase 3e) ----
+
+def test_process_missing_images_stops_before_ingest(ds, backends, post):
+    seg_main.segment_region("cellpose", ds, prefix_name="cellpose_cell")
+    (ds.raw / "images" / "mosaic_DAPI_z0.tif").unlink()
+    (ds.raw / "images" / "micron_to_mosaic_pixel_transform.csv").unlink()     # images dir now empty
+    with pytest.raises(FileNotFoundError, match="images"):
+        seg_main.process_segmentation_region("cellpose", ds, prefix_name="cellpose_cell")
+    assert post == []  # nothing ran
+
+
+def test_load_missing_schema_file_stops_before_loading(ds, monkeypatch):
+    from spida.S.io import main as io_main
+    called = []
+    monkeypatch.setattr(io_main, "load_segmentation", lambda *a, **k: called.append(1))
+    (ds.seg / "cellpose_cell").mkdir(parents=True)
+    (ds.zarr / "shapes" / "default_E_region_1_polygons").mkdir(parents=True)
+    with pytest.raises(FileNotFoundError, match="cell_by_gene.csv"):
+        io_main.load_segmentation_region(ds, type="cellpose", prefix_name="cellpose_cell")
+    assert not called

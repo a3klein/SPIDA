@@ -21,11 +21,9 @@ from spida.utilities.tiling import (
     tile_coverage,
 )
 from spida.S.segmentation.tiling import gate_tiles, plan_grid
-from spida.S.io.mosaic import (
-    find_stain_planes,
-    load_tissue_mask,
-    probe_mosaic_shape,
-)
+from spida.io.formats.merscope import find_stain_planes
+from spida.io.images import probe_mosaic_shape
+from spida.io.schema.tissue_mask import load as load_tissue_mask
 from spida.utilities.tiling import tile_grid_with_overlap
 
 
@@ -155,7 +153,7 @@ def test_redundancy_is_minimal_when_the_tile_packs_cleanly():
 
 def _window(planes, y0, y1, x0, x1, **kw):
     """One stain's `(Y, X, Z)` window via `read_stains`, which returns 4D."""
-    from spida.S.io.mosaic import read_stains
+    from spida.io.images import read_stains
     return read_stains({"s": planes}, window=(y0, y1, x0, x1), **kw)[0]
 
 
@@ -524,7 +522,7 @@ def test_whole_and_windowed_reads_agree(mosaic_dir):
     exactness guarantee is the streamed-downscale test above, which checks
     against an explicit `downscale_local_mean` reference.
     """
-    from spida.S.io.mosaic import read_stains
+    from spida.io.images import read_stains
 
     planes = find_stain_planes(mosaic_dir, "DAPI")
     whole = read_stains({"s": planes}, downscale=4)                 # window=None
@@ -540,7 +538,7 @@ def test_read_stains_is_4d_even_for_one_plane(mosaic_dir, tmp_path):
     (test_cellpose_backend_wiring.test_untiled_path_squeezes_a_single_plane_stain).
     """
     import shutil
-    from spida.S.io.mosaic import read_stains
+    from spida.io.images import read_stains
 
     d = tmp_path / "one_plane"
     d.mkdir()

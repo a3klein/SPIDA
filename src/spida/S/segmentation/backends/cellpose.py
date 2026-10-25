@@ -23,7 +23,9 @@ import logging
 # importing cv2 after that raises `version CXXABI_1.3.15 not found`.
 import cv2  
 
-from ...io.mosaic import find_stain_planes, load_tissue_mask, probe_mosaic_shape, read_stains
+from spida.io.formats.merscope import find_stain_planes
+from spida.io.images import probe_mosaic_shape, read_stains
+from spida.io.schema import tissue_mask
 from .masks import masks_to_geodataframe
 from .config import ConfigError
 from .cellpose_config import (
@@ -89,7 +91,7 @@ def _load_and_check_mask(
     """
     if not tissue_mask_path:
         return None
-    mask = load_tissue_mask(tissue_mask_path)
+    mask = tissue_mask.load(tissue_mask_path)
     if mask.shape != mosaic_shape:
         raise ConfigError(
             f"tissue mask {tissue_mask_path} has shape {mask.shape} but the "

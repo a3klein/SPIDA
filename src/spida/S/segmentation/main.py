@@ -1,7 +1,8 @@
 from pathlib import Path
 import logging
 
-from spida.io.store import is_writeable
+from spida.io.schema.segmentation import LEGACY_VPT_BOUNDARIES, files_written
+from spida.io.store import is_writeable, require
 
 logger = logging.getLogger(__package__)
 
@@ -42,16 +43,13 @@ def align_geometries(
     """
     from spida._constants import SHAPES_KEY
     from .align import align_segmentations
-    from .backends.base import (
-        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA,
-        SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
-    )
 
     raw = dataset.require("raw")
     out_dir = dataset.seg_dir(out_dir_name)
-    is_writeable(files=[out_dir / f for f in (f"aligned_{prefix1}_{prefix2}_polygons.parquet",
-                                              SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS,
-                                              SCHEMA_CELL_METADATA, SCHEMA_SUM_SIGNALS)],
+    tx = raw / "detected_transcripts.parquet"
+    require(dataset.require("zarr"), [dataset.keys(p)[SHAPES_KEY] for p in (prefix1, prefix2)],
+            files=[tx if tx.exists() else raw / "detected_transcripts.csv", raw / "images"])
+    is_writeable(files=[out_dir / f for f in [f"aligned_{prefix1}_{prefix2}_polygons.parquet", *files_written()]],
                  overwrite=overwrite)
     ret = align_segmentations(
         zarr_path=dataset.require("zarr"),
@@ -92,8 +90,8 @@ def align_geometries(
 # `run-segmentation-region` remains only as a deprecation redirect.
 # ===========================================================================
 
-#: Filename that ``P/tissue_mask.py`` writes into a region's images dir (its``QC_MASK_TIF_NAME``).
-TISSUE_MASK_FILENAME = "tissue_mask.tif"
+#: Filename that ``tissue-mask`` writes into a region's images dir.
+from spida.io.schema.tissue_mask import FILENAME as TISSUE_MASK_FILENAME  # noqa: E402
 
 #: Methods whose backend accepts ``tissue_mask_path``. this set
 #: only records which backends have been wired to consume it so far.
@@ -171,6 +169,7 @@ def segment_region(
     output_dir = str(dataset.seg_dir(label))
     raw_files = [f for f in (spec.boundaries_file, spec.counts_file, spec.metadata_file,
                              spec.transcripts_file, spec.spatialdata_file) if f]  # from the method's spec
+    require(files=[raw_region / "detected_transcripts.csv"] if method == "proseg" else [images_dir])
     is_writeable(files=[Path(output_dir) / f for f in raw_files], overwrite=overwrite)
     logger.info("segment_region: %s v%s on %s -> %s",
                 method, spec.version, raw_region, output_dir)
@@ -226,11 +225,9 @@ def process_segmentation_region(
         passed to ``segment-region``. Defaults to the method name (default is None).
     overwrite (bool): Replace existing segmentation-schema files (default is False).
     """
-    import pandas as pd
     from .backends import get_spec
-    from .backends.base import (
-        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA,
-        SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
+    from spida.io.schema.segmentation import (
+        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS, write_cell_metadata,
     )
 
     spec = get_spec(method, version)
@@ -242,13 +239,13 @@ def process_segmentation_region(
     m2m = images_dir / "micron_to_mosaic_pixel_transform.csv"
     # where segment-region wrote the raw output (current layout, legacy fallback)
     seg_region = dataset.seg_dir(label, must_exist=True)
-    if backend == "vpt":
-        outputs = [kwargs.get("output_boundaries", "cellpose_micron_space.parquet"), SCHEMA_CELL_BY_GENE,
-                   SCHEMA_TRANSCRIPTS, SCHEMA_CELL_METADATA, SCHEMA_SUM_SIGNALS]
-    else:
-        outputs = [SCHEMA_BOUNDARIES, SCHEMA_SUM_SIGNALS, SCHEMA_CELL_METADATA]
-        if "partition_transcripts" in spec.needs:
-            outputs += [SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS]
+    outputs = files_written(spec, backend, kwargs.get("output_boundaries", LEGACY_VPT_BOUNDARIES))
+    reads = [seg_region / spec.boundaries_file, m2m, images_dir]                  # images + transform: sum_signals
+    if backend == "vpt" or "partition_transcripts" in spec.needs:
+        reads.append(raw_region / spec.raw_transcripts_file)
+    if backend != "vpt" and "derive_entity_metadata" not in spec.needs:
+        reads.append(seg_region / spec.metadata_file)                             # method-native metadata
+    require(files=reads)
     is_writeable(files=[seg_region / f for f in outputs], overwrite=overwrite)
 
     logger.info("process_segmentation_region: %s v%s (%s backend) needs=%s -> %s",
@@ -265,7 +262,7 @@ def process_segmentation_region(
         partition_transcripts, derive_entity_metadata, sum_signals,
     )
 
-    pixel = method in ("cellpose", "mesmer")
+    pixel = spec.boundaries_space == "pixel"
     cir_boundaries = seg_region / SCHEMA_BOUNDARIES
 
     # 1. raw boundaries -> segmentation schema boundaries (micron space)
@@ -287,15 +284,13 @@ def process_segmentation_region(
     if "derive_entity_metadata" in spec.needs:
         meta = derive_entity_metadata(cir_boundaries, seg_region / SCHEMA_CELL_BY_GENE)
     else:
-        native = pd.read_csv(seg_region / spec.metadata_file)
-        meta = native.set_index(spec.columns.cell_id)
-        meta.index.name = "EntityID"      # proseg cell id == segmentation schema EntityID
+        meta = spec.native_reader("metadata")(seg_region / spec.metadata_file, spec)
 
     # 4. image intensity (always) and merge into cell_metadata
     signals = sum_signals(cir_boundaries, images_dir, m2m,
                           output_csv=seg_region / SCHEMA_SUM_SIGNALS, n_jobs=n_jobs)
     merged = meta.join(signals)
-    merged.to_csv(seg_region / SCHEMA_CELL_METADATA)
+    write_cell_metadata(merged, seg_region)
     logger.info("process_segmentation_region: wrote segmentation schema outputs to %s", seg_region)
 
 
@@ -375,9 +370,8 @@ def process_custom_segmentation(
     import glob
     import numpy as np
     import pandas as pd
-    from .backends.base import (
-        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA,
-        SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS,
+    from spida.io.schema.segmentation import (
+        SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS, SCHEMA_SUM_SIGNALS, write_cell_metadata,
     )
     from .ingest import ingest_custom_polygons
     from .postprocess import (
@@ -386,8 +380,9 @@ def process_custom_segmentation(
     )
 
     out = Path(output_dir)
-    is_writeable(files=[out / f for f in (SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_TRANSCRIPTS,
-                                          SCHEMA_CELL_METADATA, SCHEMA_SUM_SIGNALS)], overwrite=overwrite)
+    require(files=[p for p in (boundaries_path, transcripts_path, images_dir, micron_to_mosaic_path, metadata_path)
+                   if p is not None])
+    is_writeable(files=[out / f for f in files_written()], overwrite=overwrite)
     out.mkdir(parents=True, exist_ok=True)
     boundaries_out = out / SCHEMA_BOUNDARIES
     if images_dir is not None and micron_to_mosaic_path is None:
@@ -507,7 +502,7 @@ def process_custom_segmentation(
                               output_csv=out / SCHEMA_SUM_SIGNALS, n_jobs=n_jobs)
         meta = meta.join(signals)
 
-    meta.to_csv(out / SCHEMA_CELL_METADATA)
+    write_cell_metadata(meta, out)
     for f in tmp_files:
         Path(f).unlink(missing_ok=True)
     logger.info("process_custom_segmentation: wrote segmentation schema outputs to %s", out)

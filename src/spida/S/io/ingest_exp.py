@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-import geopandas as gpd
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     import spatialdata as sd
@@ -18,6 +17,7 @@ with warnings.catch_warnings():
 
 from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
 from .filt_to_qc import apply_qc_filter_to_segmentation
+from spida.io.schema.segmentation import resolve
 from spida.io.store import write_element
 
 logger = logging.getLogger(__package__)
@@ -145,32 +145,6 @@ def _cast_multipolygons_to_polygons(
     return sdata
 
 
-def _resolve_file(
-    seg_region: Path,
-    canonical: str,
-    legacy: str | None = None,
-) -> Path:
-    """
-    Resolve a segmentation schema filename, preferring the canonical name and falling back to a
-    method's legacy name (for pre-redesign data).
-
-    Parameters:
-    seg_region (Path): The region's segmentation-output directory.
-    canonical (str): The segmentation schema filename to look for first.
-    legacy (str | None): A legacy filename to fall back to if the canonical one is absent (default is None).
-
-    Returns:
-    Path: The resolved path (the canonical path if neither exists, so downstream errors point at the expected name).
-    """
-    p = seg_region / canonical
-    if p.exists():
-        return p
-    if legacy is not None and (seg_region / legacy).exists():
-        logger.info("using legacy file %r (canonical %r absent)", legacy, canonical)
-        return seg_region / legacy
-    return p
-
-
 def _finalize_and_write(
     sdata: sd.SpatialData,
     KEYS: dict,
@@ -246,34 +220,32 @@ def _load_proseg_native(
     Returns:
     spatialdata.SpatialData: The spatialdata object with proseg points/shapes/table added.
     """
-    import dask.dataframe as dd
     from ._seg_readers import (
         get_table, get_table_from_adata, parse_points, _CELL_KEY,
     )
     from shapely.geometry import MultiPolygon
 
     # obs: segmentation schema cell_metadata.csv (EntityID) else legacy signals file
-    obs_path = _resolve_file(seg_region, cell_metadata_fname, "cell_metadata_with_signals.csv")
+    obs_path = resolve(seg_region, cell_metadata_fname, "cell_metadata_with_signals.csv")
     cell_meta = pd.read_csv(obs_path, index_col=0) if obs_path.exists() else None
     if cell_meta is not None:
         cell_meta.index = cell_meta.index.astype(int)
         cell_meta.index.name = _CELL_KEY
 
-    zarr_path = seg_region / (spec.spatialdata_file or "__none__")
-    if spec.spatialdata_file and zarr_path.exists():
+    native = spec.native_reader("assigned")(seg_region, spec)
+    if native["version"] == 3:
         # ---- v3: zarr bundles table (counts) + transcripts (points) + union shapes ----
-        proseg = sd.read_zarr(str(zarr_path))
-        pts = parse_points(proseg["transcripts"].copy(), None)
+        pts = parse_points(native["transcripts"].copy(), None)
         set_transformation(pts, affine, to_coordinate_system="global")
         sdata[KEYS[POINTS_KEY]] = pts
 
-        shp = proseg["cell_boundaries"].set_crs(None, allow_override=True).copy()
+        shp = native["cells"].set_crs(None, allow_override=True).copy()
         shp[_CELL_KEY] = shp["cell"].astype(int)
         shp.index = shp[_CELL_KEY].astype(str)
         set_transformation(shp, affine, to_coordinate_system="global")
         sdata[KEYS[SHAPES_KEY]] = shp
 
-        ztab = proseg["table"].copy()
+        ztab = native["counts"].copy()
         if cell_meta is not None:                       # align obs to zarr's cell order
             cell_meta = cell_meta.reindex(ztab.obs["cell"].astype(int).values)
         table = get_table_from_adata(
@@ -282,15 +254,11 @@ def _load_proseg_native(
         )
     else:
         # ---- v2: native CSVs (expected-counts / transcript-metadata) + union geojson ----
-        import gzip
         from spatialdata.models import ShapesModel
         transformations = {"global": affine}
-        tx = dd.read_csv(str(seg_region / spec.transcripts_file), compression="gzip")
-        sdata[KEYS[POINTS_KEY]] = parse_points(tx, transformations)
+        sdata[KEYS[POINTS_KEY]] = parse_points(native["transcripts"], transformations)
 
-        union = seg_region / "cell-polygons.geojson.gz"    # 2D union (native proseg)
-        with gzip.open(str(union), "rt") as f:
-            shp = gpd.read_file(f)
+        shp = native["cells"]
         shp[_CELL_KEY] = shp["cell"].astype(int)
         shp.index = shp[_CELL_KEY].astype(str)
         shp.geometry = shp.geometry.map(
@@ -299,7 +267,7 @@ def _load_proseg_native(
         sdata[KEYS[SHAPES_KEY]] = ShapesModel.parse(shp, transformations=transformations)
 
         table = get_table(
-            seg_region / spec.counts_file, obs_path,
+            native["counts_file"], obs_path,
             reg_name, exp_name, dataset_id, KEYS[SHAPES_KEY], cell_id_col=_CELL_KEY,
         )
     table.obs.index.name = "index"
@@ -366,7 +334,7 @@ def load_segmentation(
     Returns:
     spatialdata.SpatialData: The spatialdata object with the loaded segmentation elements written to disk.
     """
-    from spida.S.segmentation.backends.base import SCHEMA_BOUNDARIES
+    from spida.io.schema.segmentation import SCHEMA_BOUNDARIES
     from ._seg_readers import get_polygons, get_table, _CELL_KEY
 
     logger.info("load_segmentation: %s v%s -> region %s", spec.name, spec.version, reg_name)
@@ -397,7 +365,7 @@ def load_segmentation(
             warnings.filterwarnings("ignore")
             from spatialdata_io.readers.merscope import _get_points
 
-        boundaries = _resolve_file(
+        boundaries = resolve(
             seg_region, boundaries_fname or SCHEMA_BOUNDARIES, spec.legacy_boundaries_file
         )
         sdata[KEYS[POINTS_KEY]] = _get_points(

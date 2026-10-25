@@ -3,12 +3,6 @@
 from .base import (
     ColumnMap,
     SegmentationClass,
-    resolve_region_dir,
-    SCHEMA_BOUNDARIES,
-    SCHEMA_CELL_BY_GENE,
-    SCHEMA_CELL_METADATA,
-    SCHEMA_TRANSCRIPTS,
-    SCHEMA_SUM_SIGNALS,
 )
 from .registry import (
     REGISTRY,
@@ -60,12 +54,6 @@ __all__ = [
     "SegmentationClass",
     "get_config_class",
     "describe_method_params",
-    "resolve_region_dir",
-    "SCHEMA_BOUNDARIES",
-    "SCHEMA_CELL_BY_GENE",
-    "SCHEMA_CELL_METADATA",
-    "SCHEMA_TRANSCRIPTS",
-    "SCHEMA_SUM_SIGNALS",
     "REGISTRY",
     "get_spec",
     "CELLPOSE",

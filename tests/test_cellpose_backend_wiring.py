@@ -527,7 +527,7 @@ def test_auto_tile_size_uses_the_mask(monkeypatch, mosaic_dir, tmp_path):
 def test_untiled_path_applies_the_tissue_mask(monkeypatch, mosaic_dir,
                                               tmp_path, caplog):
     """The untiled path used to WARN that tissue_mask_path was ignored. Now that
-    both paths read through `S.io.mosaic`, masking is a reader argument and comes
+    both paths read through `spida.io.images`, masking is a reader argument and comes
     for free, so the mask must actually reach the pixels handed to the model."""
     model, _calls = _patch_labelling_model(monkeypatch)
     mask = np.zeros((64, 64), dtype=bool)

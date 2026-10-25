@@ -2,7 +2,7 @@
 output layout. Current layout is {store}/{exp}/{reg}/{label}; a single legacy
 fallback {store}/{exp}/{label}/{reg} keeps pre-reorder data readable.
 """
-from spida.S.segmentation.backends.base import resolve_region_dir
+from spida.io.layout import resolve_region_dir
 
 EXP, REG, LABEL = "exp1", "region_001", "cellpose_cell"
 
