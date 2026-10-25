@@ -94,6 +94,40 @@ def is_writeable(
         logger.info("Overwriting: %s", ", ".join(found))
     return True
 
+
+def require(
+    zarr_path: str | Path | None = None,
+    elements: Iterable[str] = (),
+    files: Iterable[str | Path] = (),
+    columns: dict[str, Iterable[str]] | None = None,
+) -> bool:
+    """
+    Check before any compute that a command's inputs exist.
+
+    Raises FileNotFoundError listing every missing input.
+    Parameters:
+    zarr_path (str | Path, optional): The zarr store (needed if ``elements`` / ``columns`` given).
+    elements (Iterable[str]): Element names the command reads from the store.
+    files (Iterable[str | Path]): Files or directories (non-empty) the command reads outside the store.
+    columns (dict[str, Iterable[str]], optional): {table: obs columns the command reads from that table}.
+    """
+    elements = list(elements)
+    files = [Path(f) for f in files]
+    if (elements or columns) and zarr_path is None:
+        raise ValueError("require: elements / columns given without a zarr store")
+
+    missing = [k for k in elements if not element_on_disk(zarr_path, k)]  # missing elements
+    missing += [str(f) for f in files if not _file_exists(f)]  # missing files
+    for key, cols in (columns or {}).items():  # missing columns (or their whole table)
+        if element_on_disk(zarr_path, key) != f"tables/{key}":
+            missing.append(f"tables/{key}")
+        elif miss := [c for c in cols if c not in set(obs_columns(zarr_path, key))]:
+            missing.append(f"tables/{key} obs: {', '.join(miss)}")
+    if missing:
+        listing = "\n  ".join(dict.fromkeys(missing))
+        raise FileNotFoundError(f"missing inputs:\n  {listing}")
+    return True
+
 # save spatialdata import. 
 def _sd():
     with warnings.catch_warnings():

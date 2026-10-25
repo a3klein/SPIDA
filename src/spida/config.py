@@ -23,6 +23,7 @@ CONFIG_KEY_TO_FIELD = {
     "SPIDA_SITE_DIR": "site_dir",
     "MMC_DIR": "mmc_store_path",
     "GENE_PANEL_PATH": "gene_panel_path",
+    "REGION_LABELS": "region_labels",
 }
 
 DEFAULT_CONFIG = {
@@ -43,6 +44,8 @@ DEFAULT_CONFIG = {
     # Optional. Unset -> CELLPOSE_LOCAL_MODELS_PATH, else cellpose's ~/.cellpose/models
     # (resolved in backends/cellpose_config.resolve_model_dir).
     "CELLPOSE_MODEL_PATH": "",
+    # Optional. JSON {region name: label (donor)}; unset -> the region name without "region_".
+    "REGION_LABELS": "",
 }
 
 CONFIG_DESCRIPTIONS = {
@@ -64,6 +67,7 @@ CONFIG_DESCRIPTIONS = {
         "Defaults to CELLPOSE_LOCAL_MODELS_PATH, else ~/.cellpose/models. Override "
         "per-run with `segment-region cellpose ... --model_dir=<path>`."
     ),
+    "REGION_LABELS": "Optional. JSON file mapping region names to labels (donors).",
 }
 
 def _normalize_config_keys(config: dict) -> dict:
@@ -135,6 +139,7 @@ class SpidaConfig:
     vpt_bin_path: Path | None = None
     deconwolf_config_file: Path | None = None
     cellpose_model_path: Path | None = None
+    region_labels: Path | None = None
 
     def require(self, name: str) -> Path:
         """Return a path setting, or raise naming the config key that sets it."""

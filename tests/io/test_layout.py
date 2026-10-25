@@ -124,3 +124,33 @@ def test_names_on_nameless_store_raise(tmp_path):
 
 def test_names_on_new_store_ok(tmp_path):
     assert dataset_from(SpidaConfig(), EXP, REG, zarr=tmp_path / "new.zarr").namespace == f"{EXP}_{REG}"
+
+
+# ---- region labels / RegionMeta (phase 3g / 3h) ----
+
+def test_region_label_mapping_then_strip():
+    from spida.io.layout import region_label
+    labels = {"region_UWA-7648": "UWA7648"}
+    assert region_label("region_UWA-7648", labels) == "UWA7648"
+    assert region_label("region_UCI5224", labels) == "UCI5224"      # not mapped: strip region_
+    assert region_label("other", None) == "other" and region_label("", None) == ""
+
+
+def test_dataset_meta_and_label_sources(tmp_path):
+    from spida.io.layout import RegionMeta
+    f = tmp_path / "labels.json"
+    f.write_text(json.dumps({REG: "D1"}))
+    cfg = SpidaConfig(zarr_store=tmp_path / "z", region_labels=f)
+    assert dataset_from(cfg, EXP, REG).meta("cellpose_cell") == RegionMeta(EXP, REG, "cellpose_cell", "D1")
+    assert dataset_from(cfg, EXP, REG, region_labels={REG: "D2"}).meta("p").donor == "D2"   # argument wins
+    assert dataset_from(cfg, EXP, REG).meta("p", labels={REG: "D3"}).donor == "D3"            # per call
+    assert dataset_from(_cfg(tmp_path), EXP, REG).meta("p").donor == "UCI5224"                # no mapping
+
+
+def test_region_labels_config_key(tmp_path):
+    from spida.config import load
+    f = tmp_path / "labels.json"
+    f.write_text("{}")
+    c = tmp_path / "c.json"
+    c.write_text(json.dumps({"REGION_LABELS": str(f)}))
+    assert load(c).region_labels == f

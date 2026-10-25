@@ -5,7 +5,7 @@ import re
 import json
 import logging
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # SPIDA imports
 from spida._constants import IMAGE_KEY, POINTS_KEY, SHAPES_KEY, TABLE_KEY
@@ -87,6 +87,46 @@ def _recorded_namespace(zarr_path: Path | None) -> str | None:
 
 
 # Class to store filepaths for a dataset
+def region_label(
+    region: str,
+    labels: dict | None = None,
+) -> str:
+    """
+    A region's label (its donor): ``labels[region]`` if given, else the name without ``region_``.
+    Parameters:
+    region (str): Region name, e.g. region_UCI5224.
+    labels (dict, optional): {region name: label}.
+    """
+    if labels and region in labels:
+        return labels[region]
+    return region[len("region_"):] if region.startswith("region_") else region
+
+
+def load_region_labels(
+    labels,
+) -> dict | None:
+    """
+    A region-label mapping from a dict, a JSON file path, or None.
+    Parameters:
+    labels (dict | str | Path | None): The mapping or its JSON file.
+    """
+    if labels is None or isinstance(labels, dict):
+        return labels
+    import json
+
+    return json.loads(Path(labels).read_text())
+
+
+@dataclass(frozen=True)
+class RegionMeta:
+    """Names a compute step writes into its outputs (obs columns, uns, figure titles)."""
+
+    experiment: str = ""
+    region: str = ""
+    segmentation: str = ""
+    donor: str | None = None
+
+
 @dataclass(frozen=True)
 class Dataset:
     exp: str | None = None
@@ -98,6 +138,7 @@ class Dataset:
     anndata: Path | None = None # h5ad copies of this dataset's tables, one file per table key
     annotations: Path | None = None # annotation intermediates, {table_key}/{method}/{reference}
     seg_legacy: Path | None = None # read-only fallback {seg_store}/{exp}/{label}/{reg}
+    region_labels: dict | None = field(default=None, compare=False, hash=False)  # {region name: label}
 
     @property
     def named(self) -> bool: # if both exp and reg are set.
@@ -121,6 +162,11 @@ class Dataset:
         if value is None:
             raise ValueError(f"dataset has no {name} path. Pass --{name}_path or configure its store root")
         return value
+
+    def meta(self, segmentation: str, labels: dict | None = None) -> RegionMeta:
+        """Names for a compute step on segmentation ``segmentation``; ``labels`` overrides the dataset's mapping."""
+        reg = self.reg or ""
+        return RegionMeta(self.exp or "", reg, segmentation, region_label(reg, labels or self.region_labels))
 
     def raw_images(self) -> Path: # input images for dataset
         return self.require("raw") / "images"
@@ -154,6 +200,7 @@ def dataset_from(
     figures=None,
     anndata=None,
     annotations=None,
+    region_labels=None,
 ) -> Dataset:
     """
     Entry point for building a Dataset.
@@ -182,6 +229,8 @@ def dataset_from(
         anndata=Path(anndata) if anndata is not None else _tree(config.anndata_store, exp, reg),
         annotations=Path(annotations) if annotations is not None else _tree(config.annotation_store, exp, reg),
         seg_legacy=None if seg is not None else _tree(config.segmentation_store, exp),
+        region_labels=load_region_labels(region_labels if region_labels is not None
+                                         else getattr(config, "region_labels", None)),
     )
 
 

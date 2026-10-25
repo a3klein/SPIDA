@@ -216,3 +216,25 @@ def test_backup_adata_swaps(store):
     _backup_adata(store, t, "table")
     r = sd.read_zarr(store)
     assert "new" in r["table"].obs and "table__tmp" not in r.tables
+
+
+# ---- require (phase 3e) ----
+
+def test_require_lists_every_missing_input(store, tmp_path):
+    from spida.io.store import require
+    f = tmp_path / "present.csv"
+    f.write_text("x")
+    assert require(store, ["table", "cells"], files=[f], columns={"table": ["EntityID"]})
+    with pytest.raises(FileNotFoundError) as e:
+        require(store, ["table", "nope"], files=[f, tmp_path / "absent.csv"],
+                columns={"table": ["EntityID", "pass_qc"], "gone": ["x"]})
+    msg = str(e.value)
+    assert "nope" in msg and "absent.csv" in msg and "tables/table obs: pass_qc" in msg and "tables/gone" in msg
+    assert "present.csv" not in msg and "EntityID" not in msg
+
+
+def test_require_empty_dir_is_missing(tmp_path):
+    from spida.io.store import require
+    (tmp_path / "images").mkdir()
+    with pytest.raises(FileNotFoundError, match="images"):
+        require(files=[tmp_path / "images"])
