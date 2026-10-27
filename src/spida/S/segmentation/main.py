@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 
+from spida.io.formats.merscope import PLANE_RE, TRANSCRIPTS_CSV, TRANSFORM_FILE, raw_transcripts
 from spida.io.schema.segmentation import LEGACY_VPT_BOUNDARIES, files_written
 from spida.io.store import is_writeable, require
 
@@ -46,9 +47,8 @@ def align_geometries(
 
     raw = dataset.require("raw")
     out_dir = dataset.seg_dir(out_dir_name)
-    tx = raw / "detected_transcripts.parquet"
     require(dataset.require("zarr"), [dataset.keys(p)[SHAPES_KEY] for p in (prefix1, prefix2)],
-            files=[tx if tx.exists() else raw / "detected_transcripts.csv", raw / "images"])
+            files=[raw_transcripts(raw), dataset.raw_images()])
     is_writeable(files=[out_dir / f for f in [f"aligned_{prefix1}_{prefix2}_polygons.parquet", *files_written()]],
                  overwrite=overwrite)
     ret = align_segmentations(
@@ -64,20 +64,18 @@ def align_geometries(
         coordinate_system=coordinate_system,
     )
 
-    transcripts = raw / "detected_transcripts.parquet"
-    if not transcripts.exists():
-        transcripts = raw / "detected_transcripts.csv"
+    transcripts = raw_transcripts(raw)
     logger.info("align_geometries: %d aligned cells -> schema in %s", ret["n_aligned"], out_dir)
     process_custom_segmentation(
         ret["output_path"],
         out_dir,
         boundaries_space="pixel" if coordinate_system == "global" else "micron",
-        micron_to_mosaic_path=raw / "images" / "micron_to_mosaic_pixel_transform.csv",
+        micron_to_mosaic_path=dataset.raw_images() / TRANSFORM_FILE,
         z_spacing=micron_per_z,
         n_z_planes=1,
         cell_id_col=f"{prefix1}_id",
         transcripts_path=transcripts,
-        images_dir=raw / "images",
+        images_dir=dataset.raw_images(),
         overwrite=overwrite,
         n_jobs=n_jobs,
     )
@@ -169,7 +167,7 @@ def segment_region(
     output_dir = str(dataset.seg_dir(label))
     raw_files = [f for f in (spec.boundaries_file, spec.counts_file, spec.metadata_file,
                              spec.transcripts_file, spec.spatialdata_file) if f]  # from the method's spec
-    require(files=[raw_region / "detected_transcripts.csv"] if method == "proseg" else [images_dir])
+    require(files=[raw_region / TRANSCRIPTS_CSV] if method == "proseg" else [images_dir])
     is_writeable(files=[Path(output_dir) / f for f in raw_files], overwrite=overwrite)
     logger.info("segment_region: %s v%s on %s -> %s",
                 method, spec.version, raw_region, output_dir)
@@ -236,7 +234,7 @@ def process_segmentation_region(
     label = prefix_name or method
     raw_region = dataset.require("raw")
     images_dir = dataset.raw_images()
-    m2m = images_dir / "micron_to_mosaic_pixel_transform.csv"
+    m2m = images_dir / TRANSFORM_FILE
     # where segment-region wrote the raw output (current layout, legacy fallback)
     seg_region = dataset.seg_dir(label, must_exist=True)
     outputs = files_written(spec, backend, kwargs.get("output_boundaries", LEGACY_VPT_BOUNDARIES))
@@ -366,7 +364,6 @@ def process_custom_segmentation(
     metadata_cell_id_col (str | None): Cell-id column in ``metadata_path`` if it differs from ``cell_id_col`` (default is None => use ``cell_id_col``).
     n_jobs (int): Parallel workers for sum-signals (default 7).
     """
-    import re
     import glob
     import numpy as np
     import pandas as pd
@@ -405,9 +402,8 @@ def process_custom_segmentation(
         logger.info("process_custom_segmentation: transcripts span z-planes %s", tx_planes)
     img_planes = None
     if images_dir is not None:
-        rex = re.compile(r"mosaic_[\w-]+_z(\d+)\.tif$")
-        img_planes = sorted({int(m.group(1)) for f in glob.glob(f"{images_dir}/mosaic_*_z*.tif")
-                             if (m := rex.search(f))})
+        img_planes = sorted({int(m.group("z")) for f in glob.glob(f"{images_dir}/mosaic_*_z*.tif")
+                             if (m := PLANE_RE.search(f))})
         logger.info("process_custom_segmentation: images span z-planes %s", img_planes)
 
     # resolve target planes + validate plane matching

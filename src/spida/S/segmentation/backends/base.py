@@ -16,6 +16,8 @@ import logging
 from pathlib import Path
 from dataclasses import dataclass, field
 
+from spida.io.formats.merscope import TRANSCRIPTS_PARQUET
+
 logger = logging.getLogger(__package__)
 
 # The segmentation schema itself (file names, readers) lives in spida.io.schema.segmentation.
@@ -65,7 +67,7 @@ class SegmentationClass:
     columns: ColumnMap = field(default_factory=ColumnMap)
 
     # ---- transcript source when the method does NOT assign transcripts ----
-    raw_transcripts_file: str = "detected_transcripts.parquet"
+    raw_transcripts_file: str = TRANSCRIPTS_PARQUET
 
     # ---- legacy segmentation schema boundary name (for loader read back-compat) ----
     legacy_boundaries_file: str | None = None

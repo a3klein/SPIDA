@@ -14,7 +14,6 @@ Currently implemented:
 
 from __future__ import annotations
 
-import re
 import glob
 import datetime
 import logging
@@ -31,7 +30,7 @@ from shapely.ops import unary_union
 from shapely.affinity import affine_transform, translate
 
 from spida._constants import DEFAULT_PRESET, GEOMETRY_COL  # noqa: F401
-from spida.io.formats.merscope import read_transform
+from spida.io.formats.merscope import PLANE_RE, read_transform
 from spida.io.schema.segmentation import write_boundaries
 
 logger = logging.getLogger(__package__)
@@ -549,7 +548,6 @@ def convert_geometry(
 # --------------------------------------------------------------------------- #
 # sum-signals (per-cell image intensity, raw + FFT high-pass)                 #
 # --------------------------------------------------------------------------- #
-_SIGNAL_IMG_RE = re.compile(r"mosaic_(?P<stain>[\w-]+)_z(?P<z>\d+)\.tif$")
 
 
 def _high_pass(window: np.ndarray) -> np.ndarray:
@@ -665,7 +663,7 @@ def sum_signals(
 
     images = []
     for p in sorted(glob.glob(f"{images_dir}/mosaic_*_z*.tif")):
-        m = _SIGNAL_IMG_RE.search(Path(p).name)
+        m = PLANE_RE.search(Path(p).name)
         if m:
             images.append((p, m.group("stain"), int(m.group("z"))))
     logger.info("sum_signals: %d images, %d cells", len(images), len(all_ids))

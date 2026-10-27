@@ -6,6 +6,9 @@ a method (+ optional version, for proseg) to its spec.
 
 from __future__ import annotations
 
+from spida.io.formats.segmenters import (
+    PROSEG_CELL_METADATA, PROSEG_POLYGON_LAYERS, PROSEG_SPATIALDATA, PROSEG_V2_COUNTS, PROSEG_V2_TRANSCRIPTS,
+)
 from .base import ColumnMap, SegmentationClass
 
 # --- boundary-only segmenters (pixel-space masks -> need partition/derive/sum) ---
@@ -38,12 +41,12 @@ PROSEG_V2 = SegmentationClass(
     requires_gpu=False,
     env="preprocessing",                          # just shells the rust binary
     dim="3d",
-    boundaries_file="cell-polygons-layers.geojson.gz",
+    boundaries_file=PROSEG_POLYGON_LAYERS,
     boundaries_space="micron",
     native_format="proseg",
-    counts_file="expected-counts.csv.gz",
-    metadata_file="cell-metadata.csv.gz",
-    transcripts_file="transcript-metadata.csv.gz",
+    counts_file=PROSEG_V2_COUNTS,
+    metadata_file=PROSEG_CELL_METADATA,
+    transcripts_file=PROSEG_V2_TRANSCRIPTS,
     columns=ColumnMap(
         cell_id="cell", z_index="layer",
         tx_x="x", tx_y="y", tx_z="z", tx_assignment="assignment",
@@ -57,11 +60,11 @@ PROSEG_V3 = SegmentationClass(
     requires_gpu=False,
     env="preprocessing",
     dim="3d",
-    boundaries_file="cell-polygons-layers.geojson.gz",
+    boundaries_file=PROSEG_POLYGON_LAYERS,
     boundaries_space="micron",
     native_format="proseg",
-    metadata_file="cell-metadata.csv.gz",
-    spatialdata_file="proseg_outputs.zarr",       # bundles counts + assigned transcripts
+    metadata_file=PROSEG_CELL_METADATA,
+    spatialdata_file=PROSEG_SPATIALDATA,       # bundles counts + assigned transcripts
     columns=ColumnMap(
         cell_id="cell", z_index="layer",
         tx_x="x", tx_y="y", tx_z="z", tx_assignment="assignment",

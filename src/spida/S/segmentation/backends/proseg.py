@@ -6,6 +6,11 @@ import pathlib
 import subprocess
 import re
 
+from spida.io.formats.merscope import TRANSCRIPTS_CSV
+from spida.io.formats.segmenters import (
+    PROSEG_CELL_METADATA, PROSEG_POLYGON_LAYERS, PROSEG_POLYGONS, PROSEG_SPATIALDATA,
+)
+
 
 logger = logging.getLogger(__package__)
 
@@ -91,12 +96,12 @@ def _execute_cli_proseg_v3(root_dir: str, output_dir: str, region: str, **proseg
     # The proseg command to run
     proseg_run_cmd = f"""
         proseg --merscope \
-        {root_dir}/{region}/detected_transcripts.csv \n
+        {root_dir}/{region}/{TRANSCRIPTS_CSV} \n
         --output-path {output_dir} \n
-        --output-spatialdata proseg_outputs.zarr \n
-        --output-cell-polygons cell-polygons.geojson.gz \n
-        --output-cell-polygon-layers cell-polygons-layers.geojson.gz \n
-        --output-cell-metadata cell-metadata.csv.gz \n
+        --output-spatialdata {PROSEG_SPATIALDATA} \n
+        --output-cell-polygons {PROSEG_POLYGONS} \n
+        --output-cell-polygon-layers {PROSEG_POLYGON_LAYERS} \n
+        --output-cell-metadata {PROSEG_CELL_METADATA} \n
         """
     for _key, _val in proseg_params.items():
         if _key not in proseg_args:

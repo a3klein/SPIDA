@@ -29,6 +29,7 @@ from typing import ClassVar, Literal
 
 import numpy as np
 
+from spida.io.formats.merscope import TRANSFORM_FILE
 from .config import BackendConfig, ConfigError
 
 logger = logging.getLogger(__package__)
@@ -153,7 +154,7 @@ def resolve_model(model: str, model_dir: str | Path | None = None) -> ModelResol
 
 
 #: Conventional filename of the micron->mosaic transform inside a region's images dir.
-M2M_FILENAME = "micron_to_mosaic_pixel_transform.csv"
+M2M_FILENAME = TRANSFORM_FILE
 
 
 def read_native_xy_um(path: str | Path) -> float:

@@ -28,6 +28,14 @@ def read_cellpose_boundaries(
 
 # proseg
 
+# output names (v3 command; v2 CSVs)
+PROSEG_SPATIALDATA = "proseg_outputs.zarr"
+PROSEG_POLYGONS = "cell-polygons.geojson.gz"              # 2D union per cell
+PROSEG_POLYGON_LAYERS = "cell-polygons-layers.geojson.gz"  # per z-layer
+PROSEG_CELL_METADATA = "cell-metadata.csv.gz"
+PROSEG_V2_COUNTS = "expected-counts.csv.gz"
+PROSEG_V2_TRANSCRIPTS = "transcript-metadata.csv.gz"
+
 def read_proseg_boundaries(
     path: str | Path,
 ):
@@ -88,6 +96,6 @@ def read_proseg_assigned(
     import geopandas as gpd
 
     tx = dd.read_csv(str(seg_dir / spec.transcripts_file), compression="gzip")
-    with gzip.open(str(seg_dir / "cell-polygons.geojson.gz"), "rt") as f:  # 2D union (native proseg)
+    with gzip.open(str(seg_dir / PROSEG_POLYGONS), "rt") as f:  # 2D union (native proseg)
         cells = gpd.read_file(f)
     return {"version": 2, "transcripts": tx, "cells": cells, "counts_file": seg_dir / spec.counts_file}

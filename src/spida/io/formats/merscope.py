@@ -1,11 +1,12 @@
 """
-MERSCOPE output: the micron -> mosaic-pixel transform and the mosaic TIFF naming
-(one ``mosaic_<stain>_z<N>.tif`` per stain per plane, under the region's ``images/``).
+MERSCOPE output: the micron -> mosaic-pixel transform, the detected transcripts and the mosaic TIFF
+naming (one ``mosaic_<stain>_z<N>.tif`` per stain per plane, under the region's ``images/``).
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +15,25 @@ from spida.io.images import probe_mosaic_shape
 
 logger = logging.getLogger(__package__)
 
+IMAGES_DIR = "images"
 TRANSFORM_FILE = "micron_to_mosaic_pixel_transform.csv"
+TRANSCRIPTS_PARQUET = "detected_transcripts.parquet"
+TRANSCRIPTS_CSV = "detected_transcripts.csv"
+# one raw plane image; decon outputs (``.decon.tif``) do not match
+PLANE_RE = re.compile(r"mosaic_(?P<stain>[\w-]+)_z(?P<z>\d+)\.tif$")
+
+
+def raw_transcripts(
+    raw_dir: str | Path,
+) -> Path:
+    """
+    The region's detected transcripts: the parquet if present, else the csv.
+    Parameters:
+    raw_dir (str | Path): The raw MERSCOPE region dir.
+    """
+    raw_dir = Path(raw_dir)
+    parquet = raw_dir / TRANSCRIPTS_PARQUET
+    return parquet if parquet.exists() else raw_dir / TRANSCRIPTS_CSV
 
 
 def read_transform(path: str | Path) -> np.ndarray:

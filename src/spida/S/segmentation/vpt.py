@@ -5,6 +5,8 @@ import logging
 
 import pandas as pd
 
+from spida.io.formats.merscope import IMAGES_DIR, TRANSCRIPTS_CSV, TRANSCRIPTS_PARQUET, TRANSFORM_FILE
+
 logger = logging.getLogger(__package__)
 
 
@@ -59,8 +61,8 @@ def _cli_segmentation(
         vpt --verbose --processes 32 \n
             run-segmentation \n
             --segmentation-algorithm {CONFIG_FILE} \n
-            --input-images {raw_dir}/images/ \n
-            --input-micron-to-mosaic {raw_dir}/images/micron_to_mosaic_pixel_transform.csv \n
+            --input-images {raw_dir}/{IMAGES_DIR}/ \n
+            --input-micron-to-mosaic {raw_dir}/{IMAGES_DIR}/{TRANSFORM_FILE} \n
             --output-path {seg_dir} \n
             --tile-size {tile_size} \n
             --tile-overlap {tile_overlap} \n
@@ -78,9 +80,9 @@ def _cli_partition_transcripts(
     raw_dir: str,
     seg_dir: str,
     input_boundaries: str = "cellpose_micron_space.parquet",
-    input_transcripts: str = "detected_transcripts.parquet",
+    input_transcripts: str = TRANSCRIPTS_PARQUET,
     output_entity_by_gene: str = "cell_by_gene.csv",
-    output_transcripts: str = "detected_transcripts.csv",
+    output_transcripts: str = TRANSCRIPTS_CSV,
 ):
     """
     Run the VPT command to partition transcripts in a specified region.
@@ -139,9 +141,9 @@ def _cli_get_metadata(
     sum_signals_command = f"""
         vpt --verbose --processes 32 \n
             sum-signals \n
-            --input-images {raw_dir}/images/ \n
+            --input-images {raw_dir}/{IMAGES_DIR}/ \n
             --input-boundaries {seg_dir}/{input_boundaries} \n
-            --input-micron-to-mosaic {raw_dir}/images/micron_to_mosaic_pixel_transform.csv \n
+            --input-micron-to-mosaic {raw_dir}/{IMAGES_DIR}/{TRANSFORM_FILE} \n
             --output-csv {seg_dir}/{output_signals} \n
             --overwrite
 
@@ -175,9 +177,9 @@ def _cli_sum_signals(
     sum_signals_command = f"""
         vpt --verbose --processes 32 \n
             sum-signals \n
-            --input-images {raw_dir}/images/ \n
+            --input-images {raw_dir}/{IMAGES_DIR}/ \n
             --input-boundaries {seg_dir}/{input_boundaries} \n
-            --input-micron-to-mosaic {raw_dir}/images/micron_to_mosaic_pixel_transform.csv \n
+            --input-micron-to-mosaic {raw_dir}/{IMAGES_DIR}/{TRANSFORM_FILE} \n
             --output-csv {seg_dir}/{output_signals} \n
             --overwrite
 
@@ -269,7 +271,7 @@ def _convert_geometry(
         """
 
     if convert_micron:
-        convert_geometry_command += f" --input-micron-to-mosaic {raw_dir}/images/micron_to_mosaic_pixel_transform.csv"
+        convert_geometry_command += f" --input-micron-to-mosaic {raw_dir}/{IMAGES_DIR}/{TRANSFORM_FILE}"
 
     logger.info(f"Running VPT convert geometry command: {convert_geometry_command}")
 
@@ -342,14 +344,14 @@ def seg_to_vpt(
         f"Converted geometry saved to {seg_dir}/{output_boundaries}."
     )
 
-    dt_fname = vpt_filepaths.get("input_transcripts", "detected_transcripts.parquet")
+    dt_fname = vpt_filepaths.get("input_transcripts", TRANSCRIPTS_PARQUET)
     dt_parquet = Path(f"{raw_dir}/{dt_fname}")
     logger.info(f"Checking for detected transcripts file at {dt_parquet}")
     if not dt_parquet.exists():
-        dt_fname = "detected_transcripts.csv"
+        dt_fname = TRANSCRIPTS_CSV
         assert Path(
             f"{raw_dir}/{dt_fname}"
-        ).exists(), "detected_transcripts.csv file does not exist in the specified root directory."
+        ).exists(), f"{TRANSCRIPTS_CSV} file does not exist in the specified root directory."
 
     # Run VPT partition transcripts
     _cli_partition_transcripts(
@@ -361,7 +363,7 @@ def seg_to_vpt(
             "output_entity_by_gene", "cell_by_gene.csv"
         ),
         output_transcripts=vpt_filepaths.get(
-            "output_transcripts", "detected_transcripts.csv"
+            "output_transcripts", TRANSCRIPTS_CSV
         ),
     )
 
@@ -389,8 +391,8 @@ def generate_metadata(
     output_boundaries: str = "cellpose_micron_space.parquet",
     input_entity_by_gene: str = "cell_by_gene.csv",
     output_entity_by_gene: str = "cell_by_gene.csv",
-    input_transcripts: str = "detected_transcripts.parquet",
-    output_transcripts: str = "detected_transcripts.csv",
+    input_transcripts: str = TRANSCRIPTS_PARQUET,
+    output_transcripts: str = TRANSCRIPTS_CSV,
     output_metadata: str = "cell_metadata.csv",
     output_signals: str = "sum_signals.csv",
     vpt_bin_path: str = None,

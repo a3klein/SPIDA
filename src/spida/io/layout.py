@@ -169,7 +169,8 @@ class Dataset:
         return RegionMeta(self.exp or "", reg, segmentation, region_label(reg, labels or self.region_labels))
 
     def raw_images(self) -> Path: # input images for dataset
-        return self.require("raw") / "images"
+        from spida.io.formats.merscope import IMAGES_DIR
+        return self.require("raw") / IMAGES_DIR
 
     def seg_dir(self, label: str, must_exist: bool = False) -> Path:
         path = self.require("seg") / label

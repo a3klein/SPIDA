@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from pyarrow.parquet import ParquetFile
-from spida.io.formats.merscope import read_transform
+from spida.io.formats.merscope import IMAGES_DIR, TRANSFORM_FILE, read_transform
 from typing import Callable
 from shapely import affinity, geometry, MultiPolygon
 import datetime
@@ -80,7 +80,7 @@ def _3d_convert_geometry(
     gdf_inp = gpd.read_parquet(input_path)
     
     if convert_micron:
-        mic_to_mos_path = f"{raw_dir}/images/micron_to_mosaic_pixel_transform.csv"
+        mic_to_mos_path = f"{raw_dir}/{IMAGES_DIR}/{TRANSFORM_FILE}"
         micron_to_mosaic = read_transform(mic_to_mos_path)
         mosaic_to_micron_mat = np.linalg.inv(micron_to_mosaic)
         gdf_inp = transform_geoms(gdf_inp, mosaic_to_micron_mat)
