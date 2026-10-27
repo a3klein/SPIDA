@@ -1,26 +1,162 @@
+"""
+Build spatialdata elements from files.
+Ingest an experiment, load in segmentations, deconvolved images, etc...
+"""
+
+from __future__ import annotations
+
 import warnings
 import logging
 from pathlib import Path
 
 import pandas as pd
+import anndata as ad
+import geopandas as gpd
+from shapely.geometry import MultiPolygon
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     import spatialdata as sd
     from spatialdata_io import merscope
+    from spatialdata.models import PointsModel, ShapesModel, TableModel
 
     # Transformations
     from spatialdata.transformations import (
+        BaseTransformation,
         Identity,
         get_transformation,
         set_transformation,
     )
 
-from spida._constants import SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY
-from .filt_to_qc import apply_qc_filter_to_segmentation
-from spida.io.schema.segmentation import resolve
+from spida._constants import (
+    SHAPES_KEY, POINTS_KEY, TABLE_KEY, IMAGE_KEY,
+    DEFAULT_PRESET, PROSEG_PRESET, REGION_KEY, GEOMETRY_COL,
+)
+from spida.io.schema.segmentation import read_boundaries, resolve
 from spida.io.store import write_element
 
 logger = logging.getLogger(__package__)
+
+# cell-id key across all segmentation schema files (proseg cell id == EntityID)
+_CELL_KEY = DEFAULT_PRESET["METADATA_CELL_KEY"]  # "EntityID"
+
+
+def _cast_to_mp(x):
+    try:
+        return MultiPolygon(x.geoms)
+    except Exception:
+        return MultiPolygon([x.convex_hull])
+
+
+def get_polygons(
+    boundaries_path: str | Path,
+    transformations: dict[str, BaseTransformation],
+    *,
+    cell_id_col: str = _CELL_KEY,
+) -> gpd.GeoDataFrame:
+    """Parse a boundaries file into a ShapesModel, indexed by ``cell_id_col`` (str).
+
+    Multi-z segmentation schema boundaries are collapsed downstream by
+    ``_cast_multipolygons_to_polygons`` (dedup-to-largest per cell id).
+    """
+    gdf = read_boundaries(boundaries_path)
+    if gdf.geometry.name != GEOMETRY_COL:
+        gdf = gdf.rename_geometry(GEOMETRY_COL)
+    gdf.geometry = gdf.geometry.make_valid()
+    gdf.geometry = gdf.geometry.map(_cast_to_mp)
+    gdf.index = gdf[cell_id_col].astype(str)
+    # spatialdata promotes 2D polygons to 3D if any column is literally named "z"
+    if "z" in gdf.columns:
+        gdf = gdf.rename(columns={"z": "z_layer"})
+    return ShapesModel.parse(gdf, transformations=transformations)
+
+
+def get_table(
+    count_path: str | Path,
+    obs_path: str | Path,
+    reg_name: str,
+    exp_name: str,
+    dataset_id: str,
+    region: str,
+    *,
+    cell_id_col: str = _CELL_KEY,
+) -> ad.AnnData:
+    """Build the annotated table from a cell-by-gene CSV + an obs (metadata) CSV,
+    keyed on ``cell_id_col``. Blank barcodes are moved to ``obsm['blank']``.
+    (pandas infers ``.gz`` compression from the filename.)"""
+    data = pd.read_csv(count_path, index_col=0)
+    obs = pd.read_csv(obs_path, index_col=0)
+    obs.index = obs.index.astype(str)
+    data.index = data.index.astype(str)
+
+    is_gene = ~data.columns.str.lower().str.contains("blank")
+    adata = ad.AnnData(data.loc[:, is_gene], dtype=data.values.dtype, obs=obs)
+    adata.obsm["blank"] = data.loc[:, ~is_gene]
+    if {"center_x", "center_y"}.issubset(adata.obs.columns):
+        adata.obsm["spatial"] = adata.obs[["center_x", "center_y"]].values
+    elif {"centroid_x", "centroid_y"}.issubset(adata.obs.columns):
+        adata.obsm["spatial"] = adata.obs[["centroid_x", "centroid_y"]].values
+
+    return _tag_and_parse(adata, reg_name, exp_name, dataset_id, region, cell_id_col)
+
+
+def get_table_from_adata(
+    adata: ad.AnnData,
+    obs_df: pd.DataFrame | None,
+    reg_name: str,
+    exp_name: str,
+    dataset_id: str,
+    region: str,
+    *,
+    cell_id_col: str = _CELL_KEY,
+) -> ad.AnnData:
+    """Build the table from a counts AnnData (e.g. proseg's zarr ``table``),
+    optionally overriding obs with ``obs_df`` (the segmentation schema ``cell_metadata.csv``).
+    Blank genes go to ``obsm['blank']``; keyed on ``cell_id_col``."""
+    adata = adata.copy()
+    if obs_df is not None:
+        obs_df = obs_df.copy()
+        obs_df.index = obs_df.index.astype(str)
+        adata.obs = obs_df
+
+    gene = adata.var["gene"] if "gene" in adata.var.columns else pd.Series(adata.var_names, index=adata.var_names)
+    is_blank = gene.str.startswith("Blank-").to_numpy()
+    blank = adata[:, is_blank].copy()
+    adata = adata[:, ~is_blank].copy()
+    adata.obs["transcript_count"] = adata.X.toarray().sum(axis=1).flatten()
+    adata.obsm["blank"] = blank.X.toarray()
+    if {"centroid_x", "centroid_y"}.issubset(adata.obs.columns):
+        adata.obsm["spatial"] = adata.obs[["centroid_x", "centroid_y"]].values
+    adata.uns.pop("spatialdata_attrs", None)  # re-parse from scratch
+
+    return _tag_and_parse(adata, reg_name, exp_name, dataset_id, region, cell_id_col)
+
+
+def _tag_and_parse(adata, reg_name, exp_name, dataset_id, region, cell_id_col):
+    """Attach the standard obs bookkeeping columns and parse into a TableModel."""
+    adata.obs["region"] = pd.Series(reg_name, index=adata.obs_names, dtype="category")
+    adata.obs["slide"] = pd.Series(exp_name, index=adata.obs_names, dtype="category")
+    adata.obs["dataset_id"] = pd.Series(dataset_id, index=adata.obs_names, dtype="category")
+    adata.obs[REGION_KEY] = pd.Series(region, index=adata.obs_names, dtype="category")
+    adata.obs[cell_id_col] = adata.obs.index
+    return TableModel.parse(
+        adata, region_key=REGION_KEY, region=region, instance_key=cell_id_col
+    )
+
+
+def parse_points(transcripts_df, transformations):
+    """Parse a proseg transcript table (zarr ``transcripts`` or CSV) into a
+    PointsModel using the proseg column preset."""
+    gene_col = PROSEG_PRESET["tz_col"]["gene_col"]
+    transcripts_df[gene_col] = transcripts_df[gene_col].astype("string")
+    return PointsModel.parse(
+        transcripts_df,
+        coordinates={
+            "x": PROSEG_PRESET["tz_col"]["x_col"],
+            "y": PROSEG_PRESET["tz_col"]["y_col"],
+        },
+        transformations=transformations,
+        feature_key=gene_col,
+    )
 
 
 ### TODO:
@@ -145,43 +281,24 @@ def _cast_multipolygons_to_polygons(
     return sdata
 
 
-def _finalize_and_write(
+def write_segmentation(
     sdata: sd.SpatialData,
     KEYS: dict,
-    identity,
-    qc_kwargs: dict,
     overwrite: bool = False,
 ):
     """
-    Shared loader: dedup multipolygons, optionally apply a transcript-QC filter,
-    set the pixel coordinate system, then write the three elements (replaced with ``overwrite``).
+    Set the pixel coordinate system on a read segmentation's points and shapes, then write
+    the three elements (replaced with ``overwrite``).
 
     Parameters:
-    sdata (spatialdata.SpatialData): The spatialdata object being populated.
+    sdata (spatialdata.SpatialData): The store's spatialdata object holding the segmentation elements.
     KEYS (dict): The element-key mapping for this prefix/experiment/region.
-    identity (Identity): The identity transformation used for the pixel coordinate system.
-    qc_kwargs (dict): Transcript-QC filter arguments (applied only if any qc region/key is set).
     overwrite (bool): Replace elements already on disk (default is False).
 
     Returns:
-    spatialdata.SpatialData: The finalized, on-disk-written spatialdata object.
+    spatialdata.SpatialData: The store re-read after the write.
     """
-    from ._seg_readers import _CELL_KEY
-
-    sdata = _cast_multipolygons_to_polygons(
-        sdata, KEYS[SHAPES_KEY], subset_field=[_CELL_KEY]
-    )
-
-    if any(qc_kwargs.get(k) is not None for k in ("qc_regions", "qc_table_key", "qc_shapes_key")):
-        logger.info("Applying transcript QC filter to loaded segmentation elements.")
-        sdata = apply_qc_filter_to_segmentation(
-            sdata,
-            table_key=KEYS[TABLE_KEY],
-            shapes_key=KEYS[SHAPES_KEY],
-            points_key=KEYS[POINTS_KEY],
-            **qc_kwargs,
-        )
-
+    identity = Identity()
     set_transformation(sdata[KEYS[POINTS_KEY]], identity, to_coordinate_system="pixel")
     set_transformation(sdata[KEYS[SHAPES_KEY]], identity, to_coordinate_system="pixel")
 
@@ -220,10 +337,6 @@ def _load_proseg_native(
     Returns:
     spatialdata.SpatialData: The spatialdata object with proseg points/shapes/table added.
     """
-    from ._seg_readers import (
-        get_table, get_table_from_adata, parse_points, _CELL_KEY,
-    )
-    from shapely.geometry import MultiPolygon
 
     # obs: segmentation schema cell_metadata.csv (EntityID) else legacy signals file
     obs_path = resolve(seg_region, cell_metadata_fname, "cell_metadata_with_signals.csv")
@@ -275,7 +388,7 @@ def _load_proseg_native(
     return sdata
 
 
-def load_segmentation(
+def read_segmentation(
     sdata: sd.SpatialData,
     spec,
     keys: dict,
@@ -289,18 +402,11 @@ def load_segmentation(
     cell_by_gene_fname: str = "cell_by_gene.csv",
     detected_transcripts_fname: str = "detected_transcripts.csv",
     cell_metadata_fname: str = "cell_metadata.csv",
-    qc_regions=None,
-    qc_table_key: str | None = None,
-    qc_shapes_key: str | None = None,
-    qc_filter_col: str = "filtered",
-    qc_pass_value: bool | int | str = False,
-    table_cell_id_col: str | None = None,
-    points_cell_id_col: str | None = None,
-    overwrite: bool = False,
     **kwargs,
 ):
     """
-    Load a segmenter's post-processed output into a spatialdata object (spec-driven).
+    Read a segmenter's post-processed output into a spatialdata object, in memory (spec-driven).
+    Multipolygons are reduced to their largest polygon. Nothing is written; see ``write_segmentation``.
 
     Replaces the old per-method ``load_vpt_segmentation`` /
     ``load_proseg_segmentation_v2`` / ``load_proseg_segmentation_v3``.
@@ -322,38 +428,22 @@ def load_segmentation(
     cell_by_gene_fname (str): The cell-by-gene filename for boundary-only methods (default is "cell_by_gene.csv").
     detected_transcripts_fname (str): The detected-transcripts filename for boundary-only methods (default is "detected_transcripts.csv").
     cell_metadata_fname (str): The obs (cell metadata) filename (default is "cell_metadata.csv").
-    qc_regions: Transcript-QC regions to filter by (default is None).
-    qc_table_key (str | None): Table key holding transcript-QC pass/fail info (default is None).
-    qc_shapes_key (str | None): Shapes key holding transcript-QC regions (default is None).
-    qc_filter_col (str): The QC column used to filter (default is "filtered").
-    qc_pass_value (bool | int | str): The value in ``qc_filter_col`` marking a passing cell (default is False).
-    table_cell_id_col (str | None): Override for the table's cell-id column during QC (default is None).
-    points_cell_id_col (str | None): Override for the points' cell-id column during QC (default is None).
-    overwrite (bool): Replace existing elements of this prefix (default is False).
 
     Returns:
-    spatialdata.SpatialData: The spatialdata object with the loaded segmentation elements written to disk.
+    spatialdata.SpatialData: The spatialdata object with the segmentation's points, shapes and table (not written).
     """
     from spida.io.schema.segmentation import SCHEMA_BOUNDARIES
-    from ._seg_readers import get_polygons, get_table, _CELL_KEY
 
-    logger.info("load_segmentation: %s v%s -> region %s", spec.name, spec.version, reg_name)
+    logger.info("read_segmentation: %s v%s -> region %s", spec.name, spec.version, reg_name)
     for k, v in kwargs.items():
         logger.info("  extra kwarg %s=%s", k, v)
 
     KEYS = keys
     exp_name, reg_name = exp_name or "", reg_name or ""
-    identity = Identity()
     affine = get_transformation(sdata[default_keys[SHAPES_KEY]], to_coordinate_system="global")
     transformations = {"global": affine}
 
     seg_region = Path(seg_dir)
-
-    qc_kwargs = dict(
-        qc_regions=qc_regions, qc_table_key=qc_table_key, qc_shapes_key=qc_shapes_key,
-        qc_filter_col=qc_filter_col, qc_pass_value=qc_pass_value,
-        table_cell_id_col=table_cell_id_col, points_cell_id_col=points_cell_id_col,
-    )
 
     if spec.provides_assignment:
         sdata = _load_proseg_native(
@@ -381,7 +471,9 @@ def load_segmentation(
         table.obs.index.name = "index"
         sdata[KEYS[TABLE_KEY]] = table
 
-    return _finalize_and_write(sdata, KEYS, identity, qc_kwargs, overwrite=overwrite)
+    return _cast_multipolygons_to_polygons(
+        sdata, KEYS[SHAPES_KEY], subset_field=[_CELL_KEY]
+    )
 
 
 def load_decon_images(
@@ -436,15 +528,16 @@ def _read_decon_images(
     from spatialdata.models import Image2DModel
     from dask import array as da
     from dask_image.imread import imread
+    from spida.io.schema.decon import Z_STACK_TAG, plane_name
 
     if isinstance(image_dir, str):
         image_dir = Path(image_dir)
     stainings = ["DAPI", "PolyT"]
-    z_stack_format = np.any([True for _fp in os.listdir(image_dir) if "z_stack" in _fp])
+    z_stack_format = np.any([True for _fp in os.listdir(image_dir) if Z_STACK_TAG in _fp])
     if z_stack_format:
         im = da.stack(
             [
-                imread(image_dir / f"mosaic_{stain}_z_stack_z{z_layer}{suffix}").squeeze()
+                imread(image_dir / plane_name(stain, z_layer, suffix, z_stack=True)).squeeze()
                 for stain in stainings
             ],
             axis=0,
@@ -452,7 +545,7 @@ def _read_decon_images(
     else:
         im = da.stack(
             [
-                imread(image_dir / f"mosaic_{stain}_z{z_layer}{suffix}").squeeze()
+                imread(image_dir / plane_name(stain, z_layer, suffix)).squeeze()
                 for stain in stainings
             ],
             axis=0,

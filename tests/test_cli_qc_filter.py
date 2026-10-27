@@ -11,7 +11,7 @@ def _invoke(monkeypatch, tmp_path, *args):
     def _fake(dataset, **kwargs):
         captured.update(kwargs, dataset=dataset)
 
-    monkeypatch.setattr("spida.S.io.main.load_segmentation_region", _fake)
+    monkeypatch.setattr("spida.S.load.main.load_segmentation_region", _fake)
     cfg = tmp_path / "cfg.json"
     cfg.write_text("{}")
     result = CliRunner().invoke(cli_module.cli, ["--config", str(cfg), "load-segmentation-region", *args])

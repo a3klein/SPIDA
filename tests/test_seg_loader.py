@@ -1,5 +1,5 @@
 """Tests for the Stage-3 spec-driven segmentation loader helpers
-(``spida.S.io._seg_readers`` + the shared tail in ``ingest_exp``).
+(``spida.io.load``).
 
 These exercise the reader logic and the EntityID-keying contract without a full
 SpatialData zarr / merscope read: get_polygons, get_table, get_table_from_adata,
@@ -21,10 +21,10 @@ import spatialdata as sd
 from spatialdata.models import ShapesModel
 from spatialdata.transformations import Identity
 
-from spida.S.io._seg_readers import (
+from spida.io.load import (
     get_polygons, get_table, get_table_from_adata, _CELL_KEY,
 )
-from spida.S.io.ingest_exp import _cast_multipolygons_to_polygons
+from spida.io.load import _cast_multipolygons_to_polygons
 from spida.io.schema.segmentation import resolve as _resolve_file
 
 DATA = Path(__file__).parent / "data" / "segmentation_utils"

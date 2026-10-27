@@ -24,7 +24,7 @@ def _run(monkeypatch, target, cfg, *args):
 
 
 def test_ingest_names_resolve_the_tree(monkeypatch, cfg, tmp_path):
-    res, seen = _run(monkeypatch, "spida.S.io.main.ingest_region", cfg, "ingest-region", "--exp", "E", "--reg", "region_1")
+    res, seen = _run(monkeypatch, "spida.S.load.main.ingest_region", cfg, "ingest-region", "--exp", "E", "--reg", "region_1")
     assert res.exit_code == 0, res.output
     d = seen["args"][0]
     assert d.zarr == tmp_path / "z" / "E" / "region_1"
@@ -33,7 +33,7 @@ def test_ingest_names_resolve_the_tree(monkeypatch, cfg, tmp_path):
 
 
 def test_ingest_paths_only_is_nameless(monkeypatch, cfg, tmp_path):
-    res, seen = _run(monkeypatch, "spida.S.io.main.ingest_region", cfg, "ingest-region",
+    res, seen = _run(monkeypatch, "spida.S.load.main.ingest_region", cfg, "ingest-region",
                      "--zarr_path", str(tmp_path / "x.zarr"), "--raw_path", str(tmp_path / "r"))
     assert res.exit_code == 0, res.output
     d = seen["args"][0]
@@ -41,7 +41,7 @@ def test_ingest_paths_only_is_nameless(monkeypatch, cfg, tmp_path):
 
 
 def test_names_with_path_override(monkeypatch, cfg, tmp_path):
-    res, seen = _run(monkeypatch, "spida.S.io.main.load_segmentation_region", cfg, "load-segmentation-region",
+    res, seen = _run(monkeypatch, "spida.S.load.main.load_segmentation_region", cfg, "load-segmentation-region",
                      "--exp", "E", "--reg", "region_1", "--zarr_path", str(tmp_path / "x.zarr"), "--prefix_name", "cellpose_cell")
     assert res.exit_code == 0, res.output
     d = seen["args"][0]
@@ -58,7 +58,7 @@ def test_segment_region_path_mode(monkeypatch, cfg, tmp_path):
 
 @pytest.mark.parametrize("args", [["--exp", "E"], []])
 def test_bad_dataset_arguments_are_usage_errors(monkeypatch, cfg, args):
-    res, _ = _run(monkeypatch, "spida.S.io.main.ingest_region", cfg, "ingest-region", *args)
+    res, _ = _run(monkeypatch, "spida.S.load.main.ingest_region", cfg, "ingest-region", *args)
     assert res.exit_code == 2
 
 
@@ -74,7 +74,7 @@ def test_drop_namespace_renames_and_repoints_table():
     from shapely.geometry import Point
     from spatialdata.models import PointsModel, ShapesModel, TableModel
 
-    from spida.S.io.ingest_exp import _drop_namespace
+    from spida.io.load import _drop_namespace
 
     ds = "default_region"
     shapes = ShapesModel.parse(gpd.GeoDataFrame({"EntityID": [0, 1]}, geometry=[Point(0, 0).buffer(1), Point(3, 3).buffer(1)], index=["0", "1"]))
@@ -130,7 +130,7 @@ def _store(path):
 
 
 def test_ingest_region_refuses_existing_store(monkeypatch, tmp_path):
-    from spida.S.io import main as m
+    from spida.S.load import main as m
     from spida.io.layout import Dataset
     called = []
     monkeypatch.setattr(m, "read_merscope", lambda *a, **k: called.append(1))
@@ -144,7 +144,7 @@ def test_ingest_region_refuses_existing_store(monkeypatch, tmp_path):
 
 
 def test_ingest_region_overwrite_proceeds(monkeypatch, tmp_path):
-    from spida.S.io import main as m
+    from spida.S.load import main as m
     from spida.io.layout import Dataset
     monkeypatch.setattr(m, "read_merscope", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("reached")))
     d = Dataset(zarr=tmp_path / "x.zarr", raw=tmp_path / "r")
@@ -156,7 +156,7 @@ def test_ingest_region_overwrite_proceeds(monkeypatch, tmp_path):
 
 
 def test_ingest_all_skips_existing(monkeypatch, cfg, tmp_path):
-    from spida.S.io import main as m
+    from spida.S.load import main as m
     for r in ("region_1", "region_2"):
         (tmp_path / "raw" / "E" / "out" / r).mkdir(parents=True)
     _store(tmp_path / "z" / "E" / "region_1")
@@ -212,27 +212,26 @@ def _reload_with_v2(path, keys):
 
 def test_finalize_rerun_without_overwrite_raises(tmp_path):
     import spatialdata as sd
-    from spatialdata.transformations import Identity
-    from spida.S.io.ingest_exp import _finalize_and_write
+    from spida.io.load import write_segmentation
     from spida._constants import TABLE_KEY
 
     path = tmp_path / "s.zarr"
     keys = _seg_store(path)
     with pytest.raises(FileExistsError):
-        _finalize_and_write(_reload_with_v2(path, keys), keys, Identity(), {})
+        write_segmentation(_reload_with_v2(path, keys), keys)
     assert (sd.read_zarr(path)[keys[TABLE_KEY]].obs["v"] == 1).all()
 
 
 def test_finalize_rerun_with_overwrite_replaces_and_keeps_transforms(tmp_path):
     import numpy as np
     import spatialdata as sd
-    from spatialdata.transformations import Identity, get_transformation
-    from spida.S.io.ingest_exp import _finalize_and_write
+    from spatialdata.transformations import get_transformation
+    from spida.io.load import write_segmentation
     from spida._constants import POINTS_KEY, SHAPES_KEY, TABLE_KEY
 
     path = tmp_path / "s.zarr"
     keys = _seg_store(path)
-    out = _finalize_and_write(_reload_with_v2(path, keys), keys, Identity(), {}, overwrite=True)
+    out = write_segmentation(_reload_with_v2(path, keys), keys, overwrite=True)
     r = sd.read_zarr(path)
     assert (r[keys[TABLE_KEY]].obs["v"] == 2).all() and (out[keys[TABLE_KEY]].obs["v"] == 2).all()
     for k in (POINTS_KEY, SHAPES_KEY):
@@ -243,7 +242,7 @@ def test_finalize_rerun_with_overwrite_replaces_and_keeps_transforms(tmp_path):
 
 
 def test_load_segmentation_region_refuses_before_loading(monkeypatch, tmp_path):
-    from spida.S.io import main as m
+    from spida.S.load import main as m
     from spida.io.layout import Dataset
 
     d = Dataset(zarr=tmp_path / "s.zarr", seg=tmp_path / "seg")
@@ -253,16 +252,59 @@ def test_load_segmentation_region_refuses_before_loading(monkeypatch, tmp_path):
         (d.seg / "seg" / f).write_text("")                     # the schema files load-segmentation requires
     (d.zarr / "shapes" / "default_polygons").mkdir(parents=True)
     called = []
-    monkeypatch.setattr(m, "load_segmentation", lambda *a, **k: called.append(k))
+    monkeypatch.setattr(m, "read_segmentation", lambda sdata, *a, **k: called.append("read") or sdata)
+    monkeypatch.setattr(m, "write_segmentation", lambda sdata, keys, overwrite=False: called.append(overwrite))
     with pytest.raises(FileExistsError, match="seg_table"):
         m.load_segmentation_region(d, type="cellpose", prefix_name="seg")
     assert not called
     m.load_segmentation_region(d, type="cellpose", prefix_name="seg", overwrite=True)
-    assert called[0]["overwrite"] is True
+    assert called == ["read", True]
+
+
+def _qc_load(monkeypatch, tmp_path, filt, mask=True):
+    """load_segmentation_region with stubbed read / filter / write; returns the call log."""
+    from spida.S.load import main as m
+    from spida.io.layout import Dataset
+
+    d = Dataset(zarr=tmp_path / "s.zarr", seg=tmp_path / "seg")
+    _seg_store(d.zarr)
+    (d.seg / "seg").mkdir(parents=True)
+    for f in ("boundaries_micron.parquet", "cell_by_gene.csv", "cell_metadata.csv", "detected_transcripts.csv"):
+        (d.seg / "seg" / f).write_text("")
+    (d.zarr / "shapes" / "default_polygons").mkdir(parents=True)
+    if mask:
+        (d.zarr / "shapes" / "qc_mask").mkdir(parents=True)
+    log = []
+    monkeypatch.setattr(m, "read_segmentation", lambda sdata, *a, **k: log.append(("read", k)) or sdata)
+    monkeypatch.setattr(m, "apply_qc_filter_to_segmentation", lambda sdata, **k: filt(log, k) or sdata)
+    monkeypatch.setattr(m, "write_segmentation", lambda sdata, keys, overwrite=False: log.append(("write", overwrite)))
+    m.load_segmentation_region(d, type="cellpose", prefix_name="seg", overwrite=True,
+                               qc_shapes_key="qc_mask", qc_pass_value=True)
+    return log
+
+
+def test_load_segmentation_qc_filter_between_read_and_write(monkeypatch, tmp_path):
+    log = _qc_load(monkeypatch, tmp_path, lambda log, k: log.append(("filter", k)))
+    assert [s for s, _ in log] == ["read", "filter", "write"]
+    assert "qc_shapes_key" not in log[0][1]                      # the reader never sees the QC options
+    assert log[1][1]["qc_shapes_key"] == "qc_mask" and log[1][1]["qc_pass_value"] is True
+    assert log[1][1]["shapes_key"] == "seg_polygons"
+
+
+def test_load_segmentation_qc_filter_failure_writes_nothing(monkeypatch, tmp_path):
+    def filt(log, k):
+        raise ValueError("QC filter removed all cells")
+    with pytest.raises(ValueError, match="removed all"):
+        _qc_load(monkeypatch, tmp_path, filt)
+
+
+def test_load_segmentation_missing_qc_mask_stops_before_reading(monkeypatch, tmp_path):
+    with pytest.raises(FileNotFoundError, match="qc_mask"):
+        _qc_load(monkeypatch, tmp_path, lambda log, k: pytest.fail("filtered"), mask=False)
 
 
 def test_load_segmentation_all_skips_loaded(monkeypatch, cfg, tmp_path):
-    from spida.S.io import main as m
+    from spida.S.load import main as m
     import spida.io.layout as layout
 
     for r in ("region_1", "region_2"):
@@ -284,8 +326,8 @@ def test_load_decon_refuses_then_swaps(monkeypatch, tmp_path):
     import numpy as np
     import spatialdata as sd
     from spatialdata.models import Image2DModel
-    import spida.S.io.ingest_exp as ie
-    from spida.S.io import main as m
+    import spida.io.load as ie
+    from spida.S.load import main as m
     from spida.io.layout import Dataset
 
     d = Dataset(zarr=tmp_path / "s.zarr", raw=tmp_path / "r")

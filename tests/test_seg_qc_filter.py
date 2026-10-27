@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import Polygon
 
-from spida.S.io.filt_to_qc import apply_qc_filter_to_segmentation
+from spida.S.load.seg_qc_filter import apply_qc_filter_to_segmentation
 
 
 class _FakeSData(dict):

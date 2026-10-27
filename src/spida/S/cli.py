@@ -95,7 +95,7 @@ def ingest_region(
     """
     cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
-    from .io.main import ingest_region as func
+    from .load.main import ingest_region as func
     func(dataset, type=type, prefix_name=prefix_name, source=source, plot=plot, overwrite=overwrite, **kwargs)
 
 @click.command(cls=RichCommand, help="Ingest every region of --exp found under PROCESSED_ROOT_PATH.")
@@ -126,7 +126,7 @@ def ingest_all(
     Ingest every region of an experiment found under the raw root.
     """
     cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
-    from .io.main import ingest_all as func
+    from .load.main import ingest_all as func
     func(cfg, exp_name, type=type, prefix_name=prefix_name, source=source, plot=plot, overwrite=overwrite, **kwargs)
 
 @click.command(cls=RichCommand, help="Load one segmentation into a region's zarr store (--exp/--reg, or the path options).")
@@ -171,7 +171,7 @@ def load_segmentation_region(
 
     cfg = run_config(ctx, segmentation_store=segmentation_store, zarr_store=zarr_store, image_store=image_store)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
-    from .io.main import load_segmentation_region as func
+    from .load.main import load_segmentation_region as func
     func(dataset, type=type, prefix_name=prefix_name, plot=plot, overwrite=overwrite, **load_kwargs)
 
 @click.command(cls=RichCommand, help="Load one segmentation for every region of --exp that has it.")
@@ -213,7 +213,7 @@ def load_segmentation_all(
             load_kwargs["qc_shapes_key"],
         )
     cfg = run_config(ctx, segmentation_store=segmentation_store, zarr_store=zarr_store, image_store=image_store)
-    from .io.main import load_segmentation_all as func
+    from .load.main import load_segmentation_all as func
     func(cfg, exp_name, type=type, prefix_name=prefix_name, plot=plot, overwrite=overwrite, **load_kwargs)
 
 @click.command(
@@ -262,7 +262,7 @@ def load_deconvolution_region(
 
     cfg = run_config(ctx, root_path=root_path, zarr_store=zarr_store, image_store=image_store)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
-    from .io.main import load_deconvolution_region as func
+    from .load.main import load_deconvolution_region as func
     func(dataset, image_dir=image_dir, image_name=image_name, suffix=suffix,
          z_layer=z_layer, plot=plot, overwrite=overwrite, **load_kwargs)
 

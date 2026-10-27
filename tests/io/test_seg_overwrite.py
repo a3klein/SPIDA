@@ -256,9 +256,9 @@ def test_process_missing_images_stops_before_ingest(ds, backends, post):
 
 
 def test_load_missing_schema_file_stops_before_loading(ds, monkeypatch):
-    from spida.S.io import main as io_main
+    from spida.S.load import main as io_main
     called = []
-    monkeypatch.setattr(io_main, "load_segmentation", lambda *a, **k: called.append(1))
+    monkeypatch.setattr(io_main, "read_segmentation", lambda *a, **k: called.append(1))
     (ds.seg / "cellpose_cell").mkdir(parents=True)
     (ds.zarr / "shapes" / "default_E_region_1_polygons").mkdir(parents=True)
     with pytest.raises(FileNotFoundError, match="cell_by_gene.csv"):

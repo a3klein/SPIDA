@@ -1,12 +1,14 @@
 from spida._constants import *
 from spida.config import SpidaConfig
 from spida.io.layout import Dataset, TreeLayout, dataset_from, element_keys
-from spida.io.store import is_writeable, require
-from .ingest_exp import (
+from spida.io.store import is_writeable, open_store, require
+from spida.io.load import (
     read_merscope,
-    load_segmentation,
+    read_segmentation,
+    write_segmentation,
     load_decon_images,
 )
+from .seg_qc_filter import apply_qc_filter_to_segmentation
 from spida.pl import plot_images, plot_shapes, plot_points, plot_overlap, plot_seg_load
 
 from pathlib import Path
@@ -20,6 +22,10 @@ with warnings.catch_warnings():
 from matplotlib.backends.backend_pdf import PdfPages
 
 logger = logging.getLogger(__package__)
+
+# load-segmentation options passed to the segmentation QC filter, not the reader
+_QC_FILTER_KWARGS = ("qc_regions", "qc_table_key", "qc_shapes_key", "qc_filter_col", "qc_pass_value",
+                     "table_cell_id_col", "points_cell_id_col")
 
 
 def ingest_region(
@@ -154,6 +160,7 @@ def _load_inputs(
     seg_region (Path): The segmentation's folder.
     load_kwargs (dict): The loader's keyword arguments.
     """
+    from spida.io.formats.segmenters import PROSEG_POLYGONS
     from spida.io.schema.segmentation import (
         SCHEMA_BOUNDARIES, SCHEMA_CELL_BY_GENE, SCHEMA_CELL_METADATA, SCHEMA_TRANSCRIPTS, resolve,
     )
@@ -163,7 +170,7 @@ def _load_inputs(
         if spec.spatialdata_file:                                    # proseg v3: the zarr (metadata optional)
             return [seg_region / spec.spatialdata_file]
         return [seg_region / spec.transcripts_file, seg_region / spec.counts_file,
-                seg_region / "cell-polygons.geojson.gz",
+                seg_region / PROSEG_POLYGONS,
                 resolve(seg_region, meta, "cell_metadata_with_signals.csv")]
     boundaries = load_kwargs.get("boundaries_fname") or SCHEMA_BOUNDARIES
     return [resolve(seg_region, boundaries, spec.legacy_boundaries_file),
@@ -195,6 +202,7 @@ def load_segmentation_region(
     """
 
     load_kwargs = load_kwargs.get("load_kwargs", load_kwargs)
+    qc_kwargs = {k: load_kwargs.pop(k) for k in _QC_FILTER_KWARGS if k in load_kwargs}
     zarr_path = dataset.require("zarr")
     logger.info("LOADING SEGMENTATION %s (%s) into %s", prefix_name, type, zarr_path)
 
@@ -216,13 +224,13 @@ def load_segmentation_region(
     label = prefix_name if prefix_name and prefix_name != "default" else method
     seg_region = dataset.seg_dir(label, must_exist=True)
     KEYS = dataset.keys(prefix_name)
-    require(zarr_path, [dataset.keys("default")[SHAPES_KEY]], files=_load_inputs(spec, seg_region, load_kwargs))
+    qc_elements = [qc_kwargs[k] for k in ("qc_shapes_key", "qc_table_key") if qc_kwargs.get(k) is not None]
+    require(zarr_path, [dataset.keys("default")[SHAPES_KEY], *qc_elements],
+            files=_load_inputs(spec, seg_region, load_kwargs))
     is_writeable(zarr_path, [KEYS[POINTS_KEY], KEYS[SHAPES_KEY], KEYS[TABLE_KEY]], overwrite=overwrite)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        sdata = sd.read_zarr(zarr_path)
+    sdata = open_store(zarr_path)
 
-    sdata = load_segmentation(
+    sdata = read_segmentation(
         sdata,
         spec,
         keys=KEYS,
@@ -232,9 +240,18 @@ def load_segmentation_region(
         reg_name=dataset.reg,
         dataset_id=dataset.namespace,
         prefix_name=prefix_name,
-        overwrite=overwrite,
         **load_kwargs,
     )
+    if any(qc_kwargs.get(k) is not None for k in ("qc_regions", "qc_table_key", "qc_shapes_key")):
+        logger.info("Applying transcript QC filter to loaded segmentation elements.")
+        sdata = apply_qc_filter_to_segmentation(
+            sdata,
+            table_key=KEYS[TABLE_KEY],
+            shapes_key=KEYS[SHAPES_KEY],
+            points_key=KEYS[POINTS_KEY],
+            **qc_kwargs,
+        )
+    sdata = write_segmentation(sdata, KEYS, overwrite=overwrite)
 
     # TODO: add a function to filter the spatialdata object to something very permissive (like at least 5 transcripts per cell?)
 
@@ -340,9 +357,7 @@ def load_deconvolution_region(
     require(files=[image_dir])
     is_writeable(zarr_path, [image_name], overwrite=overwrite)
     logger.info("LOADING DECONVOLUTION IMAGES from %s into %s", image_dir, zarr_path)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        sdata = sd.read_zarr(zarr_path)
+    sdata = open_store(zarr_path)
 
     sdata = load_decon_images(
         sdata,
