@@ -121,29 +121,11 @@ def _write_adata(zarr_path, table_key: str, output_file: Path):
     table_key (str): The table to export.
     output_file (Path): The H5AD file to write.
     """
+    from spida.io.store import read_table
+
     Path(output_file).parent.mkdir(parents=True, exist_ok=True)
-    adata = ad.read_zarr(f"{zarr_path}/tables/{table_key}")
+    adata = read_table(zarr_path, table_key)
     adata.write_h5ad(Path(output_file))
-
-
-def _get_adata(zarr_path, table_key: str) -> ad.AnnData:
-    """
-    Read one table from the store at ``zarr_path``.
-    Parameters:
-    zarr_path (str | Path): The dataset's zarr store.
-    table_key (str): The table to read.
-    """
-    ### TODO: Try, except block for when spatialdata is not installed in a given environment
-    ### Then load the AnnData object directly from the zarr store
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        import spatialdata as sd
-
-    logger.info(f"Loading {table_key} from {zarr_path}")
-    sdata = sd.read_zarr(zarr_path)
-    adata = sdata[table_key].copy()
-    return adata
 
 
 def _assign_new_table(zarr_path, element: ad.AnnData, element_name: str):

@@ -93,7 +93,7 @@ def test_filter_cells_guard(monkeypatch, tmp_path):
     (obs / "zarr.json").write_text(json.dumps({"attributes": {"column-order": ["CELL_ID", "pass_qc"]}}))
     (d.zarr / "zarr.json").write_text(json.dumps({"attributes": {"spida": {"namespace": "", "exp": None, "reg": None}}}))
     read = []
-    monkeypatch.setattr(m, "_get_adata", lambda *a: read.append(a) or (_ for _ in ()).throw(RuntimeError("reached")))
+    monkeypatch.setattr(m, "read_table", lambda *a: read.append(a) or (_ for _ in ()).throw(RuntimeError("reached")))
     with pytest.raises(FileExistsError, match="pass_qc"):
         m.filter_cells_region(d, "cellpose_cell")
     assert not read  # stops before reading the table

@@ -4,11 +4,10 @@ import logging
 
 from spida.config import SpidaConfig
 from spida.io.layout import Dataset, TreeLayout, dataset_from, table_key
-from spida.io.store import is_writeable, obs_columns, require
+from spida.io.store import is_writeable, obs_columns, open_store, read_table, require
 from spida.utilities.sd_utils import (
     _write_adata,
     _backup_adata,
-    _get_adata,
     _assign_new_table,
 )
 from spida._constants import TABLE_KEY, IMAGE_KEY, SHAPES_KEY, POINTS_KEY  # type: ignore
@@ -72,7 +71,7 @@ def filter_cells_region(
     zarr_path = dataset.require("zarr")
     require(zarr_path, [KEYS[TABLE_KEY]])
     is_writeable(zarr_path, columns={KEYS[TABLE_KEY]: _FILTER_COLUMNS}, overwrite=overwrite)
-    adata = _get_adata(zarr_path, KEYS[TABLE_KEY])
+    adata = read_table(zarr_path, KEYS[TABLE_KEY])
     # Run the filtering
     adata = run_filtering(
         adata=adata,
@@ -108,7 +107,7 @@ def plot_filtering_region(
     from spida.pl import plot_filtering
     from matplotlib.backends.backend_pdf import PdfPages
 
-    adata = _get_adata(dataset.require("zarr"), f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}")
+    adata = read_table(dataset.require("zarr"), f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}")
     image_path = _figure(dataset, prefix_name, "pixi_filt.pdf", image_path)
 
     pdf_file = PdfPages(image_path)
@@ -219,7 +218,7 @@ def setup_adata_region(
     lost = [c for c in obs_columns(zarr_path, out) if c in _DOUBLET_COLUMNS + _RESOLVI_COLUMNS]
     if lost:
         logger.warning("Rebuilding %s drops these columns from later steps: %s", out, ", ".join(lost))
-    adata = _get_adata(zarr_path, KEYS[TABLE_KEY])
+    adata = read_table(zarr_path, KEYS[TABLE_KEY])
     # Run the setup
     adata = run_setup(adata, dataset.meta(prefix_name), do_tsne=do_tsne,
                       consensus_cluster=consensus_cluster)
@@ -283,7 +282,7 @@ def plot_setup_region(
     from spida.pl import plot_setup
     from matplotlib.backends.backend_pdf import PdfPages
 
-    adata = _get_adata(dataset.require("zarr"), f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}")
+    adata = read_table(dataset.require("zarr"), f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}")
     image_path = _figure(dataset, prefix_name, "pixi_setup.pdf", image_path)
 
     pdf_file = PdfPages(image_path)
@@ -319,7 +318,7 @@ def remove_doublets_region(
     zarr_path = dataset.require("zarr")
     require(zarr_path, [f"{KEYS[TABLE_KEY]}{suffix}"])
     is_writeable(zarr_path, columns={f"{KEYS[TABLE_KEY]}{suffix}": _DOUBLET_COLUMNS}, overwrite=overwrite)
-    adata = _get_adata(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
+    adata = read_table(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
 
     # Identify doublets
     adata = identify_doublets(adata, threshold=threshold)
@@ -337,12 +336,9 @@ def remove_doublets_region(
         # Importing here for efficiency
         from matplotlib.backends.backend_pdf import PdfPages
         from spida.pl import plot_doublets
-        import spatialdata as sd
         from spida.pl import plot_example_doublets
 
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore")
-            sdata = sd.read_zarr(zarr_path)
+        sdata = open_store(zarr_path)
 
         image_path = _figure(dataset, prefix_name, "SOLO_doublets.png", image_path)
 
@@ -438,7 +434,7 @@ def resolvi_cluster_region(
     zarr_path = dataset.require("zarr")
     require(zarr_path, [f"{KEYS[TABLE_KEY]}{suffix}"])
     is_writeable(zarr_path, columns={f"{KEYS[TABLE_KEY]}{suffix}": _RESOLVI_COLUMNS}, overwrite=overwrite)
-    adata = _get_adata(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
+    adata = read_table(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}")
     model_save_ext = "_".join(p for p in (dataset.namespace, prefix_name) if p)
 
     logger.info("arguments passing into resolvi")
@@ -536,7 +532,7 @@ def plot_resolvi_region(
     from spida.pl import plot_resolvi
     from matplotlib.backends.backend_pdf import PdfPages
 
-    adata = _get_adata(dataset.require("zarr"), f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}")
+    adata = read_table(dataset.require("zarr"), f"{dataset.keys(prefix_name)[TABLE_KEY]}{suffix}")
     image_path = _figure(dataset, prefix_name, "pixi_resolvi.pdf", image_path)
 
     pdf_file = PdfPages(image_path)
@@ -776,14 +772,13 @@ def transcript_qc_region(
     image_path: Path | None = None,
     overwrite: bool = False,
 ):
-    import spatialdata as sd
     from spida.P.transcript_qc import run_transcript_qc
     from spida.pl import plot_hex_qc
 
     KEYS = dataset.keys(prefix_name)
     require(dataset.require("zarr"), [KEYS[POINTS_KEY]])
     is_writeable(dataset.require("zarr"), [qc_shapes_key], overwrite=overwrite)  # hex table is shared, reused
-    sdata = sd.read_zarr(dataset.require("zarr"))
+    sdata = open_store(dataset.require("zarr"))
 
     adata_qc, grid, _ = run_transcript_qc(
         sdata,
@@ -826,7 +821,6 @@ def tissue_mask_region(
 ):
     """Compute the KDE tissue mask; persist polygon + labels, and the tif to ``mask_dir`` (default: raw images dir).
     Existing polygon / labels / tif are replaced only with ``overwrite``."""
-    import spatialdata as sd
     from spida.P.tissue_mask import run_tissue_mask, QC_MASK_TIF_NAME
     from spida.io.formats.merscope import TRANSFORM_FILE
     from spida.io.store import is_writeable, require
@@ -838,7 +832,7 @@ def tissue_mask_region(
             files=[images_dir / TRANSFORM_FILE, images_dir] if write_raster else [])
     is_writeable(dataset.require("zarr"), [shapes_key, labels_key],
                  files=[tif] if write_raster else [], overwrite=overwrite)
-    sdata = sd.read_zarr(dataset.require("zarr"))
+    sdata = open_store(dataset.require("zarr"))
 
     stages, grid, x0, y0 = run_tissue_mask(
         sdata,
@@ -903,7 +897,6 @@ def cluster_hexes_region(
     image_path: Path | None = None,
     overwrite: bool = False,
 ):
-    import spatialdata as sd
     import geopandas as gpd
     from spida.P.transcript_qc import run_cluster_hexes, _obs_to_grid_geodf, _hex_table_key
     from spida.pl import plot_hex_clusters, save_cluster_panels_pdf
@@ -912,7 +905,7 @@ def cluster_hexes_region(
     require(dataset.require("zarr"), [KEYS[POINTS_KEY]])
     is_writeable(dataset.require("zarr"), [f"{_hex_table_key(hex_size, hex_overlap)}_clustered"],
                  overwrite=overwrite)  # hex table is shared, reused
-    sdata = sd.read_zarr(dataset.require("zarr"))
+    sdata = open_store(dataset.require("zarr"))
 
     adata_clustered, _ = run_cluster_hexes(
         sdata,

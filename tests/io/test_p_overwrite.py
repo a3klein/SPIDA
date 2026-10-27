@@ -238,12 +238,12 @@ def test_setup_without_filter_stops_before_reading(ds, monkeypatch):
     t.obs = t.obs.drop(columns=["pass_qc"])
     from spida.io.store import write_element
     write_element(ds.zarr, TABLE, t, overwrite=True)
-    monkeypatch.setattr(m, "_get_adata", lambda *a: pytest.fail("read the table"))
+    monkeypatch.setattr(m, "read_table", lambda *a: pytest.fail("read the table"))
     with pytest.raises(FileNotFoundError, match="obs: pass_qc"):
         _setup(ds)
 
 
 def test_doublets_without_setup_stops(ds, monkeypatch):
-    monkeypatch.setattr(m, "_get_adata", lambda *a: pytest.fail("read the table"))
+    monkeypatch.setattr(m, "read_table", lambda *a: pytest.fail("read the table"))
     with pytest.raises(FileNotFoundError, match=FILT):
         _doublets(ds)

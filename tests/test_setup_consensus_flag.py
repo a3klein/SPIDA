@@ -135,7 +135,7 @@ def test_main_forwards_consensus_to_run_setup(monkeypatch, value):
     from spida.io.layout import Dataset
 
     monkeypatch.setattr(setup_adata, "run_setup", fake_run_setup)
-    monkeypatch.setattr(p_main, "_get_adata", lambda *a, **k: object())
+    monkeypatch.setattr(p_main, "read_table", lambda *a, **k: object())
     monkeypatch.setattr(p_main, "_backup_adata", lambda *a, **k: None)  # phase 2: setup writes via _backup_adata
     monkeypatch.setattr(p_main, "require", lambda *a, **k: True)        # phase 3e: store is fake here
 

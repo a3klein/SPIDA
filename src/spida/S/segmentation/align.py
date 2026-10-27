@@ -2,6 +2,7 @@ from pathlib import Path
 import logging
 
 import spatialdata as sd
+from spida.io.store import open_store
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Polygon
@@ -101,7 +102,7 @@ def align_segmentations(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Loading spatialdata from {zarr_path}")
-    sdata = sd.read_zarr(zarr_path)
+    sdata = open_store(zarr_path)
 
     # Generate shape keys
 

@@ -7,6 +7,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import spatialdata as sd
+from spida.io.store import open_store
 
 import geopandas as gpd
 from sklearn.mixture import GaussianMixture
@@ -85,7 +86,7 @@ def call_regions(
 
 
     try: 
-        sdata = sd.read_zarr(zarr_path)
+        sdata = open_store(zarr_path)
     except Exception as e:
         raise RuntimeError(f"Failed to read zarr from path {zarr_path}: {e}")
 

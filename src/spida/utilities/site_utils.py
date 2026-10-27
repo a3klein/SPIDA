@@ -49,7 +49,7 @@ def _load_metadata(
     naming_map: str | Path | None = None,
 ):
     """The dataset's store, its site dirs ``{site}/{images,data}/{brain_region}/{exp}_{reg}[_{lab}]``, and keys."""
-    import spatialdata as sd
+    from spida.io.store import open_store
 
     if not dataset.named:
         raise ValueError("site figures are named after the dataset: pass --exp and --reg")
@@ -67,7 +67,7 @@ def _load_metadata(
     img_dir.mkdir(parents=True, exist_ok=True)
     data_dir = site_dir / "data" / br / dir_name
     data_dir.mkdir(parents=True, exist_ok=True)
-    sdata = sd.read_zarr(dataset.require("zarr"))
+    sdata = open_store(dataset.require("zarr"))
 
     image_key = dataset.keys("default")[IMAGE_KEY]
     if prefix_name is not None:

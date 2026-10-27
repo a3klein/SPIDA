@@ -1,6 +1,7 @@
 """
-Writing to a zarr store.
+Reading and writing a zarr store.
 
+read_table reads one table with anndata only (no spatialdata needed); open_store opens the whole store.
 is_writeable checks up front for overwrites (pathlib only).
 write_element replaces an existing element by temp-swap.
 update_obs rewrites only a table's (anndata) obs (no spatialdata needed).
@@ -134,6 +135,36 @@ def _sd():
         warnings.filterwarnings("ignore")
         import spatialdata as sd
     return sd
+
+
+def open_store(
+    zarr_path: str | Path,
+):
+    """
+    The region's whole store as a SpatialData object (elements read lazily where spatialdata does).
+    Parameters:
+    zarr_path (str | Path): The region's zarr store.
+    """
+    sd = _sd()
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        return sd.read_zarr(zarr_path)
+
+
+def read_table(
+    zarr_path: str | Path,
+    key: str,
+):
+    """
+    One table of the store, read with anndata only (same AnnData as ``open_store(...)[key]``).
+    Parameters:
+    zarr_path (str | Path): The region's zarr store.
+    key (str): Table name.
+    """
+    import anndata as ad
+
+    logger.info("Loading %s from %s", key, zarr_path)
+    return ad.read_zarr(Path(zarr_path) / "tables" / key)
 
 
 def _drop(sdata, key: str) -> None:

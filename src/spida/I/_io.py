@@ -52,7 +52,8 @@ def load_table(
             logger.warning("--refresh_table: rebuilding %s drops %d annotation columns: %s",
                            path.name, len(lost), ", ".join(lost))
     logger.info(f"copying table {key} from {dataset.require('zarr')} to {path}")
-    adata = ad.read_zarr(dataset.require("zarr") / "tables" / key)
+    from spida.io.store import read_table
+    adata = read_table(dataset.require("zarr"), key)
     path.parent.mkdir(parents=True, exist_ok=True)
     adata.write_h5ad(path)
     return adata, path

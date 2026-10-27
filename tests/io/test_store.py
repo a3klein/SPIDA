@@ -162,6 +162,42 @@ def test_stale_tmp_is_removed(store):
     assert "cells__tmp" not in r.shapes and "new" in r["cells"].columns
 
 
+# ---- reads ----
+
+def test_read_table_matches_spatialdata_read(store):
+    from spida.io.store import open_store, read_table
+    a, b = open_store(store)["table"], read_table(store, "table")
+    pd.testing.assert_frame_equal(a.obs, b.obs)
+    assert np.array_equal(np.asarray(a.X), np.asarray(b.X))
+    assert a.uns["spatialdata_attrs"] == b.uns["spatialdata_attrs"]
+
+
+@pytest.mark.parametrize("how", ["write_element", "update_obs"])
+def test_read_table_round_trip(store, how):
+    """A table read with anndata, changed and written back, is a valid spatialdata table (P write-backs)."""
+    from spida.io.store import read_table
+    t = read_table(store, "table")
+    t.obs["label"] = pd.Categorical(np.where(np.arange(N) % 2, "a", "b"))
+    if how == "write_element":
+        write_element(store, "table", t, overwrite=True)
+    else:
+        update_obs(store, "table", t.obs)
+    r = sd.read_zarr(store)
+    TableModel().validate(r["table"])
+    assert list(r["table"].obs["label"]) == list(t.obs["label"])
+    assert len(r["cells"]) == N and len(r["tx"]) == 200
+
+
+def test_write_element_new_table_from_read_table(store):
+    """setup_adata pattern: a subset of a read table written under a new key."""
+    from spida.io.store import read_table
+    t = read_table(store, "table")
+    write_element(store, "table_filt", t[t.obs["EntityID"] % 2 == 0].copy())
+    r = sd.read_zarr(store)
+    TableModel().validate(r["table_filt"])
+    assert r["table_filt"].n_obs == N // 2 and r["table_filt"].uns["spatialdata_attrs"]["region"] == "cells"
+
+
 # ---- update_obs ----
 
 def test_update_obs_only_touches_obs(store):
