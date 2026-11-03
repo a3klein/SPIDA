@@ -96,3 +96,60 @@ def raw_mosaic_shape(
     if not cands:
         cands = sorted(p for p in images_dir.glob("mosaic_*_z*.tif") if raw(p))
     return probe_mosaic_shape(cands[0])
+
+
+# MERSCOPE ULTRA data organization file
+def read_info(path: str | Path) -> pd.DataFrame:
+    """
+    Read the MERSCOPE ULTRA data organization file
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the data organization file (CSV format)
+
+    Returns
+    -------
+    pd.DataFrame with columns channel, prefix, round, color, frame, zPos, file_pattern
+    """
+    import pandas as pd
+
+    # Read in data and get used columns
+    df_data_org = pd.read_csv(path)
+    df_info = df_data_org[
+        ["channelName", "imageType", "imagingRound", "color", "frame", "zPos"]
+    ]
+    df_info = df_info.rename(
+        columns={
+            "channelName": "channel",
+            "imagingRound": "round",
+            "imageType": "prefix",
+        }
+    )
+    # assign types
+    df_info = df_info.astype(
+        {
+            "channel": str,
+            "prefix": str,
+            "round": str,
+            "color": int,
+            "frame": "object",
+            "zPos": "object",
+        }
+    )
+    # format round
+    df_info["round"] = "_" + df_info["round"]
+    df_info.loc[df_info["round"] == "_-1", "round"] = ""
+    # formate frame
+    df_info["frame"] = df_info["frame"].apply(
+        lambda x: np.asarray(x.strip("[]").split(","), dtype=int)
+    )
+    df_info["zPos"] = df_info["zPos"].apply(
+        lambda x: np.asarray(x.strip("[]").split(","), dtype=float)
+    )
+    # get file pattern
+    df_info["file_pattern"] = (
+        df_info["prefix"] + df_info["round"] + "_{fov:04d}.jp2.zip"
+    )
+
+    return df_info

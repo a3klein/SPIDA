@@ -219,6 +219,26 @@ def write_element(
     _drop(sdata, tmp)
 
 
+def write_table(
+    zarr_path: str | Path,
+    key: str,
+    adata,
+    overwrite: bool = False,
+) -> None:
+    """
+    Write an AnnData table to the store as ``key`` (``write_element``; ``.raw`` is dropped first).
+    Parameters:
+    zarr_path (str | Path): The region's zarr store.
+    key (str): Table name.
+    adata (AnnData): The table (a TableModel-parsed AnnData).
+    overwrite (bool): Replace ``key`` if it already exists.
+    """
+    if adata.raw:
+        logger.info("Removing Raw data from AnnData object before writing to disk.")
+        del adata.raw
+    write_element(zarr_path, key, adata, overwrite=overwrite)
+
+
 # For doing a faster update on an anndata object without needing to write the whole table. 
 def update_obs(
     zarr_path: str | Path,

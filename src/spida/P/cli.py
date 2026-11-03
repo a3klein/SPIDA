@@ -3,30 +3,26 @@
 CLI interface for SPIDA P module (PreProcessing) using click
 """
 
-import os
 from pathlib import Path
 import click
-from rich_click import RichCommand, RichGroup # type: ignore
+from rich_click import RichCommand # type: ignore
 import logging
 
 # from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
 from spida.io.options import dataset_options, dataset_overrides, dataset_from_options, run_config
-from spida.utilities.script_utils import parse_click_kwargs, JSONParam
+from spida.utilities.script_utils import parse_click_kwargs
 
 
 def _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, **roots):
     return dataset_from_options(run_config(ctx, **roots), exp, reg, zarr_path, raw_path, seg_path, figures_path)
 
 
-import sys
-import argparse
 import logging
-import inspect
 import warnings
 
-from spida.utilities.script_utils import ParseKwargs, parse_path, parse_list
+from spida.utilities.script_utils import parse_list
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=UserWarning, module="zarr")

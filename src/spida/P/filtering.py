@@ -10,7 +10,6 @@ from spida._constants import (
     CELL_ID,
     CELL_X,
     CELL_Y,
-    CELL_FOV,
     CELL_VOLUME,
     PROSEG_PRESET,
     DEFAULT_PRESET,

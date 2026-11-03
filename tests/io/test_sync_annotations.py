@@ -127,7 +127,7 @@ def test_cli_and_experiment_skip(ds, tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output  # already synced -> skipped, not an error
 
 
-def test_backup_to_spatialdata_off_by_default():
+def test_backup_to_spatialdata_removed():
     from spida.I import cli as i_cli
-    opt = next(p for p in i_cli.cli.commands["allcools-integration-region"].params if p.name == "backup_to_spatialdata")
-    assert opt.default is False
+    for cmd in ("allcools-integration-region", "allcools-integration-experiment"):
+        assert "backup_to_spatialdata" not in {p.name for p in i_cli.cli.commands[cmd].params}

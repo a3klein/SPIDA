@@ -1,3 +1,5 @@
+"""Archived in phase 6 (2026-10-27): ``spida.utilities.read_raw`` (raw FOV / zip / image readers, no callers).
+``read_info`` moved to ``spida.io.formats.merscope``; kept here as it was for the other functions."""
 import zipfile
 from pathlib import Path
 

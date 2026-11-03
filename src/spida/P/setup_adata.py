@@ -1,16 +1,12 @@
 import scanpy as sc
 
 from spida.io.layout import RegionMeta
-import scanpy.external as sce
 import anndata as ad
 import scipy.sparse as scp
 import numpy as np
-import pandas as pd
-
-from ALLCools.clustering import tsne, significant_pc_test  # type: ignore
 
 from ..utilities.ad_utils import (
-    normalize_adata, dump_embedding, _calc_embeddings, multi_round_clustering
+    normalize_adata, _calc_embeddings
 )
 
 # Individual adatas

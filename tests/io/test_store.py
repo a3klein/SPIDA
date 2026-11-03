@@ -245,11 +245,11 @@ def test_is_writeable_columns(store):
     assert is_writeable(store, columns={"table": ["EntityID"]}, overwrite=True)
 
 
-def test_backup_adata_swaps(store):
-    from spida.utilities.sd_utils import _backup_adata
+def test_write_table_swaps(store):
+    from spida.io.store import write_table
     t = sd.read_zarr(store)["table"].copy()
     t.obs["new"] = 1
-    _backup_adata(store, t, "table")
+    write_table(store, "table", t, overwrite=True)
     r = sd.read_zarr(store)
     assert "new" in r["table"].obs and "table__tmp" not in r.tables
 

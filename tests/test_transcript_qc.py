@@ -22,6 +22,7 @@ class _FakeSData:
         self._points = points
         self.tables = {}
         self.written = []
+        self.path = "fake.zarr"
 
     def __getitem__(self, key):
         if key == "points":
@@ -133,6 +134,7 @@ def test_get_or_create_hex_adata_caches(monkeypatch, points_df):
         return ad.AnnData(X=np.array([[1, 2]]), obs=obs, var=pd.DataFrame(index=["A", "B"]))
 
     monkeypatch.setattr(tq, "overlay_hexes", _fake_overlay)
+    monkeypatch.setattr(tq, "write_element", lambda zarr, key, element, **k: sdata.written.append(key))  # io.store write
 
     a1, key1 = tq.get_or_create_hex_adata(sdata, points_key="points", hex_size=30, hex_overlap=0)
     a2, key2 = tq.get_or_create_hex_adata(sdata, points_key="points", hex_size=30, hex_overlap=0)

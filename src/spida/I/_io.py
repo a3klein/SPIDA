@@ -1,9 +1,8 @@
-"""I-module IO: tables as h5ad copies. Only ``backup_table`` needs spatialdata; ``sync_annotations`` does not."""
+"""I-module IO: tables as h5ad copies, and sync-annotations back into the zarr table's obs (no spatialdata)."""
 
 from __future__ import annotations
 
 import logging
-import warnings
 from pathlib import Path
 
 import anndata as ad
@@ -80,24 +79,6 @@ def tag_columns(
     stale = [n for n in names.values() if n in adata.obs.columns]  # a re-run of the same reference
     adata.obs = adata.obs.drop(columns=stale).rename(columns=names)
     return names
-
-
-def backup_table(
-    dataset,
-    adata: ad.AnnData,
-    key: str,
-) -> None:
-    """
-    Replace a table in the region's zarr store (needs spatialdata).
-
-    Parameters:
-        dataset: The region's locations (Dataset).
-        key: Table name in the zarr store, e.g. cellpose_cell_table_filt.
-    """
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        from spida.utilities.sd_utils import _backup_adata
-    _backup_adata(dataset.require("zarr"), adata, key)
 
 
 def sync_annotations(

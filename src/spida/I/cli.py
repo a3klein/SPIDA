@@ -178,7 +178,6 @@ _ALLCOOLS_OPTIONS = [
     click.option("--confusion_matrix_cluster_resolution", type=float, default=1.5, help='Resolution for clustering the confusion matrix when performing cluster-to-cluster label transfer. Defaults to 1.5.'),
     click.option("--qry_only_cluster_threshold", type=int, default=50, help='Min Reference cell number for defining query-only clusters during cluster-to-cluster label transfer. Defaults to 50.'),
     click.option("--ref_only_cluster_threshold", type=int, default=20, help='Min Query cell number for defining reference-only clusters during cluster-to-cluster label transfer. Defaults to 20.'),
-    click.option("--backup_to_spatialdata/--no-backup_to_spatialdata", default=False, help='Deprecated: rewrites the whole zarr table. Use sync-annotations instead. Defaults to False.'),
     click.option("--plot", is_flag=True, default=False, help='Whether to plot the results of the ALLCools integration. Defaults to False.'),
 ]
 
@@ -270,9 +269,6 @@ def allcools_integration_region(
     """
     d = _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, anndata_path, annotations_path,
                  zarr_store=zarr_store, anndata_store=anndata_store, annotation_store=annotation_store, image_store=image_store)
-    if adata_file is not None and opts.get("backup_to_spatialdata"):
-        logger.info("--adata_file given: not writing back to the zarr store")
-        opts["backup_to_spatialdata"] = False
     _allcools_one(d, prefix_name, ref_path, suffix, adata_file, refresh_table, **opts, **_extra_kwargs(ctx))
 
 

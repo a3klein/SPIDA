@@ -1,7 +1,7 @@
 import os
 import json
 import click
-from rich_click import RichCommand, RichGroup, echo as rich_echo # type: ignore
+from rich_click import RichCommand, RichGroup # type: ignore
 from dataclasses import dataclass
 from pathlib import Path
 from spida.utilities.script_utils import parse_click_kwargs

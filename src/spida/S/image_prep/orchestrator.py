@@ -7,11 +7,7 @@ import multiprocessing as mp
 from dataclasses import replace
 from functools import partial
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 import numpy as np
-import skimage as ski
 import imageio.v3 as iio
 import tifffile
 
@@ -24,13 +20,11 @@ from spida.io.schema import tissue_mask
 from spida.utilities.tiling import (
     tile_image_with_overlap,
     save_tiles,
-    reconstruct_image_from_tiles,
     reconstruct_image_from_tile_files,
-    visualize_tiling_grid,
 )
 
 # from spida.utilities.script_utils import parse_path, parse_list, parse_dict
-from spida.utilities.read_raw import read_info
+from spida.io.formats.merscope import read_info
 from spida.S.image_prep.tile_io import project_down_2D, project_to_3D, write_tiff
 from spida.S.image_prep.tile_selection import select_tiles
 from spida.S.image_prep.transforms import TileContext, resolve_transform

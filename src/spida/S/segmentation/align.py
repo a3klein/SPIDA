@@ -4,8 +4,6 @@ import logging
 import spatialdata as sd
 from spida.io.store import open_store
 import geopandas as gpd
-import pandas as pd
-from shapely.geometry import Polygon
 
 logger = logging.getLogger(__package__)
 

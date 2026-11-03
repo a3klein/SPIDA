@@ -1,12 +1,8 @@
-import os
-from pathlib import Path
 import numpy as np
-import pandas as pd
 import geopandas as gpd
-from pyarrow.parquet import ParquetFile
 from spida.io.formats.merscope import IMAGES_DIR, TRANSFORM_FILE, read_transform
 from typing import Callable
-from shapely import affinity, geometry, MultiPolygon
+from shapely import affinity, geometry
 import datetime
 
 counter_digits_num = 8

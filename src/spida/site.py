@@ -7,7 +7,7 @@ import json
 import re
 
 import click
-from rich_click import RichCommand, RichGroup, echo as rich_echo # type: ignore
+from rich_click import RichCommand # type: ignore
 
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
@@ -16,7 +16,6 @@ from spida.utilities.site_utils import (
     _load_metadata,
     append_brain_region_qc_metrics,
     generate_soma_gene_proportions,
-    load_naming_map,
 )
 
 import logging

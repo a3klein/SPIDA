@@ -1,5 +1,4 @@
 # imports
-import os
 from pathlib import Path
 import logging
 import warnings
@@ -111,7 +110,7 @@ def call_regions(
     #TODO: import .pl workers for plotting if gen_plots is True
     if gen_plots and plot_save_path is not None:
         import matplotlib.pyplot as plt
-        import spatialdata_plot as sdp # type: ignore
+        import spatialdata_plot as sdp # type: ignore # noqa: F401
         plt.rcParams['figure.dpi'] = 150
 
         df_gene_dict, grid = ret

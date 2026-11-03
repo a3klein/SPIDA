@@ -1,5 +1,3 @@
-import os
-from pathlib import Path
 import warnings
 import logging
 
@@ -9,7 +7,6 @@ import anndata as ad
 import scanpy as sc
 # import spatialdata as sd
 import geopandas as gpd
-import shapely as shp
 
 from spida.utilities.tiling import create_hexagonal_grid, hex_area_from_size
 from spida.io.store import write_element
@@ -199,7 +196,7 @@ def get_or_create_hex_adata(
 
     _add_hex_metadata(adata_hex, hex_size=hex_size, hex_overlap=hex_overlap)
     sdata.tables[key] = adata_hex
-    sdata.write_element(key)
+    write_element(sdata.path, key, adata_hex)
     logger.info("Stored new hex table '%s' with shape=%s", key, adata_hex.shape)
     return adata_hex, key
 

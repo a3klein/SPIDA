@@ -21,7 +21,6 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 import shapely
 from rasterio.features import rasterize, shapes as rio_shapes
 from rasterio.transform import Affine as RioAffine

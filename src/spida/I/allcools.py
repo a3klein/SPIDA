@@ -6,8 +6,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import anndata as ad
-import scanpy as sc
-import scipy.sparse as sp
 from ALLCools.clustering import significant_pc_test  # type: ignore
 from ALLCools.integration import confusion_matrix_clustering # type: ignore
 from ALLCools.integration.seurat_class import SeuratIntegration  # type: ignore
@@ -913,7 +911,6 @@ def integrate_region(
     reference: str | None = None,
     adata_file: str | Path | None = None,
     refresh_table: bool = False,
-    backup_to_spatialdata: bool = False,
     **kwargs,
 ):
     """
@@ -929,13 +926,12 @@ def integrate_region(
         reference: Reference name in column names and paths (default: ref file stem).
         adata_file: Integrate this AnnData file instead; labels are written back to it.
         refresh_table: Re-read the table from the zarr store even if its AnnData file exists.
-        backup_to_spatialdata: Also write the labelled table back into the zarr store.
         **kwargs: Passed to integrate_adata / run_allcools_seurat.
 
     Returns:
         (query, combined AnnData, query path, output dir, old -> new column map)
     """
-    from spida.I._io import load_table, backup_table
+    from spida.I._io import load_table
     from spida.io.layout import table_key
 
     reference = reference or Path(ref_path).stem
@@ -944,10 +940,6 @@ def integrate_region(
     adata, query_path = load_table(dataset, prefix_name, suffix, adata_file=adata_file, refresh=refresh_table)
     logger.info(f"adata shape: {adata.shape}")
     qry, comb, names = integrate_adata(adata, ref_path, reference, query_path, output_dir, **kwargs)
-    if backup_to_spatialdata:
-        logger.warning("--backup_to_spatialdata is deprecated and will be removed; use sync-annotations")
-        logger.info("Backing up the AnnData object to the spatialdata object")
-        backup_table(dataset, qry, key)
     return qry, comb, query_path, output_dir, names
 
 

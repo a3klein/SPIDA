@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import os
 import logging
-from pathlib import Path
 from dataclasses import dataclass, field
 
 from spida.io.formats.merscope import TRANSCRIPTS_PARQUET

@@ -6,10 +6,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from spida._constants import CELL_X, CELL_Y
-from spida.pl import plot_scatter # TODO: depreceate this! 
 from spida.io.layout import RegionMeta
 from ._scatteplot import plot_categorical, plot_continuous
-from ._spatial import plot_spatial_continuous, plot_spatial_categorical
+from ._spatial import plot_spatial_categorical
 
 
 def plot_feature_distribution(

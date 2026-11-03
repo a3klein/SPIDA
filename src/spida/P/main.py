@@ -4,12 +4,8 @@ import logging
 
 from spida.config import SpidaConfig
 from spida.io.layout import Dataset, TreeLayout, dataset_from, table_key
-from spida.io.store import is_writeable, obs_columns, open_store, read_table, require
-from spida.utilities.sd_utils import (
-    _write_adata,
-    _backup_adata,
-    _assign_new_table,
-)
+from spida.io.store import is_writeable, obs_columns, open_store, read_table, require, write_table
+from spida.utilities.sd_utils import _write_adata
 from spida._constants import TABLE_KEY, IMAGE_KEY, SHAPES_KEY, POINTS_KEY  # type: ignore
 
 logger = logging.getLogger(__package__)
@@ -81,7 +77,7 @@ def filter_cells_region(
     )
     # backup the AnnData object
     # _assign_new_table(zarr_path, adata, f"{KEYS[TABLE_KEY]}_filt") # double the storage but allows for iteration on filts.
-    _backup_adata(zarr_path, adata, KEYS[TABLE_KEY])
+    write_table(zarr_path, KEYS[TABLE_KEY], adata, overwrite=True)
 
     logger.info(
         f"Passed QC Cells: {adata.obs['pass_qc'].sum()} out of {adata.n_obs} total cells"
@@ -223,7 +219,7 @@ def setup_adata_region(
     adata = run_setup(adata, dataset.meta(prefix_name), do_tsne=do_tsne,
                       consensus_cluster=consensus_cluster)
     # backup the adata object
-    _backup_adata(zarr_path, adata, out)  # new table, or swap when overwriting
+    write_table(zarr_path, out, adata, overwrite=True)  # new table or swap if overwrite
 
     logger.info("DONE SETUP")
     if plot:
@@ -327,7 +323,7 @@ def remove_doublets_region(
     )
 
     # backup the adata object
-    _backup_adata(zarr_path, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+    write_table(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}", adata, overwrite=True)
 
     logger.info("DONE REMOVING DOUBLETS")
 
@@ -467,7 +463,7 @@ def resolvi_cluster_region(
     _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
 
     # backup the adata object
-    _backup_adata(zarr_path, adata, f"{KEYS[TABLE_KEY]}{suffix}")
+    write_table(zarr_path, f"{KEYS[TABLE_KEY]}{suffix}", adata, overwrite=True)
 
     logger.info("DONE RESOLVI CLUSTERING")
     if plot:
@@ -897,7 +893,6 @@ def cluster_hexes_region(
     image_path: Path | None = None,
     overwrite: bool = False,
 ):
-    import geopandas as gpd
     from spida.P.transcript_qc import run_cluster_hexes, _obs_to_grid_geodf, _hex_table_key
     from spida.pl import plot_hex_clusters, save_cluster_panels_pdf
 
