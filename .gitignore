@@ -7,6 +7,8 @@
 CLAUDE.md
 .claude/
 .claude/settings.local.json
+engineering_history.md
+scientific_findings.md
 design_decisions.md
 docs/cellpose_tiling_handoff.md
 docs/io_redesign.md
