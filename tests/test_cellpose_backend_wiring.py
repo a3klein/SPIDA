@@ -39,6 +39,13 @@ def test_true_3d_sets_do_3d_and_axes():
     assert "stitch_threshold" not in kw                    # not applicable in 3D
 
 
+def test_eval_kwargs_carry_max_size_fraction_and_z_smoothing():
+    img = np.zeros((2, 8, 8, 7), dtype=np.uint16)
+    _, kw = cpb.build_eval_call(_cfg(seg_mode="3d_true"), img, anisotropy=3.5)
+    assert kw["max_size_fraction"] == 1.0                  # cellpose's 0.4 would drop large masks
+    assert kw["flow3D_smooth"] == [1.0, 0.0, 0.0]          # z only
+
+
 def test_true_3d_omits_anisotropy_when_none():
     img = np.zeros((1, 8, 8, 7), dtype=np.uint16)
     _, kw = cpb.build_eval_call(_cfg(seg_mode="3d_true"), img, anisotropy=None)

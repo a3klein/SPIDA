@@ -1,8 +1,8 @@
 from pathlib import Path
 import logging
 
-from spida.io.formats.merscope import PLANE_RE, TRANSCRIPTS_CSV, TRANSFORM_FILE, raw_transcripts
-from spida.io.schema.segmentation import LEGACY_VPT_BOUNDARIES, files_written
+from spida.io.formats.merscope import PLANE_RE, TRANSFORM_FILE, raw_transcripts
+from spida.io.schema.segmentation import LEGACY_VPT_BOUNDARIES, SCHEMA_TRANSCRIPTS, files_written
 from spida.io.store import is_writeable, require
 
 logger = logging.getLogger(__package__)
@@ -134,6 +134,8 @@ def segment_region(
     prefix_name: str | None = None,
     rust_bin_path: str | Path | None = None,
     tissue_mask_path: str | Path | None = None,
+    prior: str = "cellpose_cell",
+    image_dir: str | Path | None = None,
     overwrite: bool = False,
     **kwargs,
 ):
@@ -152,6 +154,11 @@ def segment_region(
         segmentation runs, as written by ``tissue-mask``. Default None auto-discovers
         ``<raw images dir>/tissue_mask.tif`` and proceeds ungated if it is absent;
         an explicit path that does not exist raises.
+    prior (str): proseg only: the segmentation whose schema ``detected_transcripts.csv`` (cell_id) proseg
+        starts from (default "cellpose_cell").
+    image_dir (str | Path | None): cellpose / mesmer: directory of the stain images to segment, e.g. the
+        deconvolved planes (default: the raw images dir). The tissue mask and the micron -> mosaic
+        transform are still looked up in the raw images dir.
     overwrite (bool): Replace this segmentation's raw backend output if present (default False).
     """
     from .backends import get_spec
@@ -162,12 +169,13 @@ def segment_region(
     label = prefix_name or method
     raw_region = dataset.require("raw")
     reg_name = raw_region.name
-    input_dir = str(raw_region.parent)
-    images_dir = str(dataset.raw_images())
+    raw_images = str(dataset.raw_images())
+    images_dir = str(image_dir) if image_dir is not None else raw_images
     output_dir = str(dataset.seg_dir(label))
     raw_files = [f for f in (spec.boundaries_file, spec.counts_file, spec.metadata_file,
                              spec.transcripts_file, spec.spatialdata_file) if f]  # from the method's spec
-    require(files=[raw_region / TRANSCRIPTS_CSV] if method == "proseg" else [images_dir])
+    prior_transcripts = dataset.seg_dir(prior) / SCHEMA_TRANSCRIPTS if method == "proseg" else None
+    require(files=[prior_transcripts] if method == "proseg" else [images_dir])
     is_writeable(files=[Path(output_dir) / f for f in raw_files], overwrite=overwrite)
     logger.info("segment_region: %s v%s on %s -> %s",
                 method, spec.version, raw_region, output_dir)
@@ -180,18 +188,20 @@ def segment_region(
 
     if method == "cellpose":
         # cellpose/mesmer read mosaic stain tiffs from the region's images dir;
-        # proseg reads {out}/{region}/detected_transcripts.csv (so it takes {out}).
+        # proseg reads the prior segmentation's detected_transcripts.csv.
         from .backends.cellpose import run_cellpose
+        if image_dir is not None:  # anisotropy reads the transform from the raw images dir
+            kwargs.setdefault("micron_to_mosaic_path", str(Path(raw_images) / TRANSFORM_FILE))
         run_cellpose(images_dir, output_dir, reg_name,
                      tissue_mask_path=resolve_tissue_mask_path(
-                         tissue_mask_path, images_dir),
+                         tissue_mask_path, raw_images),
                      **kwargs)
     elif method == "mesmer":
         from .backends.mesmer import run_mesmer
         run_mesmer(images_dir, output_dir, reg_name, **kwargs)
     elif method == "proseg":
         from .backends.proseg import run_proseg
-        run_proseg(input_dir, output_dir, reg_name, rust_bin_path=rust_bin_path, **kwargs)
+        run_proseg(str(prior_transcripts), output_dir, rust_bin_path=rust_bin_path, **kwargs)
     else:
         raise ValueError(f"segment_region: unknown method {method!r}")
 

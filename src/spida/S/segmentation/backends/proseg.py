@@ -1,12 +1,10 @@
 import os
 
 import logging
-import warnings
 import pathlib
 import subprocess
 import re
 
-from spida.io.formats.merscope import TRANSCRIPTS_CSV
 from spida.io.formats.segmenters import (
     PROSEG_CELL_METADATA, PROSEG_POLYGON_LAYERS, PROSEG_POLYGONS, PROSEG_SPATIALDATA,
 )
@@ -87,16 +85,14 @@ def _add_proseg_binary(rust_bin_path : str | None = None):
     return proseg_v3
 
 
-
-
-def _execute_cli_proseg_v3(root_dir: str, output_dir: str, region: str, **proseg_params):
+def _execute_cli_proseg_v3(transcripts_path: str, output_dir: str, **proseg_params):
     """
     Run the proseg command for the 3.0.1 version of proseg
     """
     # The proseg command to run
     proseg_run_cmd = f"""
         proseg --merscope \
-        {root_dir}/{region}/{TRANSCRIPTS_CSV} \n
+        {transcripts_path} \n
         --output-path {output_dir} \n
         --output-spatialdata {PROSEG_SPATIALDATA} \n
         --output-cell-polygons {PROSEG_POLYGONS} \n
@@ -124,14 +120,13 @@ def _execute_cli_proseg_v3(root_dir: str, output_dir: str, region: str, **proseg
 
 
 
-def run_proseg(root_dir: str, output_dir: str, region: str, rust_bin_path=None, **proseg_params):
+def run_proseg(transcripts_path: str, output_dir: str, rust_bin_path=None, **proseg_params):
     """
-    Run the proseg command to process detected transcripts in a specified region.
+    Run proseg on a MERSCOPE-format transcripts table whose ``cell_id`` column is the starting segmentation.
 
     Parameters:
-    root_dir (str): The root directory containing the detected transcripts.
+    transcripts_path (str): The prior segmentation's ``detected_transcripts.csv`` (e.g. cellpose_cell's).
     output_dir (str): The directory where the output files will be saved.
-    region (str): The name of the region to process.
     """
 
     for key, value in proseg_params.items():
@@ -145,7 +140,7 @@ def run_proseg(root_dir: str, output_dir: str, region: str, rust_bin_path=None, 
 
     # Prepare the command to run proseg
     if v3_flag: 
-        ret = _execute_cli_proseg_v3(root_dir, output_dir, region, **proseg_params)
+        ret = _execute_cli_proseg_v3(transcripts_path, output_dir, **proseg_params)
     else:
         raise RuntimeError("proseg 2.x can no longer be run (runner archived 2026-09-28); install proseg 3. "
                            "Loading existing v2 output is still supported.")

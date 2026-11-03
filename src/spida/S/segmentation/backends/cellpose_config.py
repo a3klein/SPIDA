@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -261,7 +261,8 @@ class CellposeConfig(BackendConfig):
     cp_min_size: int = 100
     batch_size: int = 32
     stitch_threshold: float = 0.2
-    flow3d_smooth_z: float = 2.0
+    flow3d_smooth_z: float = 1.0
+    max_size_fraction: float = 1.0
 
     # --- inputs -----------------------------------------------------------
     nuc_stain_name: str = "DAPI"
@@ -333,6 +334,8 @@ class CellposeConfig(BackendConfig):
         "stitch_threshold": "seg_mode=3d_stitched only: IoU for linking masks across adjacent z-slices.",
         "flow3d_smooth_z": "seg_mode=3d_true only: Gaussian sigma applied to the 3D flow field along Z before mask reconstruction"
             "(cellpose `flow3D_smooth`). XY smoothing is deliberately not exposed.",
+        "max_size_fraction": "Cellpose drops masks larger than this fraction of the image; its own default "
+            "0.4 silently deletes large masks, so SPIDA uses 1.0 (keep all).",
         "cyto_stain_name": "Second channel (e.g. PolyT). Cheap to add (~1% GPU) "
                            "but changes the target from nucleus to whole cell.",
         "image_ext": "File extension of the input images (i.e. `.tif` or `.decon.tif`).",
@@ -466,6 +469,8 @@ class CellposeConfig(BackendConfig):
                     )
 
         # Mode-specific, NOT tiled-specific: keep it outside the tiled branch.
+        if not 0 < self.max_size_fraction <= 1:
+            raise ConfigError(f"max_size_fraction must be in (0, 1], got {self.max_size_fraction}.")
         if self.flow3d_smooth_z < 0:
             raise ConfigError(
                 f"flow3d_smooth_z must be >= 0 (0 disables), got "

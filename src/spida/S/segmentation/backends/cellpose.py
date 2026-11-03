@@ -158,6 +158,7 @@ def build_eval_call(
         cellprob_threshold=cfg.cellprob_threshold,
         diameter=cfg.diameter,
         min_size=cfg.cp_min_size,
+        max_size_fraction=cfg.max_size_fraction,
         normalize={"tile_norm_blocksize": cfg.tile_norm_blocksize},
     )
 

@@ -4,14 +4,14 @@ click CLI interface for SPIDA segmentation pipeline using argparse.
 import os
 from pathlib import Path
 import click
-from rich_click import RichCommand, RichGroup # type: ignore
+from rich_click import RichCommand # type: ignore
 import logging
 
 # from spida.utilities.script_utils import parse_click_kwargs, JSONParam
 from spida.settings import configure_logging_for_runtime
 from spida.config import ConfigDefaultGroup
 from spida.io.options import dataset_options, dataset_overrides, dataset_from_options, run_config
-from spida.utilities.script_utils import parse_click_kwargs, parse_literal, JSONParam
+from spida.utilities.script_utils import parse_click_kwargs, parse_literal
 
 logger = logging.getLogger(__name__)
 
@@ -310,12 +310,14 @@ def test_vpt(ctx):
 @click.option("--segmentation_store", "segmentation_store", default=None, type=click.Path(), help="Root of the segmentation outputs (default: SEGMENTATION_OUT_PATH in the config)")
 @click.option("--rust_bin_path", "rust_bin_path", default=None, type=click.Path(), help="Directory holding the proseg binary (default: RUST_BIN_PATH in the config)")
 @click.option("--tissue_mask_path", "tissue_mask_path", default=None, type=click.Path(), help="Tissue mask restricting where segmentation runs (default: auto-discover <images_dir>/tissue_mask.tif, else ungated).")
+@click.option("--prior", "prior", default="cellpose_cell", type=str, help="proseg only: segmentation whose detected_transcripts.csv proseg starts from (default: cellpose_cell).")
+@click.option("--image_dir", "--image-dir", "image_dir", default=None, type=click.Path(), help="cellpose / mesmer: directory of the stain images to segment, e.g. deconvolved planes (default: the raw images dir).")
 @click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Replace this segmentation's existing raw output (default: False)")
 @dataset_overrides
 @click.pass_context
 def segment_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures_path,
                    list_params, prefix_name, root_path, segmentation_store, rust_bin_path,
-                   tissue_mask_path, overwrite):
+                   tissue_mask_path, prior, image_dir, overwrite):
     # Method-specific run parameters are NOT exposed as Click options.
     # `--list-params` makes them discoverable instead, from the method's own config class.
     if list_params:
@@ -330,7 +332,8 @@ def segment_region(ctx, method, exp, reg, zarr_path, raw_path, seg_path, figures
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from .segmentation.main import segment_region as func
     func(method, dataset, prefix_name=prefix_name,
-         rust_bin_path=cfg.rust_bin_path, tissue_mask_path=tissue_mask_path, overwrite=overwrite, **kwargs)
+         rust_bin_path=cfg.rust_bin_path, tissue_mask_path=tissue_mask_path, prior=prior, image_dir=image_dir,
+         overwrite=overwrite, **kwargs)
 
 
 @cli.command(

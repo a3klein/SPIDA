@@ -455,13 +455,18 @@ def test_floor_does_not_apply_to_auto():
 
 
 # --- flow3d_smooth_z (do_3D ring/donut fix) -------------------------------
-def test_flow3d_smooth_z_defaults_on_at_two():
-    """ON at sigma_z=2, the dev-bench provisional winner (rings 3.9% -> 0.6%,
-    97.5% cell-for-cell agreement, +1.1% wall). The sigma sweep may revise it and
-    decon vs raw images differ, so this is a default worth re-checking, not a
-    constant."""
+def test_flow3d_smooth_z_defaults_on_at_one():
+    """ON at sigma_z=1: locked 2026-09-08 by the sigma sweep on decon input (was 2,
+    the earlier provisional value). See spida_dev/io_redesign/seg_params_audit_results.md."""
     cfg = CellposeConfig.from_kwargs(seg_mode="3d_true")
-    assert cfg.flow3d_smooth_z == 2.0
+    assert cfg.flow3d_smooth_z == 1.0
+
+
+def test_max_size_fraction_keeps_large_masks():
+    """Cellpose's default 0.4 deletes large masks; SPIDA passes 1.0 unless told otherwise."""
+    assert CellposeConfig.from_kwargs(seg_mode="3d_true").max_size_fraction == 1.0
+    with pytest.raises(ConfigError, match="max_size_fraction"):
+        CellposeConfig.from_kwargs(seg_mode="3d_true", max_size_fraction=0)
 
 
 @pytest.mark.parametrize("mode", ["2d", "3d_stitched"])

@@ -168,6 +168,7 @@ def test_mask_rejected_for_a_backend_that_cannot_use_it(region, monkeypatch):
     """Silently dropping it would mean paying for a mask that does nothing."""
     root, images = region
     (images / seg_main.TISSUE_MASK_FILENAME).write_bytes(b"")
+    _prior(root)
     with pytest.raises(ValueError, match="does not consume it"):
         seg_main.segment_region(
             "proseg", _dataset(root),
@@ -181,8 +182,62 @@ def test_proseg_unaffected_when_no_mask_is_requested(region, monkeypatch):
 
     root, images = region
     (images / seg_main.TISSUE_MASK_FILENAME).write_bytes(b"")
+    _prior(root)
     seen: dict = {}
     monkeypatch.setattr(pb, "run_proseg",
                         lambda *a, **k: seen.update(args=a, kwargs=k))
     seg_main.segment_region("proseg", _dataset(root))
     assert "tissue_mask_path" not in seen["kwargs"]
+
+
+def _prior(root, label="cellpose_cell"):
+    """The prior segmentation's schema transcripts, where segment-region proseg reads them."""
+    d = _dataset(root).seg_dir(label)
+    d.mkdir(parents=True)
+    (d / "detected_transcripts.csv").write_text("")
+    return d / "detected_transcripts.csv"
+
+
+def test_proseg_starts_from_the_cellpose_prior(region, monkeypatch):
+    """proseg reads cellpose_cell's detected_transcripts.csv (its cell_id), not the raw region's."""
+    from spida.S.segmentation.backends import proseg as pb
+
+    root, _ = region
+    prior = _prior(root)
+    seen: dict = {}
+    monkeypatch.setattr(pb, "run_proseg", lambda *a, **k: seen.update(args=a, kwargs=k))
+    seg_main.segment_region("proseg", _dataset(root), prefix_name="proseg_cell")
+    assert seen["args"][0] == str(prior)
+    _prior(root, "cellpose_nuc")
+    seg_main.segment_region("proseg", _dataset(root), prefix_name="proseg_nuc", prior="cellpose_nuc")
+    assert seen["args"][0].endswith("cellpose_nuc/detected_transcripts.csv")
+
+
+def test_proseg_without_prior_stops_up_front(region, monkeypatch):
+    from spida.S.segmentation.backends import proseg as pb
+
+    root, _ = region
+    monkeypatch.setattr(pb, "run_proseg", lambda *a, **k: pytest.fail("ran proseg"))
+    with pytest.raises(FileNotFoundError, match="cellpose_cell"):
+        seg_main.segment_region("proseg", _dataset(root))
+
+
+def test_image_dir_reads_stains_elsewhere_mask_and_transform_from_raw(region, captured, tmp_path):
+    """--image_dir moves only the stain images (e.g. decon-images/); mask and transform stay in images/."""
+    root, images = region
+    (images / seg_main.TISSUE_MASK_FILENAME).write_bytes(b"")
+    decon = tmp_path / "decon-images"
+    decon.mkdir()
+    (decon / "mosaic_DAPI_z_stack_z3.decon.tif").write_bytes(b"")
+    _segment(root, image_dir=decon)
+    kwargs = captured["kwargs"]
+    assert captured["root_dir"] == str(decon)
+    assert Path(kwargs["tissue_mask_path"]) == images / seg_main.TISSUE_MASK_FILENAME
+    assert kwargs["micron_to_mosaic_path"] == str(images / "micron_to_mosaic_pixel_transform.csv")
+
+
+def test_image_dir_must_exist(region, captured, tmp_path):
+    root, _ = region
+    with pytest.raises(FileNotFoundError, match="nope"):
+        _segment(root, image_dir=tmp_path / "nope")
+

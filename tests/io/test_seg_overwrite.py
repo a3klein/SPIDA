@@ -51,7 +51,7 @@ def backends(monkeypatch):
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         (Path(output_dir) / "polygons.parquet").write_text("x")
 
-    def proseg(input_dir, output_dir, reg_name, **k):
+    def proseg(transcripts_path, output_dir, **k):
         calls.append(("proseg", k))
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         for f in ("cell-polygons-layers.geojson.gz", "cell-metadata.csv.gz"):
@@ -102,7 +102,13 @@ def test_segment_rerun_refused_before_backend(ds, backends):
     assert len(backends) == 2
 
 
+def _cellpose_prior(ds):
+    (ds.seg / "cellpose_cell").mkdir(parents=True, exist_ok=True)
+    (ds.seg / "cellpose_cell" / "detected_transcripts.csv").write_text("")  # what segment-region proseg reads
+
+
 def test_segment_guard_uses_the_method_spec(ds, backends):
+    _cellpose_prior(ds)
     (ds.seg / "proseg_cell").mkdir(parents=True)
     (ds.seg / "proseg_cell" / "polygons.parquet").write_text("x")  # cellpose's name, not proseg's
     seg_main.segment_region("proseg", ds, prefix_name="proseg_cell")
@@ -136,6 +142,7 @@ def test_process_after_segment_not_blocked_then_both_refused(ds, backends, post)
 
 def test_proseg_process_guards_only_what_it_writes(ds, backends, post, monkeypatch):
     # proseg brings its own counts / transcripts: those schema names are not its outputs
+    _cellpose_prior(ds)
     seg_main.segment_region("proseg", ds, prefix_name="proseg_cell")
     out = ds.seg / "proseg_cell"
     (out / SCHEMA_CELL_BY_GENE).write_text("x")
