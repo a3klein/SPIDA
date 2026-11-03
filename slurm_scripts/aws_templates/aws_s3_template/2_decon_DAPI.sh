@@ -56,18 +56,19 @@ cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "preprocessing-gpu"; then
     pixi install -e preprocessing-gpu
 fi
-cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 mkdir -p /scratch/images
 
 # --- Compute ---
+# Deconvolved planes go to {DECON_DIR} (next to the raw images/, which stay untouched).
 echo -e "\nRunning whole image deconvolution - DAPI - {REG_N} - {EXP_N}\n"
+mkdir -p {DECON_DIR}
 pixi run --frozen -e preprocessing-gpu \
-    spida-S --config {CONFIG_PATH} \
+    python -m spida.S.cli --config {CONFIG_PATH} \
     transform-image \
     -i {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {ROOT_DIR}/{EXPERIMENT}/out/dataorganization.csv \
-    --tile_dir {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images \
-    --stitched_dir {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
+    --tile_dir {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images_DAPI \
+    --stitched_dir {DECON_DIR} \
     --channels DAPI \
     --tile_size 2960 \
     --overlap 400 \
@@ -78,6 +79,5 @@ pixi run --frozen -e preprocessing-gpu \
     --plot_thr
 
 # --- Sync to S3 ---
-# Syncs the images directory which now contains the output .decon.tif files
-echo -e "\nSyncing deconvoluted images to S3...\n"
-aws s3 sync {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ --only-show-errors
+echo -e "\nSyncing deconvolved images to S3...\n"
+aws s3 sync {DECON_DIR}/ s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/decon-images/ --only-show-errors

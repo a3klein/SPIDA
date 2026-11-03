@@ -53,7 +53,6 @@ cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "preprocessing"; then
     pixi install -e preprocessing
 fi
-cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 mkdir -p /scratch/images
 
 # --- Compute ---
@@ -61,42 +60,46 @@ echo -e "\nIngesting region {REGION} of experiment {EXPERIMENT}\n"
 pixi run --frozen -e preprocessing \
     python -m spida.S.cli --config {CONFIG_PATH} \
     ingest-region \
-    {EXPERIMENT} \
-    {REGION}
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
+    {OVERWRITE_ARG}
 
+# TISSUE_RASTER_ARG is --no_raster when another chain of this region writes tissue_mask.tif
+# (the store still gets its qc_mask shapes / tissue_mask labels).
 echo -e "\nComputing tissue mask - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
     python -m spida.P.cli --config {CONFIG_PATH} \
     tissue-mask \
-    {EXPERIMENT} \
-    {REGION} \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     --rho_min {TISSUE_RHO_MIN} \
+    {TISSUE_RASTER_ARG}{OVERWRITE_ARG} \
     --plot
 
 echo -e "\nGenerating Load QC Figures\n"
 pixi run --frozen -e preprocessing \
     python -m spida.site --config {CONFIG_PATH} \
     generate-load-qc-figs \
-    {EXPERIMENT} \
-    {REGION} \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     --brain-region {BR} \
-    --lab salk \
-    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
+    --lab salk {NAMING_MAP_ARG}
 
 echo -e "\nGenerating default Segmentation QC figures\n"
 pixi run --frozen -e preprocessing \
     python -m spida.site --config {CONFIG_PATH} \
     generate-seg-qc-figs \
-    {EXPERIMENT} \
-    {REGION} \
     default \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     --brain-region {BR} \
-    --lab salk \
-    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
+    --lab salk {NAMING_MAP_ARG}
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
-aws s3 cp {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/tissue_mask.tif \
-    s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/tissue_mask.tif --only-show-errors
+if [ -f {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/tissue_mask.tif ]; then
+    aws s3 cp {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/tissue_mask.tif \
+        s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/tissue_mask.tif --only-show-errors
+fi
 aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
 aws s3 sync {ROOT_DIR}/images/ s3://{S3_BUCKET}/spida_outputs/images/ --only-show-errors

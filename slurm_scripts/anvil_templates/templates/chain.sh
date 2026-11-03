@@ -1,107 +1,102 @@
 #!/bin/bash
 # FILENAME: chain.sh
-# DESCRIPTION: This script chains together the processing steps for a given experiment and region.
+# DESCRIPTION: Submit the processing chain for experiment {EXPERIMENT}, region {REGION}.
+#
+# Dependency graph (edges only apply when both ends are enabled):
+#   1  ingest / tissue mask ─┬─> 3a cellpose GPU ─> 3b ─> 4 proseg ─> 5 MMC (optional)
+#   2a decon DAPI  ──────────┤
+#   2b decon PolyT ──────────┘
+#
+# 3a waits on step 1 because that is where tissue_mask.tif is built, which
+# tissue-gated segmentation and --gpu_tile_size=auto both need. 3b waits on
+# step 1 as well, for the zarr store. 4 waits on 3b: proseg starts from
+# cellpose_cell's detected_transcripts.csv, which 3b writes.
+#
+# PREP_JOBS (optional, colon-separated job IDs) adds dependencies to 3a, for a
+# chain that reuses another chain's decon images / tissue_mask.tif (run with
+# steps 3-5 only):  PREP_JOBS=123:124:125 bash chain.sh
+# The submitted job IDs are written to jobs.env next to this script.
 
+# Fail fast: if any sbatch returns non-zero, abort before submitting downstream steps.
+set -euo pipefail
 
-cd /home/x-aklein2/projects/aklein/BICAN/THM/image_processing/{EXP_N}/{REG_N}
-echo "Starting processing chain for Experiment {EXP_N} and Region {REG_N}"
+cd {JOB_DIR}
+echo "Starting processing chain for {EXP_N} / {REG_N}"
 
-DO_1="{STEP_1}"
-DO_2="{STEP_2}"
-DO_3="{STEP_3}"
-DO_4="{STEP_4}"
-DO_5="{STEP_5}"
+DO_1={STEP_1}
+DO_2={STEP_2}
+DO_3={STEP_3}
+DO_4={STEP_4}
+DO_5={STEP_5}
+
+# Join the job IDs that actually got submitted into an --dependency=afterok arg.
+# Skipped steps contribute nothing, so re-running a subset never waits on a job
+# that was never queued.
+dep_arg() {{
+    local ids=""
+    for jid in "$@"; do
+        [[ -n "$jid" ]] && ids="${{ids}}:${{jid}}"
+    done
+    [[ -n "$ids" ]] && echo "--dependency=afterok${{ids}}"
+    return 0
+}}
+
+jid1="" jid2a="" jid2b="" jid3a="" jid3b="" jid4="" jid5=""
+prep="${{PREP_JOBS:-}}"
 
 if [[ $DO_1 == "true" ]]; then
-    echo "Step 1: Starting initial processing..."
+    echo "Step 1: Submitting ingest / tissue mask..."
     jid1=$(sbatch 1_start.sh | awk '{{print $4}}')
-    echo "Submitted start script with job ID: $jid1"
+    echo "  job ID: $jid1"
 else
-    echo "Step 1: Skipping initial processing."
+    echo "Step 1: Skipping."
 fi
 
 if [[ $DO_2 == "true" ]]; then
-    echo "Step 2: Starting deconvolution..."
-    # decon uses --image-filter tissue_mask, which needs tissue_mask.tif from 1_start
-    if [[ -v jid1 ]]; then
-        jid2=$(sbatch --dependency=afterok:$jid1 2_decon_DAPI.sh | awk '{{print $4}}')
-        jid3=$(sbatch --dependency=afterok:$jid1 2_decon_PolyT.sh | awk '{{print $4}}')
-    else
-        jid2=$(sbatch 2_decon_DAPI.sh | awk '{{print $4}}')
-        jid3=$(sbatch 2_decon_PolyT.sh | awk '{{print $4}}')
-    fi
-    echo "Submitted DAPI deconvolution script with job ID: $jid2"
-    echo "Submitted PolyT deconvolution script with job ID: $jid3"
+    echo "Step 2: Submitting deconvolution (DAPI + PolyT)..."
+    jid2a=$(sbatch 2_decon_DAPI.sh | awk '{{print $4}}')
+    jid2b=$(sbatch 2_decon_PolyT.sh | awk '{{print $4}}')
+    echo "  DAPI job ID: $jid2a  |  PolyT job ID: $jid2b"
 else
-    echo "Step 2: Skipping deconvolution."
+    echo "Step 2: Skipping."
 fi
 
 if [[ $DO_3 == "true" ]]; then
-    echo "Step 3: Starting Cellpose Segmentation (3a GPU segment -> 3b CPU process) post dependencies..."
-    if [[ -v jid1 ]] && [[ -v jid2 ]] && [[ -v jid3 ]]; then
-        jid3a=$(sbatch --exclude=g004 --dependency=afterok:$jid1:$jid2:$jid3 3a_cellpose_gpu.sh | awk '{{print $4}}')
-    elif [[ -v jid1 ]]; then
-        jid3a=$(sbatch --exclude=g004 --dependency=afterok:$jid1 3a_cellpose_gpu.sh | awk '{{print $4}}')
-    elif [[ -v jid2 ]]; then
-        jid3a=$(sbatch --exclude=g004 --dependency=afterok:$jid2:$jid3 3a_cellpose_gpu.sh | awk '{{print $4}}')
-    else
-        jid3a=$(sbatch --exclude=g004 3a_cellpose_gpu.sh | awk '{{print $4}}')
-    fi
-    echo "Submitted 3a cellpose GPU segment with job ID: $jid3a"
-    # 3b (CPU post-process + load + filter + setup) after the GPU segment
-    jid4=$(sbatch --dependency=afterok:$jid3a 3b_cellpose_cpu.sh | awk '{{print $4}}')
-    echo "Submitted 3b cellpose CPU process with job ID: $jid4"
+    echo "Step 3: Submitting Cellpose (GPU + CPU)..."
+    # 3a needs the deconvolved images (step 2) and the tissue mask (step 1).
+    jid3a=$(sbatch --exclude=g004 $(dep_arg "$jid2a" "$jid2b" "$jid1" ${{prep//:/ }}) 3a_cellpose_gpu.sh | awk '{{print $4}}')
+    echo "  cellpose GPU job ID: $jid3a"
+    # 3b needs the zarr store (step 1) and the raw boundaries (step 3a).
+    jid3b=$(sbatch $(dep_arg "$jid1" "$jid3a") 3b_cellpose_cpu.sh | awk '{{print $4}}')
+    echo "  cellpose CPU job ID: $jid3b"
 else
-    echo "Step 3: Skipping Cellpose Segmentation."
+    echo "Step 3: Skipping."
 fi
 
 if [[ $DO_4 == "true" ]]; then
-    echo "Step 4: Starting PROSEG Segmentation post dependencies..."
-    if [[ -v jid4 ]]; then
-        jid5=$(sbatch --dependency=afterok:$jid4 4_proseg_cell.sh | awk '{{print $4}}')
-    else
-        jid5=$(sbatch 4_proseg_cell.sh | awk '{{print $4}}')
-    fi
-    echo "Submitted PROSEG Cell segmentation script with job ID: $jid5"
+    echo "Step 4: Submitting ProSeg..."
+    jid4=$(sbatch $(dep_arg "$jid3b") 4_proseg.sh | awk '{{print $4}}')
+    echo "  proseg job ID: $jid4"
 else
-    echo "Step 4: Skipping PROSEG Segmentation."
+    echo "Step 4: Skipping."
 fi
 
-# if [[ $DO_5 == "true" ]]; then
-#     echo "Step 5: Starting MMC Annotations post dependencies..."
-#     if [[ -v jid5 ]]; then
-#         jid10=$(sbatch --dependency=afterok:$jid5 5_mmc_annot.sh | awk '{{print $4}}')
-#     else
-#         jid10=$(sbatch 5_mmc_annot.sh | awk '{{print $4}}')
-#     fi
-#     echo "Submitted MMC Annotations script with job ID: $jid10"
-# else
-#     echo "Step 5: Skipping MMC Annotations."
-# fi
+if [[ $DO_5 == "true" ]]; then
+    echo "Step 5: Submitting MapMyCells..."
+    jid5=$(sbatch $(dep_arg "$jid4") 5_mmc_annot.sh | awk '{{print $4}}')
+    echo "  MMC job ID: $jid5"
+else
+    echo "Step 5: Skipping."
+fi
 
-# jid4=$(sbatch --exclude=g004 --dependency=afterok:$jid1:$jid2:$jid3 3_cellpose_cell.sh | awk '{{print $4}}')
-# echo "Submitted Cellpose Cell segmentation script with job ID: $jid4"
-# jid5=$(sbatch --dependency=afterok:$jid4 4_proseg_cell.sh | awk '{{print $4}}')
-# echo "Submitted PROSEG Cell segmentation script with job ID: $jid5"
+cat > jobs.env <<JOBS
+jid1=$jid1
+jid2a=$jid2a
+jid2b=$jid2b
+jid3a=$jid3a
+jid3b=$jid3b
+jid4=$jid4
+jid5=$jid5
+JOBS
 
-# jid10=$(sbatch --dependency=afterok:$jid5 5_mmc_annot.sh | awk '{{print $4}}')
-# echo "Submitted MMC Annotations script with job ID: $jid10"
-# jid4=$(sbatch --exclude=g004 --dependency=afterok:$jid1:$jid2:$jid3 3_cellpose_nuc.sh | awk '{{print $4}}')
-# echo "Submitted Cellpose Nuclei segmentation script with job ID: $jid4"
-# jid5=$(sbatch --dependency=afterok:$jid4 4_proseg_nuc.sh | awk '{{print $4}}')
-# echo "Submitted PROSEG Nuclei segmentation script with job ID: $jid5"
-
-# jid6=$(sbatch --exclude=g004 --dependency=afterok:$jid1:$jid2:$jid3 3_cellpose_cell.sh | awk '{{print $4}}')
-# echo "Submitted Cellpose Cell segmentation script with job ID: $jid6"
-# jid7=$(sbatch --dependency=afterok:$jid6 4_proseg_cell.sh | awk '{{print $4}}')
-# echo "Submitted PROSEG Cell segmentation script with job ID: $jid7"
-
-# jid8=$(sbatch --dependency=afterok:$jid4:$jid6 3_cellpose_align.sh | awk '{{print $4}}')
-# echo "Submitted Cellpose Align segmentations script with job ID: $jid8"
-# jid9=$(sbatch --dependency=afterok:$jid8 4_proseg_align.sh | awk '{{print $4}}')
-# echo "Submitted PROSEG Align segmentation script with job ID: $jid9"
-
-# jid10=$(sbatch --dependency=afterok:$jid5:$jid7:$jid9 5_mmc_annot.sh | awk '{{print $4}}')
-# echo "Submitted MMC Annotations script with job ID: $jid10"
-
-echo "Processing chain for Experiment {EXP_N} and Region {REG_N} has been initiated."
+echo "Processing chain for {EXP_N} / {REG_N} has been submitted (job IDs in jobs.env)."

@@ -40,9 +40,11 @@ find /scratch -mindepth 1 -maxdepth 1 \
     -exec rm -rf {{}} + 2>/dev/null || true
 
 # --- Sync from S3 ---
-echo -e "\nSyncing deconvoluted images from S3...\n"
-mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
-aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/ --only-show-errors
+echo -e "\nSyncing deconvolved images, tissue mask and transform from S3...\n"
+mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images {DECON_DIR}
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/decon-images/ {DECON_DIR}/ --only-show-errors
+aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ \
+    --exclude "*" --include "tissue_mask.tif" --include "micron_to_mosaic_pixel_transform.csv" --only-show-errors
 
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
@@ -55,12 +57,11 @@ cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "cellpose"; then
     pixi install -e cellpose
 fi
-cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 mkdir -p /scratch/images
 
 # --- Compute ---
 # IMAGE_EXT is set by script_aws.py (--force_2d_segmentation flag).
-# .decon.tif = standard; _z3.decon.tif = middle z-slice for 3D experiments.
+# .decon.tif = all deconvolved planes; _z3.decon.tif = the middle z-slice (2D segmentation).
 IMAGE_EXT="{IMAGE_EXT}"
 
 # Tiling and any other method kwargs script_aws.py chose. Empty means the whole
@@ -70,19 +71,17 @@ SEG_EXTRA_ARGS="{SEG_EXTRA_ARGS}"
 
 echo -e "\nRunning Cellpose segmentation (backend only) on region {REGION} of experiment {EXPERIMENT}\n"
 echo "seg_mode={SEG_MODE}  model={CELLPOSE_MODEL}  extra: ${{SEG_EXTRA_ARGS:-<none>}}"
-# Raw boundaries land at the region-scoped segmentation dir —
-# the backend resolves that layout from --segmentation_store + --prefix_name, so
-# no --input_dir/--output_dir are passed (they no longer exist).
+# Raw boundaries land in the segmentation store under {EXPERIMENT}/{REGION}/cellpose_cell.
+# Stain images come from the deconvolved planes; tissue mask and transform from images/.
 pixi run --frozen -e cellpose \
     python -m spida.S.cli --config {CONFIG_PATH} \
     segment-region \
     cellpose \
-    {EXPERIMENT} \
-    {REGION} \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     --prefix_name cellpose_cell \
-    --root_path {ROOT_DIR} \
-    --segmentation_store {SEGMENTATION_DIR} \
-    {TISSUE_MASK_ARG}\
+    --image_dir {DECON_DIR} \
+    {TISSUE_MASK_ARG}{OVERWRITE_ARG} \
     --seg_mode={SEG_MODE} \
     --model={CELLPOSE_MODEL} \
     --scale=4 \
@@ -95,6 +94,5 @@ pixi run --frozen -e cellpose \
     $SEG_EXTRA_ARGS
 
 # --- Sync to S3 ---
-# Region-scoped prefix, matching the experiment/region/label layout.
 echo -e "\nSyncing cellpose segmentation to S3...\n"
 aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/cellpose_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/cellpose_cell/ --only-show-errors

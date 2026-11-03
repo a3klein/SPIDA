@@ -55,77 +55,64 @@ cd /scratch/SPIDA
 if ! pixi env list 2>/dev/null | grep -q "preprocessing"; then
     pixi install -e preprocessing
 fi
-cp /home/ubuntu/aklein/SPIDA/.env /scratch/SPIDA/.env
 mkdir -p /scratch/images
 
 # --- Compute ---
-# echo -e "\nLoading deconvoluted images - {REG_N} - {EXP_N}\n"
-# pixi run --frozen -e preprocessing \
-#     python -m spida.S.cli --config {CONFIG_PATH} \
-#     load-decon-images \
-#     {EXPERIMENT} \
-#     {REGION} \
-#     {ROOT_DIR}
-
 echo -e "\nPost-processing cellpose output into the segmentation schema (native) - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
     python -m spida.S.cli --config {CONFIG_PATH} \
     process-segmentation-region \
     cellpose \
-    {EXPERIMENT} \
-    {REGION} \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     --prefix_name cellpose_cell \
-    --root_path {ROOT_DIR} \
-    --segmentation_store {SEGMENTATION_DIR}
+    {OVERWRITE_ARG}
 
 echo -e "\nLoading cellpose segmentation - {REG_N} - {EXP_N}\n"
-# seg_dir is no longer positional: the region dir is derived from
-# --segmentation_store + --prefix_name under the experiment/region/label layout.
 pixi run --frozen -e preprocessing \
     python -m spida.S.cli --config {CONFIG_PATH} \
     load-segmentation-region \
-    {EXPERIMENT} \
-    {REGION} \
-    --segmentation_store {SEGMENTATION_DIR} \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     --type cellpose \
     --prefix_name cellpose_cell \
-    --transcript-qc
+    --transcript-qc \
+    {OVERWRITE_ARG}
 
 echo -e "\nFiltering cells - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
     python -m spida.P.cli --config {CONFIG_PATH} \
-    filter_cells_region \
-    {EXPERIMENT} \
-    {REGION} \
+    filter-cells-region \
     cellpose_cell \
-    --cutoffs_path {CUTOFFS_PATH}
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
+    --cutoffs_path {CUTOFFS_PATH} \
+    {OVERWRITE_ARG}
 
 echo -e "\nSetting up AnnData - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
     python -m spida.P.cli --config {CONFIG_PATH} \
-    setup_adata_region \
-    {EXPERIMENT} \
-    {REGION} \
+    setup-adata-region \
     cellpose_cell \
-    --suffix _filt
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
+    --suffix _filt \
+    {OVERWRITE_ARG}
 
 echo -e "\nGenerating segmentation QC figures\n"
 pixi run --frozen -e preprocessing \
     python -m spida.site --config {CONFIG_PATH} \
     generate-seg-qc-figs \
-    {EXPERIMENT} \
-    {REGION} \
     cellpose_cell \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     --brain-region {BR} \
-    --lab salk \
-    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv
+    --lab salk {NAMING_MAP_ARG}
 
 # --- Sync to S3 ---
 echo -e "\nSyncing results to S3...\n"
-# The segmentation dir must go back too: process-segmentation-region wrote the
-# schema files (boundaries_micron.parquet, cell_by_gene.csv, cell_metadata.csv,
-# detected_transcripts.csv, sum_signals.csv) there, and /scratch is wiped by the
-# next job on this instance.
+# The segmentation dir goes back too: process-segmentation-region wrote the schema files there
+# (and step 4's proseg starts from its detected_transcripts.csv); /scratch is wiped by the next job.
 aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/cellpose_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/cellpose_cell/ --only-show-errors
 aws s3 sync {ROOT_DIR}/data/zarr_store/{EXPERIMENT}/{REGION}/ s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}/ --only-show-errors
 aws s3 sync {ROOT_DIR}/data/anndata/ s3://{S3_BUCKET}/spida_outputs/data/anndata/ --only-show-errors

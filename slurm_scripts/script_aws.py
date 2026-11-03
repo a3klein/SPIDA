@@ -11,11 +11,12 @@ The brain-region config file ({config_dir}/{BR}_config.json) is required and
 provides ROOT_DIR, SEGMENTATION_DIR, and CUTOFFS_PATH.  It is also passed
 verbatim as CONFIG_PATH so SPIDA commands receive --config at runtime.
 
-Two template variants are available, selected with --template_type:
-  s3     (default) — transfers data via 'aws s3 sync' using the EC2 instance IAM role
-                     uses aws_templates/aws_s3_template/
-  rsync            — transfers data via rsync over the S3 FUSE mount at /s3-data/
-                     uses aws_templates/aws_rsync_template/
+Templates: aws_templates/aws_s3_template/ (data moves via 'aws s3 sync' using the EC2 instance IAM role).
+The rsync / FUSE-mount variant was archived in 2026-10 (aws_templates/archive/aws_rsync_template/).
+
+Deconvolved planes go to {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/decon-images/ (raw images/ untouched apart
+from tissue_mask.tif). Step 5 (MapMyCells) is written only with --mmc_reference, since only some brain
+regions have a reference. --overwrite adds --overwrite to every writing command (re-runs).
 
 Step 3a segmentation is configured here rather than left to the CellposeConfig
 defaults, so a generated script records the run it performed. By default it tiles
@@ -29,9 +30,6 @@ Usage examples
 python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
     --brain_region CTX --region_name region_UCI-5224 --lab salk
 
-# Single region over the S3 FUSE mount:
-python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
-    --brain_region CTX --region_name region_UCI-5224 --lab salk --template_type rsync
 
 # All regions in an experiment (discovers region_* dirs from a local path):
 python script_aws.py 202505231106_BICAN-4x1-MTC-E-05_VMSC31810 \\
@@ -64,10 +62,7 @@ import click
 # ---------------------------------------------------------------------------
 
 _SCRIPT_DIR = Path(__file__).parent
-_TEMPLATE_DIRS = {
-    "rsync": _SCRIPT_DIR / "aws_templates" / "aws_rsync_template",
-    "s3":    _SCRIPT_DIR / "aws_templates" / "aws_s3_template",
-}
+_TEMPLATE_DIR = _SCRIPT_DIR / "aws_templates" / "aws_s3_template"
 _DEFAULT_OUTPUT_DIR = Path("/home/ubuntu/aklein/slurm_jobs")
 _DEFAULT_CONFIG_DIR = Path("/home/ubuntu/aklein/spida_config")
 _DEFAULT_LOG_DIR = Path("/home/ubuntu/aklein/spida_logs")
@@ -154,20 +149,11 @@ def _parse_list(arg: str) -> list:
     help="Root directory for generated job scripts.",
 )
 @click.option(
-    "--template_type",
-    type=click.Choice(["rsync", "s3"], case_sensitive=False),
-    default="s3",
-    show_default=True,
-    help="Template variant to use. 'rsync' transfers via the S3 FUSE mount (/s3-data/); "
-         "'s3' uses 'aws s3 sync' with the EC2 instance IAM role.",
-)
-@click.option(
     "--template_dir",
     type=click.Path(exists=False, dir_okay=True, path_type=Path),
     default=None,
     show_default=False,
-    help="Override the template directory. "
-         "Defaults to aws_templates/ (rsync) or aws_s3_templates/ (s3) next to this script.",
+    help="Override the template directory (default: aws_templates/aws_s3_template/ next to this script).",
 )
 @click.option(
     "--s3_bucket",
@@ -199,9 +185,42 @@ def _parse_list(arg: str) -> list:
     type=_parse_list,
     default="all",
     show_default=True,
-    help="Comma-separated list of steps to enable in chain.sh (1-4). "
-         "Default 'all' enables every step. Step 1 builds the tissue mask that "
-         "step 3a's tiling and gating need.",
+    help="Comma-separated list of steps to enable in chain.sh (1-5). "
+         "Default 'all' enables every step (5 only with --mmc_reference). Step 1 builds the "
+         "tissue mask that step 3a's tiling and gating need.",
+)
+@click.option("--proseg_cutoffs_path", default=None, help="QC cutoffs JSON for proseg_cell filtering (default: CUTOFFS_PATH in the config).")
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Pass --overwrite to every writing command (re-running a region over existing outputs). "
+         "Off by default: a re-run without it stops before any compute.",
+)
+@click.option(
+    "--tissue_raster/--no_tissue_raster",
+    "tissue_raster",
+    default=True,
+    show_default=True,
+    help="Step 1 writes images/tissue_mask.tif. --no_tissue_raster writes only the store's mask, "
+         "for a second chain of the same region that reuses another chain's tissue_mask.tif.",
+)
+@click.option(
+    "--mmc_reference",
+    default=None,
+    help="MapMyCells reference identifier (under --mmc_store_path). Enables step 5; "
+         "omit for brain regions without a reference.",
+)
+@click.option(
+    "--mmc_store_path",
+    default=None,
+    help="MapMyCells reference store (default: MMC_DIR in the brain-region config).",
+)
+@click.option(
+    "--mmc_args",
+    default="--n_cpu 8 --bootstrap_iterations 100",
+    show_default=True,
+    help="Further mmc-annotation-region options, verbatim (e.g. --filter_annotations --l1_thr=0.75).",
 )
 @click.option(
     "--force_2d_segmentation",
@@ -317,13 +336,18 @@ def config_templates_aws(
     lab: str | None,
     data_path: Path | None,
     output_dir: Path,
-    template_type: str,
     template_dir: Path | None,
     s3_bucket: str,
     config_dir: Path,
     exp_n: str | None,
     reg_n: str | None,
     steps: list,
+    proseg_cutoffs_path: str | None,
+    overwrite: bool,
+    tissue_raster: bool,
+    mmc_reference: str | None,
+    mmc_store_path: str | None,
+    mmc_args: str,
     force_2d_segmentation: bool,
     decon_iter: int,
     decon_tilesize: int,
@@ -364,17 +388,11 @@ def config_templates_aws(
             err=True,
         )
 
-    # Resolve template directory: explicit --template_dir overrides --template_type default
     if template_dir is None:
-        template_dir = _TEMPLATE_DIRS[template_type.lower()]
+        template_dir = _TEMPLATE_DIR
 
     if not template_dir.exists():
-        click.echo(
-            f"ERROR: template directory not found: {template_dir}\n"
-            f"Copy the aws/{'aws_s3_template' if template_type == 's3' else 'template'}/ "
-            "files to that location or pass --template_dir.",
-            err=True,
-        )
+        click.echo(f"ERROR: template directory not found: {template_dir}", err=True)
         sys.exit(1)
 
     # ------------------------------------------------------------------
@@ -384,7 +402,7 @@ def config_templates_aws(
     if not config_file.exists():
         click.echo(
             f"ERROR: brain-region config not found: {config_file}\n"
-            f"Create it from aws/aws_rsync_template/config.json and adjust paths for {brain_region}.",
+            f"Create it from aws_templates/config.json and adjust paths for {brain_region}.",
             err=True,
         )
         sys.exit(1)
@@ -407,6 +425,15 @@ def config_templates_aws(
             f"ERROR: {config_file} is missing required keys: {missing}",
             err=True,
         )
+        sys.exit(1)
+    if config.get("REGION_LABELS") is None:
+        click.echo(
+            f"  WARNING: {config_file} has no REGION_LABELS: donors become the region name without "
+            "'region_' (e.g. region_UCI-5224 -> UCI-5224).",
+        )
+    mmc_store_path = mmc_store_path or config.get("MMC_DIR")
+    if mmc_reference is not None and mmc_store_path is None:
+        click.echo("ERROR: --mmc_reference needs --mmc_store_path or MMC_DIR in the config.", err=True)
         sys.exit(1)
 
     # ------------------------------------------------------------------
@@ -443,12 +470,19 @@ def config_templates_aws(
     # ------------------------------------------------------------------
     if len(steps) == 1 and steps[0] == "all":
         step1 = step2 = step3 = step4 = "true"
+        step5 = "true" if mmc_reference else "false"
     else:
         steps = [x.strip().lower() for x in steps]
         step1 = "true" if "1" in steps else "false"
         step2 = "true" if "2" in steps else "false"
         step3 = "true" if "3" in steps else "false"
         step4 = "true" if "4" in steps else "false"
+        step5 = "true" if "5" in steps else "false"
+    if step5 == "true" and not mmc_reference:
+        click.echo("ERROR: step 5 (MapMyCells) needs --mmc_reference.", err=True)
+        sys.exit(1)
+    overwrite_arg = "--overwrite" if overwrite else ""
+    tissue_raster_arg = "" if tissue_raster else "--no_raster "
 
     # ------------------------------------------------------------------
     # Cellpose image extension
@@ -536,8 +570,12 @@ def config_templates_aws(
         log_dir = _DEFAULT_LOG_DIR / brain_region / exp_n
         log_dir.mkdir(parents=True, exist_ok=True)
 
+        decon_dir = f"{ROOT_DIR}/{experiment_name}/out/{current_region}/decon-images"
+
         # Fill and write each template
         for template_file in sorted(template_dir.glob("*.sh")):
+            if template_file.name.startswith("5_") and not mmc_reference:
+                continue  # no reference for this brain region
             out_path = job_dir / template_file.name
             with open(template_file) as fin:
                 content = fin.read()
@@ -552,12 +590,21 @@ def config_templates_aws(
                     ROOT_DIR=ROOT_DIR,
                     SEGMENTATION_DIR=SEGMENTATION_DIR,
                     CUTOFFS_PATH=CUTOFFS_PATH,
+                    PROSEG_CUTOFFS_PATH=proseg_cutoffs_path or CUTOFFS_PATH,
                     CONFIG_PATH=CONFIG_PATH,
                     S3_BUCKET=s3_bucket,
                     STEP_1=step1,
                     STEP_2=step2,
                     STEP_3=step3,
                     STEP_4=step4,
+                    STEP_5=step5,
+                    OVERWRITE_ARG=overwrite_arg,
+                    TISSUE_RASTER_ARG=tissue_raster_arg,
+                    DECON_DIR=decon_dir,
+                    MMC_REFERENCE=mmc_reference or "",
+                    MMC_STORE_PATH=mmc_store_path or "",
+                    MMC_ARGS=mmc_args,
+                    NAMING_MAP_ARG="\\\n    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv",
                     IMAGE_EXT=image_ext,
                     SEG_MODE=seg_mode,
                     CELLPOSE_MODEL=cellpose_model,
