@@ -11,6 +11,7 @@
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/3a_cellpose_gpu_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/3a_cellpose_gpu_{EXP_N}_{REG_N}.out
 #SBATCH --exclusive
+#SBATCH --requeue
 
 nvidia-smi || true
 nvcc --version || true
@@ -28,6 +29,19 @@ unset AWS_SECRET_ACCESS_KEY
 unset AWS_SESSION_TOKEN
 export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE=/dev/null
+
+# --- Output guard ---
+# /scratch starts empty, so SPIDA's own --overwrite check cannot see outputs that exist
+# only on S3. A requeued attempt (spot preemption) replaces its own partial output.
+OW="{OVERWRITE_ARG}"
+if [[ "${{SLURM_RESTART_COUNT:-0}}" -gt 0 ]]; then OW="--overwrite"; fi
+s3_guard() {{
+    if [[ -z "$OW" ]] && aws s3 ls "$1" > /dev/null 2>&1; then
+        echo "ERROR: $1 exists on S3. Regenerate with --overwrite to replace it." >&2
+        exit 1
+    fi
+}}
+s3_guard s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/{CELLPOSE_PREFIX}/
 
 # Clean state left by previous jobs on this reused instance. Remove ALL
 # experiment data + SPIDA outputs (not just our own — a prior job may have
@@ -49,14 +63,14 @@ aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROO
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
-if [ ! -d /scratch/SPIDA ]; then
-    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
-fi
+# Refreshed every job: a reused node otherwise keeps an older checkout (and lock file).
+rsync -a --delete --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
-if ! pixi env list 2>/dev/null | grep -q "cellpose"; then
-    pixi install -e cellpose
-fi
+# Node-local package cache: the default (~/.cache on NFS) is one lock shared by every node, so
+# concurrent installs serialize. Under .pixi, which the scratch wipe and the rsync both keep.
+export PIXI_CACHE_DIR=/scratch/SPIDA/.pixi/cache
+pixi install --frozen -e cellpose
 mkdir -p /scratch/images
 
 # --- Compute ---
@@ -71,7 +85,7 @@ SEG_EXTRA_ARGS="{SEG_EXTRA_ARGS}"
 
 echo -e "\nRunning Cellpose segmentation (backend only) on region {REGION} of experiment {EXPERIMENT}\n"
 echo "seg_mode={SEG_MODE}  model={CELLPOSE_MODEL}  extra: ${{SEG_EXTRA_ARGS:-<none>}}"
-# Raw boundaries land in the segmentation store under {EXPERIMENT}/{REGION}/cellpose_cell.
+# Raw boundaries land in the segmentation store under {EXPERIMENT}/{REGION}/{CELLPOSE_PREFIX}.
 # Stain images come from the deconvolved planes; tissue mask and transform from images/.
 pixi run --frozen -e cellpose \
     python -m spida.S.cli --config {CONFIG_PATH} \
@@ -79,9 +93,9 @@ pixi run --frozen -e cellpose \
     cellpose \
     --exp {EXPERIMENT} \
     --reg {REGION} \
-    --prefix_name cellpose_cell \
+    --prefix_name {CELLPOSE_PREFIX} \
     --image_dir {DECON_DIR} \
-    {TISSUE_MASK_ARG}{OVERWRITE_ARG} \
+    {TISSUE_MASK_ARG}$OW \
     --seg_mode={SEG_MODE} \
     --model={CELLPOSE_MODEL} \
     --scale=4 \
@@ -95,4 +109,7 @@ pixi run --frozen -e cellpose \
 
 # --- Sync to S3 ---
 echo -e "\nSyncing cellpose segmentation to S3...\n"
-aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/cellpose_cell/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/cellpose_cell/ --only-show-errors
+# On overwrite, 3b's schema files from the previous run are stale: replace the whole prefix.
+DELETE=""
+if [[ -n "$OW" ]]; then DELETE="--delete"; fi
+aws s3 sync {SEGMENTATION_DIR}/{EXPERIMENT}/{REGION}/{CELLPOSE_PREFIX}/ s3://{S3_BUCKET}/spida_outputs/data/segmentation/{EXPERIMENT}/{REGION}/{CELLPOSE_PREFIX}/ --only-show-errors $DELETE

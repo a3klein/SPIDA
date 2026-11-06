@@ -1,14 +1,15 @@
 #!/bin/bash
 # FILENAME: 5_mmc_annot.sh
 # DESCRIPTION: OPTIONAL (written only when script_aws.py gets --mmc_reference): MapMyCells
-#              annotation of cellpose_cell and proseg_cell against {MMC_REFERENCE}, then the labels
+#              annotation of {CELLPOSE_PREFIX} and {PROSEG_PREFIX} against {MMC_REFERENCE}, then the labels
 #              are copied into the zarr tables (sync-annotations).
 
 #SBATCH -J mmc_{EXP_N}_{REG_N}
-#SBATCH --partition=cpu-ondemand
-#SBATCH --constraint=cpu-32vcpu
+#SBATCH --partition={CPU_PARTITION}
+#SBATCH --constraint={CPU_CONSTRAINT}
 #SBATCH --ntasks-per-node=32
 #SBATCH --exclusive
+#SBATCH --requeue
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/5_mmc_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/5_mmc_{EXP_N}_{REG_N}.out
 
@@ -24,6 +25,11 @@ unset AWS_SECRET_ACCESS_KEY
 unset AWS_SESSION_TOKEN
 export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE=/dev/null
+
+# The store is synced down, so SPIDA's own guards see existing outputs.
+# A requeued attempt (spot preemption) replaces its own partial output.
+OW="{OVERWRITE_ARG}"
+if [[ "${{SLURM_RESTART_COUNT:-0}}" -gt 0 ]]; then OW="--overwrite"; fi
 
 # Clean state left by previous jobs on this reused instance. Remove ALL
 # experiment data + SPIDA outputs (not just our own — a prior job may have
@@ -42,18 +48,18 @@ aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/zarr_store/{EXPERIMENT}/{REGION}
 aws s3 sync s3://{S3_BUCKET}/spida_outputs/data/anndata/{EXPERIMENT}/{REGION}/ {ROOT_DIR}/data/anndata/{EXPERIMENT}/{REGION}/ --only-show-errors
 
 # --- SPIDA Setup ---
-if [ ! -d /scratch/SPIDA ]; then
-    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
-fi
+# Refreshed every job: a reused node otherwise keeps an older checkout (and lock file).
+rsync -a --delete --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
-if ! pixi env list 2>/dev/null | grep -q "mmc"; then
-    pixi install -e mmc
-fi
+# Node-local package cache: the default (~/.cache on NFS) is one lock shared by every node, so
+# concurrent installs serialize. Under .pixi, which the scratch wipe and the rsync both keep.
+export PIXI_CACHE_DIR=/scratch/SPIDA/.pixi/cache
+pixi install --frozen -e mmc
 mkdir -p /scratch/images
 
 # --- Compute ---
-for PREFIX in cellpose_cell proseg_cell; do
+for PREFIX in {CELLPOSE_PREFIX} {PROSEG_PREFIX}; do
     echo -e "\nMapMyCells {MMC_REFERENCE} - ${{PREFIX}} - {REG_N} - {EXP_N}\n"
     pixi run --frozen -e mmc \
         python -m spida.I --config {CONFIG_PATH} \
@@ -75,7 +81,7 @@ for PREFIX in cellpose_cell proseg_cell; do
         --exp {EXPERIMENT} \
         --reg {REGION} \
         --reference {MMC_REFERENCE} \
-        {OVERWRITE_ARG}
+        $OW
 done
 
 # --- Sync to S3 ---

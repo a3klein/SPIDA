@@ -10,11 +10,14 @@
 # 3a waits on step 1 because that is where tissue_mask.tif is built, which
 # tissue-gated segmentation and --gpu_tile_size=auto both need. 3b waits on
 # step 1 as well, for the zarr store. 4 waits on 3b: proseg starts from
-# cellpose_cell's detected_transcripts.csv, which 3b writes.
+# {CELLPOSE_PREFIX}'s detected_transcripts.csv, which 3b writes.
 #
 # PREP_JOBS (optional, colon-separated job IDs) adds dependencies to 3a, for a
 # chain that reuses another chain's decon images / tissue_mask.tif (run with
 # steps 3-5 only):  PREP_JOBS=123:124:125 bash chain.sh
+# STORE_JOBS (optional) adds dependencies to 3b, so a second chain writing the same
+# zarr store starts after the first one's last store write (its step 4 or 5).
+# 3b-5 download the store, add a table and upload it; two at once lose a table.
 # The submitted job IDs are written to jobs.env next to this script.
 
 # Fail fast: if any sbatch returns non-zero, abort before submitting downstream steps.
@@ -43,6 +46,7 @@ dep_arg() {{
 
 jid1="" jid2a="" jid2b="" jid3a="" jid3b="" jid4="" jid5=""
 prep="${{PREP_JOBS:-}}"
+store="${{STORE_JOBS:-}}"
 
 if [[ $DO_1 == "true" ]]; then
     echo "Step 1: Submitting ingest / tissue mask..."
@@ -67,7 +71,7 @@ if [[ $DO_3 == "true" ]]; then
     jid3a=$(sbatch $(dep_arg "$jid2a" "$jid2b" "$jid1" ${{prep//:/ }}) 3a_cellpose_gpu.sh | awk '{{print $4}}')
     echo "  cellpose GPU job ID: $jid3a"
     # 3b needs the zarr store (step 1) and the raw boundaries (step 3a).
-    jid3b=$(sbatch $(dep_arg "$jid1" "$jid3a") 3b_cellpose_cpu.sh | awk '{{print $4}}')
+    jid3b=$(sbatch $(dep_arg "$jid1" "$jid3a" ${{store//:/ }}) 3b_cellpose_cpu.sh | awk '{{print $4}}')
     echo "  cellpose CPU job ID: $jid3b"
 else
     echo "Step 3: Skipping."
