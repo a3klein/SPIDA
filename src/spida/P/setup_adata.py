@@ -15,6 +15,7 @@ def run_setup(
     meta: RegionMeta,
     do_tsne: bool = False,
     consensus_cluster: bool = True,
+    n_jobs: int | None = None,
 ):
     """
     Setup the AnnData object for further analysis.
@@ -25,6 +26,7 @@ def run_setup(
     do_tsne (bool, optional): Whether to also compute the tSNE embedding (in addition to UMAP). Defaults to False.
     consensus_cluster (bool, optional): Use ALLCools consensus clustering (200 Leiden
         repeats across `n_jobs` workers) rather than a single Leiden run. Defaults to True.
+    n_jobs (int | None, optional): Consensus clustering workers. Defaults to None: the job's cores, max 24.
     Returns:
     AnnData: The modified AnnData object.
     """
@@ -49,7 +51,7 @@ def run_setup(
     adata.X = adata.layers['raw'].copy()
     normalize_adata(adata, layer='raw', log1p=True)
     _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35,
-                     consensus_cluster=consensus_cluster, do_tsne=do_tsne)
+                     consensus_cluster=consensus_cluster, do_tsne=do_tsne, n_jobs=n_jobs)
 
     try:
         from ..utilities.degs import call_degs_scran

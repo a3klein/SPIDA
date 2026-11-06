@@ -184,6 +184,9 @@ def write_element(
     Write ``element`` to the store as ``key``.
     An existing ``key`` is replaced only with ``overwrite``: written to ``key__tmp`` first, then
     swapped in, so a crash never leaves the store without a complete copy.
+    
+    NOTE: Works on the path - the in-memory SpatialData element is not set in this function. 
+    
     Parameters:
     zarr_path (str | Path): The region's zarr store.
     key (str): Element name.

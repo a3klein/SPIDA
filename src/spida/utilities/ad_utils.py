@@ -294,9 +294,28 @@ def multi_round_clustering(
     return adata
 
 
+# Seems like overkill to have a separate function for this but leave it here for now. 
+MAX_CLUSTER_JOBS = 24
+def default_n_jobs(
+    max_jobs: int = MAX_CLUSTER_JOBS,
+) -> int:
+    """
+    Cores this process may use (the SLURM / cgroup CPU set, not the node), capped at max_jobs.
+
+    Parameters:
+    max_jobs (int): Upper bound. Defaults to MAX_CLUSTER_JOBS.
+    """
+    import os
+    try:
+        avail = len(os.sched_getaffinity(0))
+    except AttributeError:  # not Linux
+        avail = os.cpu_count() or 1
+    return max(1, min(avail, max_jobs))
+
+
 ### Essentially just a wrapper for the ALLCools consensus clustering
 def _consensus_cluster(
-    adata, 
+    adata,
     use_rep="base_pca",
     clustering_name = "base_leiden",
     n_neighbors = None,
@@ -309,14 +328,19 @@ def _consensus_cluster(
     train_max_n = 500,
     random_state = 0,
     max_iter = 50,
-    n_jobs = 24,
+    n_jobs = None,
     target_accuracy = 0.9,
     **kwargs
-): 
+):
     """
     Perform consensus clustering on an AnnData object using the ALLCools implementation.
+    n_jobs None -> the cores available to this process, capped at MAX_CLUSTER_JOBS.
     """
     from ALLCools.clustering import ConsensusClustering # type: ignore
+
+    if n_jobs is None:
+        n_jobs = default_n_jobs()
+    logger.info(f"Consensus clustering with n_jobs={n_jobs}")
 
     if n_neighbors is None:
         n_neighbors = max(25, int(np.log2(adata.shape[0])*2))

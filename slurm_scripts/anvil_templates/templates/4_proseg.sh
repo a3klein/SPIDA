@@ -82,6 +82,7 @@ pixi run --frozen -e preprocessing \
     --reg {REGION} \
     --seg_fam proseg \
     --cutoffs_path {PROSEG_CUTOFFS_PATH} \
+    --plot \
     {OVERWRITE_ARG}
 
 echo -e "\nSetting up AnnData - {REG_N} - {EXP_N}\n"
@@ -92,6 +93,7 @@ pixi run --frozen -e preprocessing \
     --exp {EXPERIMENT} \
     --reg {REGION} \
     --suffix _filt \
+    --plot \
     {OVERWRITE_ARG}
 
 echo -e "\nGenerating segmentation QC figures\n"

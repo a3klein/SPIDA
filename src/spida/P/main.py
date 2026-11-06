@@ -186,6 +186,7 @@ def setup_adata_region(
     do_tsne: bool = False,
     image_path: Path = None,
     consensus_cluster: bool = True,
+    n_jobs: int | None = None,
     overwrite: bool = False,
 ):
     """
@@ -199,6 +200,7 @@ def setup_adata_region(
     do_tsne (bool, optional): Also compute the tSNE embedding (needed by the setup plots). Defaults to False.
     consensus_cluster (bool, optional): Use consensus clustering rather than a single
         Leiden run. Defaults to True. See `run_setup` for the memory/runtime tradeoff.
+    n_jobs (int | None, optional): Consensus clustering workers. Defaults to None: the job's cores, max 24.
     overwrite (bool, optional): Rebuild ``{prefix}_table{suffix}`` if it exists (drops doublet / resolvi
         results on it). Defaults to False.
     """
@@ -217,7 +219,7 @@ def setup_adata_region(
     adata = read_table(zarr_path, KEYS[TABLE_KEY])
     # Run the setup
     adata = run_setup(adata, dataset.meta(prefix_name), do_tsne=do_tsne,
-                      consensus_cluster=consensus_cluster)
+                      consensus_cluster=consensus_cluster, n_jobs=n_jobs)
     # backup the adata object
     write_table(zarr_path, out, adata, overwrite=True)  # new table or swap if overwrite
 
