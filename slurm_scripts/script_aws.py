@@ -18,6 +18,11 @@ Deconvolved planes go to {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/decon-images/ (raw
 from tissue_mask.tif). Step 5 (MapMyCells) is written only with --mmc_reference, since only some brain
 regions have a reference. --overwrite adds --overwrite to every writing command (re-runs).
 
+Output guards: each job starts on an empty /scratch, so steps that do not first sync their
+outputs down (1, 2, 3a, 4's proseg dir) check S3 before any compute and exit unless
+--overwrite. With --overwrite, steps 1, 3a and 4 replace their S3 prefix (scoped --delete).
+Every step is --requeue'd; a requeued attempt (SLURM_RESTART_COUNT > 0) runs as --overwrite.
+
 Step 3a segmentation is configured here rather than left to the CellposeConfig
 defaults, so a generated script records the run it performed. By default it tiles
 the region ('auto' grid) and gates inference to the tissue mask that step 1
@@ -43,9 +48,8 @@ python script_aws.py ... --steps 3,4
 # Untiled whole-region segmentation (the pre-tiling behaviour):
 python script_aws.py ... --gpu_tile_size none --no_tissue_mask
 
-# True-3D segmentation on whichever L40S pool has capacity:
-python script_aws.py ... --seg_mode 3d_true \\
-    --gpu_partition gpu-l40s-ondemand,gpu-l40s-spot
+# True-3D segmentation:
+python script_aws.py ... --seg_mode 3d_true
 """
 
 import os
@@ -265,6 +269,19 @@ def _parse_list(arg: str) -> list:
          "bit-identical output).",
 )
 @click.option(
+    "--cellpose_prefix",
+    default="cellpose_cell",
+    show_default=True,
+    help="Segmentation name for the cellpose run (3a/3b; proseg's prior). Distinct names let "
+         "two chains of one region coexist, e.g. cellpose_cell_2d and cellpose_cell_3d.",
+)
+@click.option(
+    "--proseg_prefix",
+    default="proseg_cell",
+    show_default=True,
+    help="Segmentation name for the proseg run (step 4).",
+)
+@click.option(
     "--seg_mode",
     type=click.Choice(["2d", "3d_stitched", "3d_true"], case_sensitive=False),
     default="3d_stitched",
@@ -318,9 +335,8 @@ def _parse_list(arg: str) -> list:
     "--gpu_partition",
     default="gpu-l40s-ondemand",
     show_default=True,
-    help="SLURM partition(s) for the GPU steps. Accepts a comma-separated list "
-         "(e.g. 'gpu-l40s-ondemand,gpu-l40s-spot') to survive one pool running out "
-         "of capacity -- note spot nodes can be preempted mid-run.",
+    help="SLURM partition(s) for the GPU steps (2 decon, 3a cellpose), comma-separated. "
+         "On-demand by default: spot reclaims killed jobs without requeueing them.",
 )
 @click.option(
     "--gpu_constraint",
@@ -328,6 +344,20 @@ def _parse_list(arg: str) -> list:
     show_default=True,
     help="SLURM --constraint for the GPU steps. '|' means OR, so the job takes "
          "whichever instance type has capacity.",
+)
+@click.option(
+    "--cpu_partition",
+    default="cpu-ondemand",
+    show_default=True,
+    help="SLURM partition(s) for the CPU steps (1, 3b, 4, 5), comma-separated. "
+         "On-demand by default: spot reclaims killed jobs without requeueing them.",
+)
+@click.option(
+    "--cpu_constraint",
+    default="cpu-32vcpu|cpu-48vcpu|cpu-64vcpu",
+    show_default=True,
+    help="SLURM --constraint for the CPU steps. Regions above ~150k cells need "
+         "'cpu-64vcpu|cpu-96vcpu' (3b consensus clustering OOMs on 62 GB).",
 )
 def config_templates_aws(
     experiment_name: str,
@@ -352,6 +382,8 @@ def config_templates_aws(
     decon_iter: int,
     decon_tilesize: int,
     decon_psigma: float | None,
+    cellpose_prefix: str,
+    proseg_prefix: str,
     seg_mode: str,
     cellpose_model: str,
     gpu_tile_size: str,
@@ -360,6 +392,8 @@ def config_templates_aws(
     tissue_rho_min: float,
     gpu_partition: str,
     gpu_constraint: str,
+    cpu_partition: str,
+    cpu_constraint: str,
 ):
     """Generate AWS Slurm job scripts for EXPERIMENT_NAME."""
 
@@ -490,6 +524,9 @@ def config_templates_aws(
     image_ext = "_z3.decon.tif" if force_2d_segmentation else ".decon.tif"
     if force_2d_segmentation:
         click.echo("  force_2d_segmentation=True → cellpose will use _z3.decon.tif")
+        if seg_mode == "3d_true":
+            click.echo("ERROR: --force_2d_segmentation gives cellpose one plane; use --seg_mode 2d.", err=True)
+            sys.exit(1)
 
     # ------------------------------------------------------------------
     # Segmentation wiring for step 3a
@@ -606,6 +643,8 @@ def config_templates_aws(
                     MMC_ARGS=mmc_args,
                     NAMING_MAP_ARG="\\\n    --naming-map /home/ubuntu/aklein/site-images/naming_map.csv",
                     IMAGE_EXT=image_ext,
+                    CELLPOSE_PREFIX=cellpose_prefix,
+                    PROSEG_PREFIX=proseg_prefix,
                     SEG_MODE=seg_mode,
                     CELLPOSE_MODEL=cellpose_model,
                     SEG_EXTRA_ARGS=seg_extra_args,
@@ -614,6 +653,8 @@ def config_templates_aws(
                     TISSUE_RHO_MIN=tissue_rho_min,
                     GPU_PARTITION=gpu_partition,
                     GPU_CONSTRAINT=gpu_constraint,
+                    CPU_PARTITION=cpu_partition,
+                    CPU_CONSTRAINT=cpu_constraint,
                 )
             except KeyError as e:
                 click.echo(

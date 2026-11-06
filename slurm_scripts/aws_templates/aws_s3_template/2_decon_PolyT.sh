@@ -3,8 +3,9 @@
 # DESCRIPTION: Apply deconwolf deconvolution on the PolyT channel.
 
 #SBATCH -J decon_PolyT_{EXP_N}_{REG_N}
-#SBATCH --partition=gpu-l40s-ondemand
-#SBATCH --constraint=g6e.4xlarge
+#SBATCH --partition={GPU_PARTITION}
+#SBATCH --constraint={GPU_CONSTRAINT}
+#SBATCH --requeue
 #SBATCH --ntasks-per-node=16
 #SBATCH --output=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/2_decon_PolyT_{EXP_N}_{REG_N}.out
 #SBATCH --error=/home/ubuntu/aklein/spida_logs/{BR}/{EXP_N}/2_decon_PolyT_{EXP_N}_{REG_N}.out
@@ -27,6 +28,19 @@ unset AWS_SESSION_TOKEN
 export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE=/dev/null
 
+# --- Output guard ---
+# /scratch starts empty, so nothing local can see outputs that exist only on S3.
+# A requeued attempt (spot preemption) replaces its own partial output.
+OW="{OVERWRITE_ARG}"
+if [[ "${{SLURM_RESTART_COUNT:-0}}" -gt 0 ]]; then OW="--overwrite"; fi
+s3_guard() {{
+    if [[ -z "$OW" ]] && aws s3 ls "$1" > /dev/null 2>&1; then
+        echo "ERROR: $1 exists on S3. Regenerate with --overwrite to replace it." >&2
+        exit 1
+    fi
+}}
+s3_guard s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/decon-images/mosaic_PolyT_
+
 # Clean state left by previous jobs on this reused instance. Remove ALL
 # experiment data + SPIDA outputs (not just our own — a prior job may have
 # been a different experiment that filled /scratch with its own data).
@@ -43,19 +57,19 @@ mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ \
     --exclude "region_*" --no-progress
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ \
-    --exclude "*" --include "mosaic_PolyT_*" --no-progress
+    --exclude "*" --include "mosaic_PolyT_z?.tif" --no-progress
 
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
 # --- SPIDA Setup ---
-if [ ! -d /scratch/SPIDA ]; then
-    rsync -a --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
-fi
+# Refreshed every job: a reused node otherwise keeps an older checkout (and lock file).
+rsync -a --delete --exclude='.pixi' /home/ubuntu/aklein/SPIDA/ /scratch/SPIDA/
 echo -e "\nInstalling pixi environments...\n"
 cd /scratch/SPIDA
-if ! pixi env list 2>/dev/null | grep -q "preprocessing-gpu"; then
-    pixi install -e preprocessing-gpu
-fi
+# Node-local package cache: the default (~/.cache on NFS) is one lock shared by every node, so
+# concurrent installs serialize. Under .pixi, which the scratch wipe and the rsync both keep.
+export PIXI_CACHE_DIR=/scratch/SPIDA/.pixi/cache
+pixi install --frozen -e preprocessing-gpu
 mkdir -p /scratch/images
 
 # --- Compute ---
