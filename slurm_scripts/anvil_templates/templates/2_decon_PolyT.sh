@@ -48,6 +48,8 @@ mkdir -p {DECON_DIR}
 pixi run --frozen -e preprocessing-gpu \
     python -m spida.S.cli --config {CONFIG_PATH} \
     transform-image \
+    --exp {EXPERIMENT} \
+    --reg {REGION} \
     -i {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {DATA_ORG_PATH} \
     --tile_dir {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images_PolyT \

@@ -126,6 +126,7 @@ def transform_image(
     mask_path: str | Path | None = None,
     stitched_dir: str | Path | None = None,
     deconwolf_config: str | Path | None = None,
+    figures_dir: str | Path | None = None,
     **kwargs,
 ):
     """
@@ -135,17 +136,23 @@ def transform_image(
         Where the stitched `*_z{n}.decon.tif` outputs go. Default None next to image_path
     deconwolf_config
         The deconwolf .config.ini (binary, PSF dir, [Optics]); required by deconwolf.
+    figures_dir
+        Where the figures go (the region's `Dataset.figures_dir`). Default None: derived from
+        image_store and the input paths (legacy layout).
     """
 
     logger.info(f"Starting {transform} on image: {image_path}")
 
     _transform_fn = resolve_transform(transform)
 
-    if image_store is None:
-        image_store = Path(output_dir)
-    exp_name = Path(data_org_path).parents[1].name
-    reg_name = Path(image_path).parents[0].name
-    image_save_dir = Path(image_store) / exp_name / "default" / reg_name
+    if figures_dir is not None:
+        image_save_dir = Path(figures_dir)
+    else:  # legacy: <image_store>/<exp>/default/<reg>
+        if image_store is None:
+            image_store = Path(output_dir)
+        exp_name = Path(data_org_path).parents[1].name
+        reg_name = Path(image_path).parents[0].name
+        image_save_dir = Path(image_store) / exp_name / "default" / reg_name
     image_save_dir.mkdir(parents=True, exist_ok=True)
 
     if isinstance(image_path, str):

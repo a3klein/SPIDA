@@ -453,6 +453,7 @@ def align_geometries(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
     cls=RichCommand,
     help="['transform_image', 'decon_image'] - Apply a per-tile transform (deconwolf or dark_sectioning) to a large image.",
 )
+@dataset_options
 @click.option("image_path", "--image_path", "-i", default=None, type=click.Path(exists=True, dir_okay=True), help="Path to the image file to be deconvolved (default: None, throws an error if not provided)")
 @click.option("data_org_path", "--data_org_path", default="{input}/dataorganization.csv", type=click.Path(), help="Path to the data organization CSV file (default: {input}/dataorganization.csv)")
 @click.option("channels", "--channels", default="DAPI", type=str, help="Channels to use for deconvolution, comma-separated if multiple (default: DAPI)")
@@ -477,6 +478,8 @@ def align_geometries(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path,
 @click.pass_context
 def transform_image(
     ctx,
+    exp: str | None = None,
+    reg: str | None = None,
     image_path: str | Path | None = None,
     data_org_path: str | Path = "{input}/dataorganization.csv",
     channels: str | list[str] = "DAPI",
@@ -517,6 +520,10 @@ def transform_image(
 
 
     _cfg = run_config(ctx, image_store=image_store, deconwolf_config_file=deconwolf_config_file)
+    # --exp/--reg is only necessary for the image store for where to plot figures. 
+    figures_dir = None
+    if exp is not None and reg is not None:
+        figures_dir = dataset_from_options(_cfg, exp, reg, None, None, None, None).figures_dir("default")
     from spida.S.image_prep.orchestrator import transform_image as func
     func(
         image_path=image_path,
@@ -540,6 +547,7 @@ def transform_image(
         match_pre=match_pre,
         image_store=_cfg.image_store,
         deconwolf_config=_cfg.deconwolf_config_file,
+        figures_dir=figures_dir,
         **kwargs,
     )
 
