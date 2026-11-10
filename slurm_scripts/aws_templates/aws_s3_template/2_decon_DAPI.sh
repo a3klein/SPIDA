@@ -97,3 +97,4 @@ pixi run --frozen -e preprocessing-gpu \
 # --- Sync to S3 ---
 echo -e "\nSyncing deconvolved images to S3...\n"
 aws s3 sync {DECON_DIR}/ s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/decon-images/ --only-show-errors
+aws s3 sync {ROOT_DIR}/images/ s3://{S3_BUCKET}/spida_outputs/images/ --only-show-errors
