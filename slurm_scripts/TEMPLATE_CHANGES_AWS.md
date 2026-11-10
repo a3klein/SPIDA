@@ -73,7 +73,8 @@ chains of one region coexist, e.g. HIPc `cellpose_cell_3d` and `cellpose_cell_2d
 `zarr.json` holds the consolidated metadata). The generator now errors on
 `--force_2d_segmentation --seg_mode 3d_true`.
 
-**Anvil:** the names apply there too. The store race applies only if Anvil chains copy the store.
+**Anvil:** ported 2026-11-06 (`script.py --cellpose_prefix / --proseg_prefix`, `STORE_JOBS` in
+`chain.sh`). The store race applies there too: two chains writing tables to one store at once.
 
 ### 8. `data/anndata` upload only if the folder exists (3b, 4)
 No per-region command writes an h5ad: `setup-adata-region` writes only zarr tables, and the h5ad

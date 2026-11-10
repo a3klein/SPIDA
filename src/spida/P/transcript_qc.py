@@ -23,8 +23,12 @@ def _ensure_geodataframe(points, x_col: str = "x", y_col: str = "y") -> gpd.GeoD
         return gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points[x_col], points[y_col]))
     raise TypeError("points must be a GeoDataFrame, DataFrame, or dask DataFrame")
 
+def _num(x: float) -> str:
+    # whole numbers without ".0" (the CLI passes floats): 30.0 -> "30", 30.5 -> "30.5"
+    return str(int(x)) if float(x).is_integer() else str(x)
+
 def _hex_table_key(hex_size: float, hex_overlap: float) -> str:
-    return f"adata_hex_s{hex_size}_o{hex_overlap}"
+    return f"adata_hex_s{_num(hex_size)}_o{_num(hex_overlap)}"
 
 def _add_hex_metadata(adata_hex: ad.AnnData, hex_size: float, hex_overlap: float) -> None:
     adata_hex.uns.setdefault("hexgrid", {})

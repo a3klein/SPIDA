@@ -281,6 +281,77 @@ def test_find_stain_planes_raises_for_missing_stain(mosaic_dir):
         find_stain_planes(mosaic_dir, "GAPDH")
 
 
+def _touch(d, *names):
+    for n in names:
+        (d / n).touch()
+    return d
+
+
+def test_find_stain_planes_raw_and_decon_in_one_dir(tmp_path):
+    """Old layout (decon written into images/): each extension gets only its own kind."""
+    from spida.io.schema.decon import plane_name
+
+    d = _touch(tmp_path, *[f"mosaic_DAPI_z{z}.tif" for z in range(7)],
+               *[plane_name("DAPI", z, z_stack=True) for z in range(7)])
+    raw = find_stain_planes(d, "DAPI")
+    assert [p.name for p in raw] == [f"mosaic_DAPI_z{z}.tif" for z in range(7)]
+    dec = find_stain_planes(d, "DAPI", ".decon.tif")
+    assert [p.name for p in dec] == [f"mosaic_DAPI_z_stack_z{z}.decon.tif" for z in range(7)]
+
+
+def test_find_stain_planes_stain_is_exact(tmp_path):
+    d = _touch(tmp_path, "mosaic_DAPI_z0.tif", "mosaic_DAPI2_z0.tif", "mosaic_DAPI2_z1.tif",
+               "mosaic_Cellbound1-2_z0.tif", "mosaic_Cellbound1-2_z1.tif", "mosaic_Cellbound1_z0.tif")
+    assert [p.name for p in find_stain_planes(d, "DAPI")] == ["mosaic_DAPI_z0.tif"]
+    assert len(find_stain_planes(d, "DAPI2")) == 2
+    assert len(find_stain_planes(d, "Cellbound1-2")) == 2
+    assert [p.name for p in find_stain_planes(d, "Cellbound1")] == ["mosaic_Cellbound1_z0.tif"]
+
+
+def test_find_stain_planes_z_is_numeric(tmp_path):
+    d = _touch(tmp_path, *[f"mosaic_DAPI_z{z}.tif" for z in (10, 2, 1, 0)])
+    assert [p.name for p in find_stain_planes(d, "DAPI")] == [
+        "mosaic_DAPI_z0.tif", "mosaic_DAPI_z1.tif", "mosaic_DAPI_z2.tif", "mosaic_DAPI_z10.tif"]
+
+
+def test_find_stain_planes_skips_derived_files(tmp_path):
+    d = _touch(tmp_path, "mosaic_DAPI_z0.tif", "mosaic_DAPI_z0_masks.tif", "mosaic_DAPI_z0_flows.tif",
+               "mosaic_DAPI_z_stack.tif", "mosaic_DAPI_z_stack_z0.decon.3d.tif", "tissue_mask.tif",
+               "mosaic_DAPI_z0.tif.bak")
+    assert [p.name for p in find_stain_planes(d, "DAPI")] == ["mosaic_DAPI_z0.tif"]
+
+
+@pytest.mark.parametrize("z_stack", [True, False])
+def test_find_stain_planes_force_2d_ext(tmp_path, z_stack):
+    """--force_2d_segmentation passes image_ext='_z3.decon.tif': the z is in the extension."""
+    from spida.io.schema.decon import plane_name
+
+    d = _touch(tmp_path, *[plane_name("DAPI", z, z_stack=z_stack) for z in range(7)],
+               "mosaic_DAPI_z3.tif")
+    got = find_stain_planes(d, "DAPI", "_z3.decon.tif")
+    assert [p.name for p in got] == [plane_name("DAPI", 3, z_stack=z_stack)]
+
+
+def test_find_stain_planes_decon_dir_with_raw_ext_says_what_to_pass(tmp_path):
+    """decon-images/ read with the default '.tif' used to return the decon planes by accident."""
+    from spida.io.schema.decon import plane_name
+
+    d = _touch(tmp_path, *[plane_name("DAPI", z, z_stack=True) for z in range(7)])
+    with pytest.raises(ValueError, match="pass image_ext='.decon.tif'"):
+        find_stain_planes(d, "DAPI")
+
+
+def test_find_stain_planes_raises_on_two_files_for_one_plane(tmp_path):
+    """2D and z-stack decon names for the same z side by side: refuse rather than pick one."""
+    from spida.io.schema.decon import plane_name
+
+    d = _touch(tmp_path, plane_name("DAPI", 3), plane_name("DAPI", 3, z_stack=True))
+    with pytest.raises(ValueError, match="more than one 'DAPI' file per plane"):
+        find_stain_planes(d, "DAPI", ".decon.tif")
+    with pytest.raises(ValueError, match="more than one"):
+        find_stain_planes(d, "DAPI", "_z3.decon.tif")
+
+
 def test_windowed_read_matches_a_full_read(mosaic_dir):
     """The whole point of the lazy reader: identical pixels, without loading the
     64.5 GB a real z-stack would need."""
@@ -1062,6 +1133,36 @@ def test_gpu_pool_propagates_errors_without_hanging(tmp_path):
                   poly_tile_size=64, poly_tile_overlap=16,
                   n_prep=2, n_post=2, n_gpu_threads=3)
 
+
+def test_gpu_pool_error_with_full_queue_raises(tmp_path):
+    """A GPU-stage failure after prep has filled eval_q must raise, not hang
+    (the stop-marker put used to block forever on the full queue)."""
+    import threading
+    import time
+
+    images_dir, shape = _many_tile_mosaic(tmp_path)
+    planes = find_stain_planes(images_dir, "DAPI")
+    plan = plan_grid(shape, tile=128, overlap=32, mask=None)
+
+    def slow_fail(img):
+        time.sleep(1.0)                           # prep fills eval_q meanwhile
+        raise RuntimeError("CUDA out of memory")
+
+    result = {}
+
+    def call():
+        try:
+            run_tiled(plan, {"DAPI": planes}, slow_fail, scale=1,
+                      poly_tile_size=64, poly_tile_overlap=16,
+                      n_prep=2, n_post=2, n_gpu_threads=3)
+        except RuntimeError as exc:
+            result["err"] = exc
+
+    th = threading.Thread(target=call, daemon=True)  # daemon: a hang fails the test, not the suite
+    th.start()
+    th.join(timeout=60)
+    assert not th.is_alive(), "run_tiled hung after a GPU-stage failure"
+    assert "tiled segmentation failed" in str(result.get("err"))
 
 # ---------------------------------------------------------------------------
 # Golden master for utilities/tiling.py

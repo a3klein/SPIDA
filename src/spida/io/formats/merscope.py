@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from spida.io.images import probe_mosaic_shape
+from spida.io.schema.decon import SUFFIX as DECON_SUFFIX, Z_STACK_TAG
 
 logger = logging.getLogger(__package__)
 
@@ -59,25 +60,40 @@ def find_stain_planes(
     """
     z-ordered plane paths for one stain.
 
-    Parameters: 
-        images_dir - directory containing the mosaic TIFFs
-        stain - substring to match in the stain name
-        image_ext - file extension of the mosaic TIFFs (default: ".tif")
-    Returns: 
-        list of Path objects for the mosaic TIFFs, sorted in natural order
-    """
-    from natsort import natsorted
+    Matches whole names only: raw ``mosaic_<stain>_z<N>.tif``, or decon (``io/schema/decon``)
+    ``mosaic_<stain>[_z_stack]_z<N>.decon.tif``. The stain must match exactly (DAPI does not pick up
+    DAPI2), and the name must end in ``image_ext``: ".tif" selects raw planes only, an ``image_ext``
+    containing ".decon" decon planes only (e.g. "_z3.decon.tif" -> plane 3 alone).
+    Raises if no plane matches, or if a z appears twice (e.g. 2D and z-stack decon names side by side).
 
+    Parameters:
+        images_dir - directory containing the mosaic TIFFs
+        stain - stain name, matched exactly
+        image_ext - required ending of the file name (default: ".tif")
+    Returns:
+        list of Path objects for the mosaic TIFFs, sorted by z
+    """
     directory = Path(images_dir)
-    files = [
-        f for f in directory.glob("*" + image_ext)
-        if "_masks" not in f.name and "_flows" not in f.name and stain in f.name
-    ]
-    if not files:
+    if ".decon" in image_ext:
+        pat = re.compile(rf"mosaic_{re.escape(stain)}(?:_{Z_STACK_TAG})?_z(\d+){re.escape(DECON_SUFFIX)}")
+    else:
+        pat = re.compile(rf"mosaic_{re.escape(stain)}_z(\d+)\.tif")
+    by_z: dict[int, list[Path]] = {}
+    for f in directory.iterdir():
+        m = pat.fullmatch(f.name)
+        if m and f.name.endswith(image_ext):
+            by_z.setdefault(int(m[1]), []).append(f)
+    if not by_z:
+        hint = ""
+        if ".decon" not in image_ext and any(directory.glob(f"mosaic_{stain}_*{DECON_SUFFIX}")):
+            hint = f" (it holds deconvolved planes: pass image_ext={DECON_SUFFIX!r})"
         raise ValueError(
-            f"no planes for stain {stain!r} with extension {image_ext!r} in {directory}"
+            f"no planes for stain {stain!r} with extension {image_ext!r} in {directory}{hint}"
         )
-    return list(natsorted(files))
+    dup = {z: sorted(p.name for p in fs) for z, fs in by_z.items() if len(fs) > 1}
+    if dup:
+        raise ValueError(f"{directory}: more than one {stain!r} file per plane: {dup}")
+    return [by_z[z][0] for z in sorted(by_z)]
 
 
 def raw_mosaic_shape(

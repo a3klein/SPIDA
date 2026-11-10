@@ -555,6 +555,16 @@ def run_tiled(
         errors.append(exc)
         stop.set()
 
+    def _put(q: queue.Queue, item) -> bool:
+        # Block while full, but give up once stop is set: the consumers may be gone.
+        while not stop.is_set():
+            try:
+                q.put(item, timeout=0.5)
+                return True
+            except queue.Full:
+                continue
+        return False
+
     def prep_worker() -> None:
         try:
             while not stop.is_set():
@@ -567,12 +577,7 @@ def run_tiled(
                     window=(tile.y0, tile.y1, tile.x0, tile.x1),
                     downscale=scale, strip_rows=strip_rows, mask=mask,
                 )
-                while not stop.is_set():
-                    try:
-                        eval_q.put((tile, img), timeout=0.5)
-                        break
-                    except queue.Full:
-                        continue
+                _put(eval_q, (tile, img))
         except BaseException as exc:                  # noqa: BLE001
             _record(exc)
 
@@ -651,12 +656,7 @@ def run_tiled(
                     100 * snapshot["wait_s"] / busy if busy else 0,
                     100 * snapshot["block_s"] / busy if busy else 0,
                 )
-                while not stop.is_set():
-                    try:
-                        post_q.put((tile, masks), timeout=0.5)
-                        break
-                    except queue.Full:
-                        continue
+                _put(post_q, (tile, masks))
                 with progress_lock:
                     stage_s["block_s"] += time.perf_counter() - t_block
         except BaseException as exc:                  # noqa: BLE001
@@ -677,14 +677,14 @@ def run_tiled(
         for th in preps:
             th.join()
         for _ in gpus:
-            eval_q.put(_SENTINEL)
+            _put(eval_q, _SENTINEL)  # unbounded put hung here when a gpu thread failed
         for th in gpus:
             th.join()
     except BaseException as exc:                      # noqa: BLE001
         _record(exc)
     finally:
         for _ in posts:
-            post_q.put(_SENTINEL)
+            _put(post_q, _SENTINEL)
         for th in posts:
             th.join(timeout=120)
         stop.set()

@@ -73,7 +73,7 @@ def generate_load_qc_figs(
     """
     Generate QC figures for a given experiment and region, and save them to the appropriate directory for the SPIDA website.
     """
-    from spida.P.transcript_qc import _obs_to_grid_geodf
+    from spida.P.transcript_qc import _hex_table_key, _obs_to_grid_geodf
     from spida.pl.site_figs import (plot_load_images, plot_decon_images, plot_tz_qc,
                                     plot_tz_hex_qc, plot_tissue_mask)
 
@@ -94,7 +94,9 @@ def generate_load_qc_figs(
     points_key = keys[3]
     decon_image_key = "decon_image"
     tz_qc_key = "transcript_qc_shapes"
-    tz_qc_table_key = "adata_hex_s30.0_o0.0_clustered"
+    tz_qc_table_key = f"{_hex_table_key(30, 0)}_clustered"
+    if tz_qc_table_key not in sdata.tables and "adata_hex_s30.0_o0.0_clustered" in sdata.tables:
+        tz_qc_table_key = "adata_hex_s30.0_o0.0_clustered"  # stores written before the key became int
     tissue_mask_key = "qc_mask"
 
     # Both inputs are optional.

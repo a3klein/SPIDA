@@ -43,7 +43,7 @@ pixi run --frozen -e preprocessing \
     cellpose \
     --exp {EXPERIMENT} \
     --reg {REGION} \
-    --prefix_name cellpose_cell \
+    --prefix_name {CELLPOSE_PREFIX} \
     {OVERWRITE_ARG}
 
 echo -e "\nLoading cellpose segmentation - {REG_N} - {EXP_N}\n"
@@ -53,7 +53,7 @@ pixi run --frozen -e preprocessing \
     --exp {EXPERIMENT} \
     --reg {REGION} \
     --type cellpose \
-    --prefix_name cellpose_cell \
+    --prefix_name {CELLPOSE_PREFIX} \
     --transcript-qc \
     {OVERWRITE_ARG}
 
@@ -61,7 +61,7 @@ echo -e "\nFiltering cells - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
     python -m spida.P.cli --config {CONFIG_PATH} \
     filter-cells-region \
-    cellpose_cell \
+    {CELLPOSE_PREFIX} \
     --exp {EXPERIMENT} \
     --reg {REGION} \
     --cutoffs_path {CUTOFFS_PATH} \
@@ -72,7 +72,7 @@ echo -e "\nSetting up AnnData - {REG_N} - {EXP_N}\n"
 pixi run --frozen -e preprocessing \
     python -m spida.P.cli --config {CONFIG_PATH} \
     setup-adata-region \
-    cellpose_cell \
+    {CELLPOSE_PREFIX} \
     --exp {EXPERIMENT} \
     --reg {REGION} \
     --suffix _filt \
@@ -83,7 +83,7 @@ echo -e "\nGenerating segmentation QC figures\n"
 pixi run --frozen -e preprocessing \
     python -m spida.site --config {CONFIG_PATH} \
     generate-seg-qc-figs \
-    cellpose_cell \
+    {CELLPOSE_PREFIX} \
     --exp {EXPERIMENT} \
     --reg {REGION} \
     --brain-region {BR} \

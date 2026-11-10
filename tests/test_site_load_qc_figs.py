@@ -8,7 +8,8 @@ import click
 import pytest
 
 SHAPES_KEY = "transcript_qc_shapes"
-HEX_KEY = "adata_hex_s30.0_o0.0_clustered"
+HEX_KEY = "adata_hex_s30_o0_clustered"
+LEGACY_HEX_KEY = "adata_hex_s30.0_o0.0_clustered"  # stores written before the key became int
 MASK_KEY = "qc_mask"
 
 
@@ -32,9 +33,10 @@ class _FakeSData(dict):
         ((), (HEX_KEY,), False, True, False),
         ((), (), False, False, False),
         ((MASK_KEY,), (), False, False, True),
+        ((), (LEGACY_HEX_KEY,), False, True, False),
     ],
     ids=["everything", "no_mask", "no_cluster_hexes", "no_transcript_qc",
-         "neither", "mask_only"],
+         "neither", "mask_only", "legacy_hex_key"],
 )
 def test_optional_inputs_are_skipped_not_fatal(shapes, tables, want_tz, want_hex, want_mask):
     from spida.site import generate_load_qc_figs
