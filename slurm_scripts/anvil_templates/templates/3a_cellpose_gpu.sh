@@ -52,7 +52,7 @@ SEG_EXTRA_ARGS="{SEG_EXTRA_ARGS}"
 
 echo -e "\nRunning Cellpose segmentation (backend only) on region {REGION} of experiment {EXPERIMENT}\n"
 echo "seg_mode={SEG_MODE}  model={CELLPOSE_MODEL}  extra: ${{SEG_EXTRA_ARGS:-<none>}}"
-# Raw boundaries land in the segmentation store under {EXPERIMENT}/{REGION}/cellpose_cell.
+# Raw boundaries land in the segmentation store under {EXPERIMENT}/{REGION}/{CELLPOSE_PREFIX}.
 # Stain images come from the deconvolved planes; tissue mask and transform from images/.
 pixi run --frozen -e cellpose \
     python -m spida.S.cli --config {CONFIG_PATH} \
@@ -60,7 +60,7 @@ pixi run --frozen -e cellpose \
     cellpose \
     --exp {EXPERIMENT} \
     --reg {REGION} \
-    --prefix_name cellpose_cell \
+    --prefix_name {CELLPOSE_PREFIX} \
     --image_dir {DECON_DIR} \
     {TISSUE_MASK_ARG}{OVERWRITE_ARG} \
     --seg_mode={SEG_MODE} \

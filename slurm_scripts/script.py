@@ -60,6 +60,8 @@ def _parse_list(arg: str) -> list:
 @click.option("--decon_iter", type=int, default=100, show_default=True, help="deconwolf Richardson-Lucy iterations.")
 @click.option("--decon_tilesize", type=int, default=1000, show_default=True, help="deconwolf's internal tile size (0 = untiled).")
 @click.option("--decon_psigma", type=float, default=None, help="deconwolf --psigma (needs --decon_tilesize 0).")
+@click.option("--cellpose_prefix", default="cellpose_cell", show_default=True, help="Segmentation name for the cellpose run (3a/3b; proseg's prior). Distinct names let two chains of one region coexist, e.g. cellpose_cell_2d / cellpose_cell_3d (submit the second with STORE_JOBS).")
+@click.option("--proseg_prefix", default="proseg_cell", show_default=True, help="Segmentation name for the proseg run (step 4).")
 @click.option("--seg_mode", type=click.Choice(["2d", "3d_stitched", "3d_true"], case_sensitive=False), default="3d_stitched", show_default=True)
 @click.option("--cellpose_model", type=click.Choice(["cpsam", "cpsam_v2", "cpdino", "cpdino-vitb"], case_sensitive=False), default="cpsam", show_default=True)
 @click.option("--gpu_tile_size", default="auto", show_default=True, help="'auto', an int, '<y>x<x>', or 'none' (whole region in one model.eval).")
@@ -80,7 +82,7 @@ def _parse_list(arg: str) -> list:
 def config_templates(
     experiment_name, region_name, lab, data_path, brain_region, naming_map, config_path, output_dir, log_dir, template_dir,
     spida_root, exp_n, reg_n, steps, proseg_cutoffs_path, overwrite, tissue_raster, force_2d_segmentation,
-    decon_iter, decon_tilesize, decon_psigma, seg_mode, cellpose_model, gpu_tile_size, gpu_tile_overlap,
+    decon_iter, decon_tilesize, decon_psigma, cellpose_prefix, proseg_prefix, seg_mode, cellpose_model, gpu_tile_size, gpu_tile_overlap,
     use_tissue_mask, tissue_rho_min, mmc_reference, mmc_store_path, mmc_args,
     start_time, decon_time, cellpose_gpu_time, cellpose_cpu_time, proseg_time, mmc_time,
 ):
@@ -162,6 +164,7 @@ def config_templates(
             STEP_1=flags["1"], STEP_2=flags["2"], STEP_3=flags["3"], STEP_4=flags["4"], STEP_5=flags["5"],
             OVERWRITE_ARG="--overwrite" if overwrite else "", TISSUE_RASTER_ARG="" if tissue_raster else "--no_raster ",
             TISSUE_MASK_ARG=f"--tissue_mask_path {region_out}/images/tissue_mask.tif " if use_tissue_mask else "",
+            CELLPOSE_PREFIX=cellpose_prefix, PROSEG_PREFIX=proseg_prefix,
             TISSUE_RHO_MIN=tissue_rho_min, IMAGE_EXT=image_ext, SEG_MODE=seg_mode, CELLPOSE_MODEL=cellpose_model,
             SEG_EXTRA_ARGS=seg_extra_args, DECON_FILTER_ARGS=decon_filter_args,
             MMC_REFERENCE=mmc_reference or "", MMC_STORE_PATH=mmc_store_path or "", MMC_ARGS=mmc_args,
