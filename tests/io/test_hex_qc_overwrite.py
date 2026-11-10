@@ -21,7 +21,7 @@ from spida.io.layout import Dataset, element_keys
 from spida._constants import POINTS_KEY
 
 PTS = element_keys("default", None)[POINTS_KEY]
-HEX = "adata_hex_s30.0_o0.0"
+HEX = "adata_hex_s30_o0"
 CLUSTERED = f"{HEX}_clustered"
 CL_KW = dict(min_cells=1, min_genes=5, n_top_genes=10, pca_comps=5, leiden_resolution=0.5)
 
