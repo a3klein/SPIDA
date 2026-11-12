@@ -638,7 +638,7 @@ def annotate_adata(
             palette_path = palette_path,
             pdf_path = plot_path,
             plot_filt = filter_annot,
-            filt_column = "total_filt",
+            filt_column = "total_filt" if filter_annot else None,
             score_ext = "transfer_score",
             umap_col = "base_umap",
             single_clust_plot_thr = 40,
