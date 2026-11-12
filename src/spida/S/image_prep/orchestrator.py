@@ -147,12 +147,12 @@ def transform_image(
 
     if figures_dir is not None:
         image_save_dir = Path(figures_dir)
-    else:  # legacy: <image_store>/<exp>/default/<reg>
+    else: 
         if image_store is None:
             image_store = Path(output_dir)
         exp_name = Path(data_org_path).parents[1].name
         reg_name = Path(image_path).parents[0].name
-        image_save_dir = Path(image_store) / exp_name / "default" / reg_name
+        image_save_dir = Path(image_store) / exp_name / reg_name / "default"
     image_save_dir.mkdir(parents=True, exist_ok=True)
 
     if isinstance(image_path, str):
