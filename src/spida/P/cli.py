@@ -14,6 +14,14 @@ from spida.config import ConfigDefaultGroup
 from spida.io.options import dataset_options, dataset_overrides, dataset_from_options, run_config
 from spida.utilities.script_utils import parse_click_kwargs
 
+# warning to be removed on next release.
+def _warn_seg_fam(seg_fam):
+    if seg_fam is not None:
+        logger.warning(
+            "--seg_fam is ignored and will become an error in a future release: column names now come from "
+            "SPIDA's segmentation processing."
+        )
+
 
 def _dataset(ctx, exp, reg, zarr_path, raw_path, seg_path, figures_path, **roots):
     return dataset_from_options(run_config(ctx, **roots), exp, reg, zarr_path, raw_path, seg_path, figures_path)
@@ -83,7 +91,7 @@ def test_command(
     )
 @click.argument("prefix_name", type=str)
 @dataset_options
-@click.option("--seg_fam", type=str, default=None, help="Which preset of column names to use when running filtering (default is None which uses vpt outputs)")
+@click.option("--seg_fam", type=str, default=None, hidden=True, help="Deprecated, tables carry canonical column names")
 @click.option("--cutoffs_path", type=click.Path(exists=True, file_okay=True), default=None, help="QC cutoffs JSON (default: CUTOFFS_PATH in the config)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to save the plot")
@@ -111,9 +119,10 @@ def filter_cells_region(
         logger.info(f"Parsed {key} = {value};  {type(value)}")
 
     cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store, cutoffs_path=cutoffs_path)
+    _warn_seg_fam(seg_fam)
     dataset = dataset_from_options(cfg, exp, reg, zarr_path, raw_path, seg_path, figures_path)
     from spida.P.main import filter_cells_region as func
-    func(dataset, prefix_name, seg_fam=seg_fam, cutoffs_path=cfg.cutoffs_path,
+    func(dataset, prefix_name, cutoffs_path=cfg.cutoffs_path,
          plot=plot, image_path=image_path, overwrite=overwrite)
 
 @cli.command(
@@ -124,7 +133,7 @@ def filter_cells_region(
 )
 @click.argument("prefix_name", type=str)
 @click.option("--exp", "exp_name", required=True, type=str, help="Experiment name.")
-@click.option("--seg_fam", type=str, default=None, help="Which preset of column names to use when running filtering (default is None which uses vpt outputs)")
+@click.option("--seg_fam", type=str, default=None, hidden=True, help="Deprecated, tables carry canonical column names")
 @click.option("--cutoffs_path", type=click.Path(exists=True), default=None, help="QC cutoffs JSON (default: CUTOFFS_PATH in the config)")
 @click.option("--plot", is_flag=True, help="Whether to plot the results")
 @click.option("--overwrite", is_flag=True, default=False, help="Re-filter regions already filtered; without it they are skipped (default: False)")
@@ -146,8 +155,9 @@ def filter_cells_all(
     Filter cells of the PREFIX_NAME segmentation for every region of an experiment.
     """
     cfg = run_config(ctx, zarr_store=zarr_store, image_store=image_store, cutoffs_path=cutoffs_path)
+    _warn_seg_fam(seg_fam)
     from spida.P.main import filter_cells_all as func
-    func(cfg, exp_name, prefix_name, seg_fam=seg_fam, cutoffs_path=cfg.cutoffs_path, plot=plot, overwrite=overwrite)
+    func(cfg, exp_name, prefix_name, cutoffs_path=cfg.cutoffs_path, plot=plot, overwrite=overwrite)
 
 @cli.command(
     name="plot-filtering-region",

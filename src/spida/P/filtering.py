@@ -11,7 +11,6 @@ from spida._constants import (
     CELL_X,
     CELL_Y,
     CELL_VOLUME,
-    PROSEG_PRESET,
     DEFAULT_PRESET,
     DAPI_COL,
 )  # type: ignore
@@ -254,18 +253,6 @@ class Filter:
 
         return df_feature
 
-
-_SEG_FAM_MAP: dict[str, str] = {
-    "default": "default",
-    "proseg": "proseg",
-    "cellpose_nuclei": "default",
-    "cellposeSAM": "default",
-    "proseg_nuclei": "proseg",
-    "proseg_SAM": "proseg",
-    "proseg_v3": "proseg",
-    "mesmer": "default",
-}
-
 # Columns written by both run_filtering and compute_qc_metrics
 _QC_METRIC_COLS: tuple[str, ...] = (
     "nCount_RNA",
@@ -294,7 +281,6 @@ _CUTOFF_NULL_DEFAULTS: dict[str, None] = {
 def compute_qc_metrics(
     adata: ad.AnnData,
     meta: RegionMeta,
-    seg_fam: str | None = None,
 ) -> ad.AnnData:
     """
     Compute per-cell QC metrics from adata.X and merge them into adata.obs.
@@ -310,17 +296,8 @@ def compute_qc_metrics(
         Must contain adata.obsm["blank"] for blank-gene counting.
     meta :
         Experiment / region / segmentation / donor names (compound index, metadata columns).
-    seg_fam :
-        Preset family override ("default" or "proseg").  Inferred from
-        meta.segmentation via _SEG_FAM_MAP when None.
     """
-    if seg_fam is None:
-        seg_fam = _SEG_FAM_MAP.get(meta.segmentation, "default")
-    PRESET = PROSEG_PRESET if seg_fam == "proseg" else DEFAULT_PRESET
-
-    filter_instance = Filter(
-        adata, meta, PRESET=PRESET
-    )
+    filter_instance = Filter(adata, meta)
     features = filter_instance.get_features()
 
     try:
@@ -351,7 +328,6 @@ def compute_qc_metrics(
 def ensure_qc_metrics(
     adata: ad.AnnData,
     meta: RegionMeta,
-    seg_fam: str | None = None,
 ) -> ad.AnnData:
     """
     Ensure per-cell QC metrics exist in adata.obs and that adata.uns["cutoffs"]
@@ -366,7 +342,7 @@ def ensure_qc_metrics(
     run_filtering().
     """
     if any(col not in adata.obs.columns for col in _QC_METRIC_COLS):
-        adata = compute_qc_metrics(adata, meta, seg_fam=seg_fam)
+        adata = compute_qc_metrics(adata, meta)
 
     cutoffs = dict(adata.uns.get("cutoffs", {}))
     for key in _CUTOFF_NULL_DEFAULTS:
@@ -382,7 +358,6 @@ def ensure_qc_metrics(
 def run_filtering(
     adata: ad.AnnData,
     meta: RegionMeta,
-    seg_fam:str=None,
     cutoffs_path: str | None = None,
 ):
     """
@@ -394,23 +369,6 @@ def run_filtering(
     meta (RegionMeta): Experiment / region / segmentation / donor names.
     """
 
-    ## Defining the filtering params
-    seg_fam_map = {
-        "default": "default",
-        "proseg": "proseg",
-        "cellpose_nuclei": "default",
-        "cellposeSAM": "default",
-        "proseg_nuclei": "proseg",
-        "proseg_SAM": "proseg",
-        "proseg_v3" : "proseg",
-        "mesmer": "default",
-    }
-    if seg_fam is None:
-        seg_fam = seg_fam_map.get(meta.segmentation, "default")
-    PRESET = (
-        PROSEG_PRESET if seg_fam == "proseg" else DEFAULT_PRESET
-    )  # PRESET for column names
-
     # Cutoffs for the filtering
     if cutoffs_path is None:
         raise ValueError("no cutoffs file; pass --cutoffs_path or set CUTOFFS_PATH in the config")
@@ -419,9 +377,7 @@ def run_filtering(
     adata.uns["cutoffs"] = cutoffs  # Store cutoffs in the AnnData object for reference
 
     # Initialize the filter class
-    filter_instance = Filter(
-        adata, meta, PRESET=PRESET
-    )
+    filter_instance = Filter(adata, meta)
 
     # Perform the filtering
     filtered_features = filter_instance.filter_cells(cutoffs)

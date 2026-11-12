@@ -43,7 +43,6 @@ def _skip_if_written(reg_name, what, **check) -> bool:
 def filter_cells_region(
     dataset: Dataset,
     prefix_name: str,
-    seg_fam:str = None,
     cutoffs_path: Path = None,
     plot: bool = False,
     image_path: Path = None,
@@ -54,7 +53,6 @@ def filter_cells_region(
     Parameters:
     dataset (Dataset): The region's locations (zarr store, figures dir) and names.
     prefix_name (str): Prefix for the keys in the spatialdata object.
-    seg_fam (str, optional): Which preset of column names to use when running filtering (default is None which uses a constant map)
     cutoffs_path (Path, optional): Path to the cutoffs JSON file.
     plot (bool, optional): Whether to plot the results. Defaults to False.
     overwrite (bool, optional): Re-filter a table that was already filtered. Defaults to False.
@@ -72,7 +70,6 @@ def filter_cells_region(
     adata = run_filtering(
         adata=adata,
         meta=dataset.meta(prefix_name),
-        seg_fam=seg_fam,
         cutoffs_path=cutoffs_path
     )
     # backup the AnnData object
@@ -117,7 +114,6 @@ def filter_cells_all(
     exp_name: str,
     prefix_name: str,
     cutoffs_path: Path = None,
-    seg_fam:str = None,
     plot: bool = False,
     image_path: Path = None,
     overwrite: bool = False,
@@ -141,7 +137,6 @@ def filter_cells_all(
         filter_cells_region(
             dataset,
             prefix_name,
-            seg_fam=seg_fam,
             cutoffs_path=cutoffs_path,
             plot=plot,
             image_path=image_path,

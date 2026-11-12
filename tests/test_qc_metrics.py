@@ -171,15 +171,6 @@ class TestComputeQcMetrics:
         result = compute_qc_metrics(vpt_adata, RegionMeta(EXP, REG, PREFIX))
         assert len(result.obs) == len(vpt_adata.obs)
 
-    def test_seg_fam_proseg_uses_proseg_preset(self, vpt_adata):
-        # PROSEG_PRESET expects different column names (cell, centroid_x, …)
-        # so passing seg_fam="proseg" to a VPT table should raise during
-        # metadata loading (strict rename fails) or return without the rename.
-        # The important thing is it does NOT crash on the seg_fam dispatch itself.
-        # We just verify the seg_fam kwarg is accepted.
-        result = compute_qc_metrics(vpt_adata, RegionMeta(EXP, REG, "proseg_cell"), seg_fam="default")
-        assert "nCount_RNA" in result.obs.columns
-
 
 # ---------------------------------------------------------------------------
 # ensure_qc_metrics

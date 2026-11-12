@@ -117,3 +117,14 @@ def test_filter_cells_all_skips_filtered(monkeypatch, cfg, tmp_path):
     res = CliRunner().invoke(p_cli.cli, ["--config", str(cfg), "filter-cells-all", "cellpose_cell", "--exp", "E"])
     assert res.exit_code == 0, res.output
     assert seen == [("region_2", False)]
+
+
+@pytest.mark.parametrize("cmd", [["filter-cells-region", "cellpose_cell", "--exp", "E", "--reg", "region_1"],
+                                 ["filter-cells-all", "cellpose_cell", "--exp", "E"]])
+def test_seg_fam_accepted_ignored_and_warned(monkeypatch, cfg, tmp_path, caplog, cmd):
+    # --seg_fam is deprecated: still parses (old job scripts), never reaches P.main, logs a warning
+    (tmp_path / "z" / "E" / "region_1").mkdir(parents=True)
+    res, calls = _run(monkeypatch, "spida.P.main." + cmd[0].replace("-", "_"), cfg, *cmd, "--seg_fam", "proseg")
+    assert res.exit_code == 0, res.output
+    assert calls and all("seg_fam" not in k for _, k in calls)
+    assert "--seg_fam is ignored" in caplog.text and "process-custom-segmentation" in caplog.text
