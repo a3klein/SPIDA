@@ -31,15 +31,21 @@ set -eo pipefail  # no -u: Lmod module functions read unset variables
 export PATH="/home/x-aklein2/.pixi/bin:$PATH"
 export SLURM_TMPDIR="${{SLURM_TMPDIR:-${{TMPDIR:-/tmp}}}}"
 export PIXI_HOME="${{SLURM_TMPDIR}}/pixi_home_${{SLURM_JOB_ID:-$$}}"
-export PIXI_CACHE_DIR="/anvil/projects/x-mcb130189/aklein/.cache/rattler/cache"
-export RATTLER_CACHE_DIR="/anvil/projects/x-mcb130189/aklein/.cache/rattler/cache"
+export PIXI_CACHE_DIR="${{SLURM_TMPDIR}}/pixi_cache_${{SLURM_JOB_ID:-$$}}"   # per-job, node-local: no sharing between jobs
+export RATTLER_CACHE_DIR="$PIXI_CACHE_DIR"
 mkdir -p "$PIXI_HOME" "$PIXI_CACHE_DIR" "$RATTLER_CACHE_DIR"
 
 # Run from a copy of SPIDA: edits to the source tree cannot reach a running job.
 WORKDIR="${{SLURM_TMPDIR}}/spida_${{SLURM_JOB_ID:-$$}}"
+# copy + env + cache are ~30 GB; the node only purges /tmp at the next other user's job start
+trap 'cd /; rm -rf "$WORKDIR" "$PIXI_HOME" "$PIXI_CACHE_DIR"' EXIT
 rsync -a --delete --exclude '.pixi/envs' "{SPIDA_ROOT}/" "$WORKDIR/"
 cd "$WORKDIR"
-pixi install --frozen -e preprocessing-gpu
+# download into the local cache; if that fails (e.g. no network), retry from the shared project cache
+pixi install --frozen -e preprocessing-gpu || \
+    PIXI_CACHE_DIR=/anvil/projects/x-mcb130189/aklein/.cache/rattler/cache \
+    RATTLER_CACHE_DIR=/anvil/projects/x-mcb130189/aklein/.cache/rattler/cache \
+    pixi install --frozen -e preprocessing-gpu
 
 # --- Compute ---
 # Deconvolved planes go to {DECON_DIR} (next to the raw images/, which stay untouched).
