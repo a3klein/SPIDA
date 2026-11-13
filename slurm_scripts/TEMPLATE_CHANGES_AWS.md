@@ -94,3 +94,10 @@ copied libtorch headers at ~90 KB/s. The `grep` guard also matched `preprocessin
 `preprocessing-gpu`, and an install without `--frozen` can rewrite the node's `pixi.lock`.
 
 **Anvil:** check where its pixi cache lives. A shared filesystem cache has the same lock.
+
+### 10. Decon tile selection by tissue mask (mirrors Anvil `44902bf`)
+`DECON_MASK_ARG` in 2a/2b (`--select_tiles tissue_mask --mask_path .../images/tissue_mask.tif`, or
+`--select_tiles otsu` under `--no_tissue_mask`); `chain.sh` makes 2a/2b wait on step 1. AWS-only
+extra: decon's raw-image sync also includes `tissue_mask.tif`, since the node starts empty.
+
+**Anvil:** already done in `44902bf`; nothing to port.

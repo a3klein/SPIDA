@@ -3,10 +3,12 @@
 # DESCRIPTION: Submit the processing chain for experiment {EXPERIMENT}, region {REGION}.
 #
 # Dependency graph (edges only apply when both ends are enabled):
-#   1  ingest / tissue mask ─┬─> 3a cellpose GPU ─> 3b ─> 4 proseg ─> 5 MMC (optional)
-#   2a decon DAPI  ──────────┤
-#   2b decon PolyT ──────────┘
+#   1  ingest / tissue mask ─┬─> 2a decon DAPI  ─┬─> 3a cellpose GPU ─> 3b ─> 4 proseg ─> 5 MMC (optional)
+#                            ├─> 2b decon PolyT ─┤
+#                            └───────────────────┘
 #
+# 2a/2b wait on step 1: decon keeps only the tiles that touch tissue_mask.tif
+# (script_aws.py --no_tissue_mask switches decon back to otsu tile selection).
 # 3a waits on step 1 because that is where tissue_mask.tif is built, which
 # tissue-gated segmentation and --gpu_tile_size=auto both need. 3b waits on
 # step 1 as well, for the zarr store. 4 waits on 3b: proseg starts from
@@ -58,8 +60,9 @@ fi
 
 if [[ $DO_2 == "true" ]]; then
     echo "Step 2: Submitting deconvolution (DAPI + PolyT)..."
-    jid2a=$(sbatch 2_decon_DAPI.sh | awk '{{print $4}}')
-    jid2b=$(sbatch 2_decon_PolyT.sh | awk '{{print $4}}')
+    # decon keeps the tiles that touch tissue_mask.tif, which step 1 builds.
+    jid2a=$(sbatch $(dep_arg "$jid1") 2_decon_DAPI.sh | awk '{{print $4}}')
+    jid2b=$(sbatch $(dep_arg "$jid1") 2_decon_PolyT.sh | awk '{{print $4}}')
     echo "  DAPI job ID: $jid2a  |  PolyT job ID: $jid2b"
 else
     echo "Step 2: Skipping."

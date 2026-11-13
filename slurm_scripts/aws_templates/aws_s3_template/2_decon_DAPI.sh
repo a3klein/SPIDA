@@ -57,7 +57,7 @@ mkdir -p {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/ {ROOT_DIR}/{EXPERIMENT}/out/ \
     --exclude "region_*" --no-progress
 aws s3 sync s3://{S3_BUCKET}/spatial_data/{EXPERIMENT}/out/{REGION}/images/ {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images/ \
-    --exclude "*" --include "mosaic_DAPI_z?.tif" --no-progress
+    --exclude "*" --include "mosaic_DAPI_z?.tif" --include "tissue_mask.tif" --no-progress
 
 tree -L 5 {ROOT_DIR}/{EXPERIMENT}
 
@@ -90,7 +90,7 @@ pixi run --frozen -e preprocessing-gpu \
     --overlap 400 \
     --z_step 1.5 \
     --transform deconwolf \
-    {DECON_FILTER_ARGS}\
+    {DECON_MASK_ARG}{DECON_FILTER_ARGS}\
     --gpu \
     --plot_thr
 

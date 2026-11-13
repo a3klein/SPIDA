@@ -320,9 +320,9 @@ def _parse_list(arg: str) -> list:
     "use_tissue_mask",
     default=True,
     show_default=True,
-    help="Gate step 3a to the step-1 tissue mask, passed as an explicit path so a "
-         "missing mask fails the job instead of silently segmenting the full extent. "
-         "--no_tissue_mask segments ungated (and is incompatible with --gpu_tile_size=auto).",
+    help="Gate decon tile selection (step 2) and step 3a to the step-1 tissue mask, passed as an "
+         "explicit path so a missing mask fails the job instead of silently using the full extent. "
+         "--no_tissue_mask: decon uses otsu, 3a segments ungated (incompatible with --gpu_tile_size=auto).",
 )
 @click.option(
     "--tissue_rho_min",
@@ -650,6 +650,10 @@ def config_templates_aws(
                     SEG_EXTRA_ARGS=seg_extra_args,
                     TISSUE_MASK_ARG=tissue_mask_arg,
                     DECON_FILTER_ARGS=decon_filter_args,
+                    DECON_MASK_ARG=(
+                        f"--select_tiles tissue_mask --mask_path {ROOT_DIR}/{experiment_name}/out/"
+                        f"{current_region}/images/tissue_mask.tif "
+                        if use_tissue_mask else "--select_tiles otsu "),
                     TISSUE_RHO_MIN=tissue_rho_min,
                     GPU_PARTITION=gpu_partition,
                     GPU_CONSTRAINT=gpu_constraint,
