@@ -65,6 +65,6 @@ pixi run --frozen -e preprocessing-gpu \
     --overlap 400 \
     --z_step 1.5 \
     --transform deconwolf \
-    {DECON_FILTER_ARGS}\
+    {DECON_MASK_ARG}{DECON_FILTER_ARGS}\
     --gpu \
     --plot_thr

@@ -66,7 +66,7 @@ def _parse_list(arg: str) -> list:
 @click.option("--cellpose_model", type=click.Choice(["cpsam", "cpsam_v2", "cpdino", "cpdino-vitb"], case_sensitive=False), default="cpsam", show_default=True)
 @click.option("--gpu_tile_size", default="auto", show_default=True, help="'auto', an int, '<y>x<x>', or 'none' (whole region in one model.eval).")
 @click.option("--gpu_tile_overlap", type=int, default=500, show_default=True)
-@click.option("--tissue_mask/--no_tissue_mask", "use_tissue_mask", default=True, show_default=True, help="Gate step 3a to tissue_mask.tif (explicit path: a missing mask fails the job).")
+@click.option("--tissue_mask/--no_tissue_mask", "use_tissue_mask", default=True, show_default=True, help="Gate decon tile selection (step 2) and step 3a to tissue_mask.tif (explicit path: a missing mask fails the job); --no_tissue_mask: decon uses otsu.")
 @click.option("--tissue_rho_min", type=float, default=5.0, show_default=True)
 @click.option("--mmc_reference", default=None, help="MapMyCells reference; enables step 5.")
 @click.option("--mmc_store_path", default=None, help="MapMyCells reference store (default: MMC_DIR in the config).")
@@ -167,6 +167,8 @@ def config_templates(
             CELLPOSE_PREFIX=cellpose_prefix, PROSEG_PREFIX=proseg_prefix,
             TISSUE_RHO_MIN=tissue_rho_min, IMAGE_EXT=image_ext, SEG_MODE=seg_mode, CELLPOSE_MODEL=cellpose_model,
             SEG_EXTRA_ARGS=seg_extra_args, DECON_FILTER_ARGS=decon_filter_args,
+            DECON_MASK_ARG=(f"--select_tiles tissue_mask --mask_path {region_out}/images/tissue_mask.tif "
+                            if use_tissue_mask else "--select_tiles otsu "),
             MMC_REFERENCE=mmc_reference or "", MMC_STORE_PATH=mmc_store_path or "", MMC_ARGS=mmc_args,
             T_START=start_time, T_DECON=decon_time, T_CELLPOSE_GPU=cellpose_gpu_time, T_CELLPOSE_CPU=cellpose_cpu_time,
             T_PROSEG=proseg_time, T_MMC=mmc_time,
