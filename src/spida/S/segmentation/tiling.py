@@ -602,13 +602,15 @@ def run_tiled(
                     )
                     gdf = tile_polygons_to_mosaic(gdf, tile, scale)
                     stitcher.add_tile((tile.gi, tile.gj), gdf)
+                    with progress_lock:
+                        progress["stitched"] += 1
                 finally:
                     post_q.task_done()
         except BaseException as exc:                  # noqa: BLE001
             _record(exc)
 
     total = len(tiles)
-    progress = {"done": 0}
+    progress = {"done": 0, "stitched": 0}
     progress_lock = threading.Lock()
 
     # Where the GPU stage's wall-clock actually goes.
@@ -685,7 +687,11 @@ def run_tiled(
     finally:
         for _ in posts:
             _put(post_q, _SENTINEL)
+        # No fixed timeout: a big 3D tile's polygonization can outlast it, and the
+        # tile was then silently dropped from the stitch. A failure sets stop instead.
         for th in posts:
+            while th.is_alive() and not errors:
+                th.join(timeout=5)
             th.join(timeout=120)
         stop.set()
         for th in preps:
@@ -702,6 +708,11 @@ def run_tiled(
     if done != total:
         raise RuntimeError(
             f"tiled segmentation ended early: {done}/{total} tiles processed"
+        )
+    if progress["stitched"] != total:
+        raise RuntimeError(
+            f"tiled segmentation lost tiles: {progress['stitched']}/{total} stitched "
+            f"({done} segmented)"
         )
 
     # Everything except the final relabel + fragment collapse already happened
