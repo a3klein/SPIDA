@@ -292,7 +292,9 @@ def process_segmentation_region(
     if "derive_entity_metadata" in spec.needs:
         meta = derive_entity_metadata(cir_boundaries, seg_region / SCHEMA_CELL_BY_GENE)
     else:
+        from spida.io.formats.segmenters import METADATA_TO_SCHEMA
         meta = spec.native_reader("metadata")(seg_region / spec.metadata_file, spec)
+        meta = meta.rename(columns=METADATA_TO_SCHEMA.get(spec.native_format, {}))
 
     # 4. image intensity (always) and merge into cell_metadata
     signals = sum_signals(cir_boundaries, images_dir, m2m,

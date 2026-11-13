@@ -152,6 +152,19 @@ def test_proseg_process_guards_only_what_it_writes(ds, backends, post, monkeypat
     assert SCHEMA_CELL_BY_GENE not in str(e.value)
 
 
+def test_proseg_metadata_written_with_schema_names(ds, backends, post, monkeypatch):
+    # proseg's centroid_x / centroid_y reach cell_metadata.csv as the schema's center_x / center_y
+    _cellpose_prior(ds)
+    seg_main.segment_region("proseg", ds, prefix_name="proseg_cell")
+    native = pd.DataFrame({"cell": [1], "centroid_x": [1.0], "centroid_y": [2.0], "centroid_z": [0.5], "cluster": [3]})
+    monkeypatch.setattr(pd, "read_csv", lambda *a, **k: native.copy())
+    seg_main.process_segmentation_region("proseg", ds, prefix_name="proseg_cell")
+    header = (ds.seg / "proseg_cell" / SCHEMA_CELL_METADATA).read_text().splitlines()[0].split(",")
+    assert {"center_x", "center_y"} <= set(header)
+    assert not {"centroid_x", "centroid_y"} & set(header)
+    assert {"centroid_z", "cluster"} <= set(header)  # no schema equivalent: proseg's name kept
+
+
 def test_vpt_backend_guards_its_own_names(ds, backends, monkeypatch):
     import spida.S.segmentation.vpt as vpt
     ran = []

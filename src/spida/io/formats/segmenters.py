@@ -35,6 +35,11 @@ PROSEG_POLYGON_LAYERS = "cell-polygons-layers.geojson.gz"  # per z-layer
 PROSEG_CELL_METADATA = "cell-metadata.csv.gz"
 PROSEG_V2_COUNTS = "expected-counts.csv.gz"
 PROSEG_V2_TRANSCRIPTS = "transcript-metadata.csv.gz"
+# proseg metadata column -> segmentation schema name; columns without a schema equivalent keep proseg's name
+PROSEG_METADATA_TO_SCHEMA = {"centroid_x": "center_x", "centroid_y": "center_y"}
+
+# native metadata column renames per native_format (applied by process_segmentation_region)
+METADATA_TO_SCHEMA = {"proseg": PROSEG_METADATA_TO_SCHEMA}
 
 def read_proseg_boundaries(
     path: str | Path,

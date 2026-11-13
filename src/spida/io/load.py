@@ -124,7 +124,9 @@ def get_table_from_adata(
     adata = adata[:, ~is_blank].copy()
     adata.obs["transcript_count"] = adata.X.toarray().sum(axis=1).flatten()
     adata.obsm["blank"] = blank.X.toarray()
-    if {"centroid_x", "centroid_y"}.issubset(adata.obs.columns):
+    if {"center_x", "center_y"}.issubset(adata.obs.columns):
+        adata.obsm["spatial"] = adata.obs[["center_x", "center_y"]].values
+    elif {"centroid_x", "centroid_y"}.issubset(adata.obs.columns):  # proseg-native obs (no schema metadata)
         adata.obsm["spatial"] = adata.obs[["centroid_x", "centroid_y"]].values
     adata.uns.pop("spatialdata_attrs", None)  # re-parse from scratch
 

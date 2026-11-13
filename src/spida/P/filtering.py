@@ -1,4 +1,5 @@
 import json
+import logging
 
 import polars as pl
 from numpy import quantile as np_quant
@@ -14,6 +15,25 @@ from spida._constants import (
     DEFAULT_PRESET,
     DAPI_COL,
 )  # type: ignore
+
+logger = logging.getLogger(__name__)
+
+# proseg-native centroid names, from proseg segmentations processed before SPIDA renamed them
+_LEGACY_PROSEG_CENTROIDS = {"centroid_x": CELL_X, "centroid_y": CELL_Y}
+
+
+# warning to be removed on next release, with the fallback.
+def _legacy_proseg_centroids(df_obs: pl.DataFrame) -> pl.DataFrame:
+    """Read proseg-native centroid_x / centroid_y as CENTER_X / CENTER_Y, with a deprecation warning."""
+    legacy = {k: v for k, v in _LEGACY_PROSEG_CENTROIDS.items() if k in df_obs.columns and v not in df_obs.columns}
+    if not legacy:
+        return df_obs
+    logger.warning(
+        "Reading proseg-native %s as %s. This fallback will be removed in a future release. "
+        "Re-run process-segmentation-region proseg --overwrite, then load-segmentation-region.",
+        ", ".join(legacy), ", ".join(legacy.values()),
+    )
+    return df_obs.rename(legacy)
 
 
 class Filter:
@@ -67,6 +87,7 @@ class Filter:
             if k in df_obs.columns and (k == v or v not in df_obs.columns)
         }
         df_obs = df_obs.rename(present)
+        df_obs = _legacy_proseg_centroids(df_obs)
 
         select_cols = [CELL_ID, CELL_X, CELL_Y, CELL_VOLUME]
         if DAPI_COL in df_obs.columns:
