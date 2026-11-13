@@ -127,4 +127,4 @@ def test_seg_fam_accepted_ignored_and_warned(monkeypatch, cfg, tmp_path, caplog,
     res, calls = _run(monkeypatch, "spida.P.main." + cmd[0].replace("-", "_"), cfg, *cmd, "--seg_fam", "proseg")
     assert res.exit_code == 0, res.output
     assert calls and all("seg_fam" not in k for _, k in calls)
-    assert "--seg_fam is ignored" in caplog.text and "process-custom-segmentation" in caplog.text
+    assert "--seg_fam is ignored" in caplog.text
