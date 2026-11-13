@@ -44,7 +44,7 @@ def test_read_stains_downscale_2d_single_channel(tmp_path: Path):
     from spida.io.images import read_stains
 
     img = np.arange(16, dtype=np.uint16).reshape(4, 4)
-    _write_tif(tmp_path / "img_DAPI.tif", img)
+    _write_tif(tmp_path / "mosaic_DAPI_z0.tif", img)
 
     cfg = CellposeConfig.from_kwargs(nuc_stain_name="DAPI", cyto_stain_name=None,
                                      image_ext=".tif", scale=2)
@@ -64,7 +64,7 @@ def test_read_stains_downscale_3d_stack(tmp_path: Path):
         np.full((4, 4), fill_value=3, dtype=np.uint16),
     ]
     for idx, plane in enumerate(stack):
-        _write_tif(tmp_path / f"img_DAPI_z{idx}.tif", plane)
+        _write_tif(tmp_path / f"mosaic_DAPI_z{idx}.tif", plane)
 
     loaded = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name=None,
                           image_ext=".tif", scale=2)
@@ -79,8 +79,8 @@ def test_read_stains_downscale_3d_stack(tmp_path: Path):
 def test_read_stains_downscale_with_cyto(tmp_path: Path):
     nuc = np.arange(16, dtype=np.uint16).reshape(4, 4)
     cyto = np.arange(16, dtype=np.uint16).reshape(4, 4) * 2
-    _write_tif(tmp_path / "img_DAPI.tif", nuc)
-    _write_tif(tmp_path / "img_PolyT.tif", cyto)
+    _write_tif(tmp_path / "mosaic_DAPI_z0.tif", nuc)
+    _write_tif(tmp_path / "mosaic_PolyT_z0.tif", cyto)
 
     loaded = _load_region(tmp_path, nuc_stain_name="DAPI", cyto_stain_name="PolyT",
                           image_ext=".tif", scale=2)

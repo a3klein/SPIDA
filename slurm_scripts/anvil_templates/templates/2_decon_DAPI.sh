@@ -58,7 +58,7 @@ pixi run --frozen -e preprocessing-gpu \
     --reg {REGION} \
     -i {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {DATA_ORG_PATH} \
-    --tile_dir {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images_DAPI \
+    --tile_dir {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/decon-tiles-DAPI \
     --stitched_dir {DECON_DIR} \
     --channels DAPI \
     --tile_size 2960 \

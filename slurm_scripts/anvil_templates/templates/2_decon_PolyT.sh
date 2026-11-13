@@ -58,7 +58,7 @@ pixi run --frozen -e preprocessing-gpu \
     --reg {REGION} \
     -i {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/images \
     --data_org_path {DATA_ORG_PATH} \
-    --tile_dir {ROOT_DIR}/{EXPERIMENT}/{REGION}/tile_images_PolyT \
+    --tile_dir {ROOT_DIR}/{EXPERIMENT}/out/{REGION}/decon-tiles-PolyT \
     --stitched_dir {DECON_DIR} \
     --channels PolyT \
     --tile_size 2960 \

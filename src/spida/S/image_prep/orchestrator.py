@@ -35,6 +35,14 @@ from spida.pl.decon_plots import save_threshold_plots_pdf
 
 
 # unknown output location fails at startup.
+def _remove_if_empty(path: Path) -> None:
+    # remove a dir if it is empty.
+    try:
+        path.rmdir()
+    except OSError:
+        pass
+
+
 def _stitch_dir(channel_image_path: Path, stitched_dir: str | Path | None) -> Path:
     """Where stitched output goes: alongside the input by default, or an explicit directory."""
     if stitched_dir is None:
@@ -369,8 +377,9 @@ def transform_image(
                 logger.info("Clearing tile files to free up space...")
                 for f in output_dir.glob(f"*{_channel}*"):
                     f.unlink()
+                _remove_if_empty(output_dir)
                 logger.info("Tile files cleared.")
-            
+
             return written
 
         # 2D path (single reconstructed image)
@@ -395,6 +404,7 @@ def transform_image(
             logger.info("Clearing tile files to free up space...")
             for f in output_dir.glob(f"*{_channel}*"):
                 f.unlink()
+            _remove_if_empty(output_dir)
             logger.info("Tile files cleared.")
 
         return deconed_image
