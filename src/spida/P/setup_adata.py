@@ -64,52 +64,41 @@ def run_setup(
 
 
 def combined_setup(
-    adata : ad.AnnData, 
-    scale: bool = False
-): 
+    adata: ad.AnnData,
+    batch_key: str | list[str] | None = None,
+    key_added: str = "",
+    leiden_res: float = 1,
+    knn: int = 35,
+    min_dist: float = 0.25,
+    do_tsne: bool = False,
+    consensus_cluster: bool = True,
+    n_jobs: int | None = None,
+):
     """
-    Setup the AnnData object for the combined datasets. 
+    Joint embedding + clustering of a project's combined table.
+
+    Parameters:
+    adata (AnnData): The combined table (layers["raw"] = counts).
+    batch_key (str | list[str], optional): obs column(s) to Harmony-correct on (X_<key_added>pca_harmony). None: no correction.
+    key_added (str, optional): Prefix for the embedding / cluster keys. Defaults to "".
+    leiden_res (float, optional): Leiden resolution. Defaults to 1.
+    knn (int, optional): Neighbours for the kNN graph. Defaults to 35.
+    min_dist (float, optional): UMAP min_dist. Defaults to 0.25.
+    do_tsne (bool, optional): Also compute the tSNE embedding. Defaults to False.
+    consensus_cluster (bool, optional): ALLCools consensus clustering rather than a single Leiden run. Defaults to True.
+    n_jobs (int | None, optional): Consensus clustering workers. Defaults to None: the job's cores, max 24.
+    Returns:
+    AnnData: The modified AnnData object.
     """
-    import scipy.sparse as sp
+    normalize_adata(adata, layer="raw", log1p=True)
+    _calc_embeddings(adata, layer=None, key_added=key_added, leiden_res=leiden_res, knn=knn, min_dist=min_dist,
+                     run_harmony=batch_key is not None, batch_key=batch_key or "dataset_id",
+                     consensus_cluster=consensus_cluster, do_tsne=do_tsne, n_jobs=n_jobs)
     
-    if "raw" in adata.layers:
-        adata.X = adata.layers['raw'].copy()
-        del adata.layers['raw']  # remove raw layer to save memory
-
-        adata.layers["counts"] = sp.csr_matrix(adata.X.copy())
-        adata.X = adata.layers['counts'].copy()
-    else: 
-        adata.X = adata.layers['counts'].copy()
-
-    # TODO: Fix this stuff (right now this is just totally wrong so commenting out)
-    # sc.pp.normalize_total(adata)
-    # sc.pp.log1p(adata)
-    # adata.layers["normalized"] = adata.X.copy()
-
-    # if scale: 
-    #     sc.pp.scale(adata)
-    #     adata.layers["scaled"] = adata.X.copy()
-
-    # sc.pp.pca(adata, n_comps=50, chunked=True)
-    # sc.pp.neighbors(adata)
-    # sc.tl.umap(adata, random_state=0, min_dist=0.25, spread=1)
-    # sc.tl.leiden(adata, resolution=0.8, random_state=13, flavor="igraph", n_iterations=2)
-
-    # # manifold projections:
-    # dump_embedding(adata, "umap", "base_umap")
-    # adata.obsm["X_base_umap"] = adata.obsm["X_umap"].copy()
-
-    # tsne(
-    #     adata,
-    #     obsm="X_pca",
-    #     metric="euclidean",
-    #     exaggeration=-1,
-    #     perplexity=50,
-    #     n_jobs=-1,
-    # )
-    # dump_embedding(adata, "tsne", "base_tsne")
-    # adata.obsm["X_base_tsne"] = adata.obsm["X_tsne"].copy()
-
+    for name in (f"{key_added}pca", f"{key_added}pca_harmony"):
+        if name in adata.obsm:
+            adata.obsm[f"X_{name}"] = adata.obsm.pop(name)
+    # TODO: NSForest markers (replacing scran DEGs) for plotting
     return adata
 
 

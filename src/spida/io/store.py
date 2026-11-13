@@ -276,3 +276,41 @@ def update_obs(
     with warnings.catch_warnings():  # zarr notes the parquet elements it does not own
         warnings.filterwarnings("ignore", module="zarr")
         zarr.consolidate_metadata(str(zarr_path))
+
+
+# Copy obs columns from another table (matched on cell index) into a zarr table.
+def sync_obs(
+    zarr_path: str | Path,
+    key: str,
+    src,
+    columns: Iterable[str],
+    source: str = "source",
+) -> list[str]:
+    """
+    Copy ``columns`` of ``src`` into table ``key``'s obs, matched on the cell index (obs only, via update_obs).
+    No overwrite guard: callers run ``is_writeable(columns=...)`` first.
+    Cells of the table missing from ``src`` get missing values (with a warning).
+    Parameters:
+    zarr_path (str | Path): The zarr store.
+    key (str): Table name.
+    src (pd.DataFrame): obs to copy from, indexed by cell.
+    columns (Iterable[str]): Columns of ``src`` to copy.
+    source (str): Name of ``src`` for messages.
+    """
+    import zarr
+    from anndata.io import read_elem
+
+    cols = list(columns)
+    if missing := [c for c in cols if c not in src.columns]:
+        raise KeyError(f"{source} has no columns {missing}")
+    obs = read_elem(zarr.open_group(str(Path(zarr_path) / "tables" / key), mode="r")["obs"])
+    if extra := len(src.index.difference(obs.index)):
+        raise ValueError(f"{extra} cells in {source} are not in the zarr table {key}")
+    if absent := len(obs.index.difference(src.index)):
+        logger.warning("%d cells of %s are not in %s; their synced values are missing", absent, key, source)
+    for c in cols:
+        col = src[c].reindex(obs.index)
+        obs[c] = col.astype("boolean") if absent and src[c].dtype == bool else col  # bool + missing
+    update_obs(zarr_path, key, obs)
+    logger.info("synced %d columns into %s: %s", len(cols), key, ", ".join(cols))
+    return cols

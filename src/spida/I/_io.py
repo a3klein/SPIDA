@@ -104,9 +104,7 @@ def sync_annotations(
         columns: Exactly these obs columns instead (default: every mmc_* / allcools_* column).
         overwrite: Replace columns that already exist in the zarr table.
     """
-    import zarr
-    from anndata.io import read_elem
-    from spida.io.store import is_writeable, require, update_obs
+    from spida.io.store import is_writeable, require, sync_obs
 
     key = table_key(prefix, suffix)
     zarr_path = dataset.require("zarr")
@@ -129,15 +127,4 @@ def sync_annotations(
     if not cols:
         raise ValueError(f"no annotation columns to sync in {src_path}")
     is_writeable(zarr_path, columns={key: cols}, overwrite=overwrite)
-
-    obs = read_elem(zarr.open_group(str(zarr_path / "tables" / key), mode="r")["obs"])
-    if extra := len(src.index.difference(obs.index)):
-        raise ValueError(f"{extra} cells in {src_path.name} are not in the zarr table {key}")
-    if absent := len(obs.index.difference(src.index)):
-        logger.warning("%d cells of %s are not in %s; their synced values are missing", absent, key, src_path.name)
-    for c in cols:
-        col = src[c].reindex(obs.index)
-        obs[c] = col.astype("boolean") if absent and src[c].dtype == bool else col  # bool + missing
-    update_obs(zarr_path, key, obs)
-    logger.info("synced %d columns into %s: %s", len(cols), key, ", ".join(cols))
-    return cols
+    return sync_obs(zarr_path, key, src, cols, source=src_path.name)

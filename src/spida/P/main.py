@@ -534,48 +534,53 @@ def plot_resolvi_region(
 
 
 def combine_datasets(
-    experiment_list: list[str],
-    prefix_name: str,
-    suffix: str = "_filt",
-    lab_name: str = "salk",
-    project_name: str = "BG_salk",
+    project_json: Path,
     config: SpidaConfig | None = None,
-    table_keys: list[str] = None,
+    overwrite: bool = False,
 ):
     """
-    Aggregate spatial data from multiple experiments into a single SpatialData object.
+    Build a project from its JSON: the project zarr (per-sample shapes, points, tables) and the combined h5ad.
 
     Parameters:
-        experiment_list (list[str]): List of experiment names to aggregate
-        prefix_name (str): Prefix for the keys in the aggregated data
-        suffix (str): Suffix to append to the table keys
-        lab_name (str): Name of the lab, used for renaming experiments and regions
-        project_name (str): Name of the project, used for naming the aggregated data
-        config (SpidaConfig): Store roots (zarr_store is read, anndata_store receives the h5ad)
-        table_keys (list[str]): List of table keys to concatenate from the SpatialData object
+        project_json (Path): The project JSON (see spida.P.project_level).
+        config (SpidaConfig): Store roots (zarr_store and anndata_store).
+        overwrite (bool): Replace an existing project zarr / combined h5ad.
     """
-    from spida.P.project_level import aggregate_experiments, concatenate_tables
+    from spida.P.project_level import combine_project, load_project
 
-    config = config or SpidaConfig()
-    zarr_path = config.require("zarr_store")
-    output_path = config.require("anndata_store") / f"{project_name}_{lab_name}_{prefix_name}{suffix}.h5ad"
+    return combine_project(load_project(project_json), config or SpidaConfig(), overwrite=overwrite)
 
-    # aggregate the spatialdata objects
-    sdata = aggregate_experiments(
-        zarr_path, experiment_list, prefix_name, suffix, lab_name, project_name
-    )
 
-    # create the combined anndata object
-    adata = concatenate_tables(sdata, table_keys=table_keys, output_path=output_path)
+def sync_project(
+    project_json: Path,
+    columns: list[str],
+    config: SpidaConfig | None = None,
+    overwrite: bool = False,
+):
+    """
+    Copy obs columns from a project's combined h5ad into its per-sample zarr tables.
 
-    # Write the combined AnnData object to the spatialdata store
-    sdata["combined_table"] = adata
-    sdata.write_element("combined_table")
+    Parameters:
+        project_json (Path): The project JSON.
+        columns (list[str]): obs columns to copy.
+        config (SpidaConfig): Store roots (zarr_store and anndata_store).
+        overwrite (bool): Replace columns that already exist in the project tables.
+    """
+    from spida.P.project_level import load_project, sync_project as _sync
+
+    return _sync(load_project(project_json), config or SpidaConfig(), columns, overwrite=overwrite)
 
 
 def setup_dataset(
     dataset_name : str,
-    scale : bool = False,
+    batch_key : str | list[str] | None = None,
+    key_added : str = "",
+    leiden_res : float = 1,
+    knn : int = 35,
+    min_dist : float = 0.25,
+    do_tsne : bool = False,
+    consensus_cluster : bool = True,
+    n_jobs : int | None = None,
     anndata_store : Path = None,
 ):
     """
@@ -594,7 +599,8 @@ def setup_dataset(
         adata = ad.read_h5ad(anndata_path)
     logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
 
-    adata = combined_setup(adata, scale=scale)
+    adata = combined_setup(adata, batch_key=batch_key, key_added=key_added, leiden_res=leiden_res, knn=knn,
+                           min_dist=min_dist, do_tsne=do_tsne, consensus_cluster=consensus_cluster, n_jobs=n_jobs)
     adata.write_h5ad(anndata_path.with_suffix(".h5ad"))
     logger.info(f"DONE SETUP ON {dataset_name}")
 

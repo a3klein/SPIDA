@@ -558,42 +558,56 @@ def plot_resolvi_region(
     name="combine-datasets",
     cls=RichCommand,
     aliases=["combine_datasets"],
-    help="Combine multiple datasets into a single SpatialData object + AnnData object",
+    help="Build a project from PROJECT_JSON: a project zarr (per-sample shapes, points, tables) + a combined h5ad",
 )
-@click.argument("experiment_list", type=parse_list)
-@click.argument("prefix_name", type=str)
-@click.option("--suffix", type=str, default="_filt", help="Suffix to append to the table keys (default: '_filt')")
-@click.option("--lab_name", type=str, default="salk", help="Name of the lab (default: 'salk')")
-@click.option("--project_name", type=str, default="BG_salk", help="Name of the project (default: 'BG_salk')")
+@click.argument("project_json", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--overwrite", is_flag=True, default=False, help="Replace an existing project zarr / combined h5ad.")
 @click.option("--zarr_store", type=click.Path(exists=True), default=None, help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
 @click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
-@click.option("--table_keys", type=parse_list, default=None, help="List of table keys to include (default: None, which uses all keys with the specified suffix)")
 @click.pass_context
 def combine_datasets(
     ctx,
-    experiment_list: list[str],
-    prefix_name: str,
-    suffix: str = "_filt",
-    lab_name: str = "salk",
-    project_name: str = "BG_salk",
+    project_json: Path,
+    overwrite: bool = False,
     zarr_store: Path = None,
     anndata_store: Path = None,
-    table_keys: list[str] = None,
 ):
     """
-    Aggregate spatial data from multiple experiments into a single SpatialData object.
+    Combine the samples listed in PROJECT_JSON into one project.
+
+    Writes zarr_store/_projects/<project_name>/ and anndata_store/_projects/<project_name>/<prefix>_table<suffix>.h5ad.
     """
     cfg = run_config(ctx, zarr_store=zarr_store, anndata_store=anndata_store)
     from spida.P.main import combine_datasets as func
-    func(
-        experiment_list=experiment_list,
-        prefix_name=prefix_name,
-        suffix=suffix,
-        lab_name=lab_name,
-        project_name=project_name,
-        config=cfg,
-        table_keys=table_keys,
-    )
+    func(project_json, config=cfg, overwrite=overwrite)
+
+
+@cli.command(
+    name="sync-project",
+    cls=RichCommand,
+    aliases=["sync_project"],
+    help="Copy obs columns from a project's combined h5ad into its per-sample zarr tables",
+)
+@click.argument("project_json", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--columns", type=str, multiple=True, required=True, help="obs column to copy (repeatable).")
+@click.option("--overwrite", is_flag=True, default=False, help="Replace columns that already exist in the project tables.")
+@click.option("--zarr_store", type=click.Path(exists=True), default=None, help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
+@click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
+@click.pass_context
+def sync_project(
+    ctx,
+    project_json: Path,
+    columns: tuple = (),
+    overwrite: bool = False,
+    zarr_store: Path = None,
+    anndata_store: Path = None,
+):
+    """
+    Copy --columns from PROJECT_JSON's combined h5ad into each sample's table in the project zarr (obs only).
+    """
+    cfg = run_config(ctx, zarr_store=zarr_store, anndata_store=anndata_store)
+    from spida.P.main import sync_project as func
+    func(project_json, list(columns), config=cfg, overwrite=overwrite)
 
 @cli.command(
     name="setup-dataset",
@@ -602,21 +616,37 @@ def combine_datasets(
     help="Perform standard PCA + Leiden clustering on a joint dataset object",
 )
 @click.argument("dataset_name", type=str)
-@click.option("--scale", type=bool, default=False, help="Whether to scale the data (default: False)")
+@click.option("--batch_key", type=parse_list, default=None, help="obs column(s) to Harmony-correct on, comma-separated (default: none)")
+@click.option("--key_added", type=str, default="", help="Prefix for the embedding / cluster keys (default: '' -> X_pca, X_umap, leiden)")
+@click.option("--leiden_res", type=float, default=1, help="Leiden resolution (default: 1)")
+@click.option("--knn", type=int, default=35, help="Neighbours for the kNN graph (default: 35)")
+@click.option("--min_dist", type=float, default=0.25, help="UMAP min_dist (default: 0.25)")
+@click.option("--do_tsne", is_flag=True, default=False, help="Also compute the tSNE embedding (default: False)")
+@click.option("--consensus/--no-consensus", "consensus_cluster", default=True, help="Consensus clustering (200 Leiden repeats) vs a single Leiden run.")
+@click.option("--n_jobs", "--n-jobs", "n_jobs", type=int, default=None, help="Consensus clustering workers (default: the job's cores, max 24)")
 @click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
 @click.pass_context
 def setup_dataset(
     ctx,
     dataset_name: str,
-    scale: bool = False,
+    batch_key: list[str] | None = None,
+    key_added: str = "",
+    leiden_res: float = 1,
+    knn: int = 35,
+    min_dist: float = 0.25,
+    do_tsne: bool = False,
+    consensus_cluster: bool = True,
+    n_jobs: int | None = None,
     anndata_store: Path = None,
 ):
     """
-    Perform standard PCA + Leiden clustering on a joint dataset object.
+    Joint normalization, PCA (Harmony with --batch_key), UMAP and Leiden on a combined table (DATASET_NAME under the AnnData store, e.g. _projects/<project>/<table>). Written back in place.
     """
     cfg = run_config(ctx, anndata_store=anndata_store)
     from spida.P.main import setup_dataset as func
-    func(dataset_name=dataset_name, scale=scale, anndata_store=cfg.anndata_store)
+    func(dataset_name=dataset_name, batch_key=batch_key, key_added=key_added, leiden_res=leiden_res, knn=knn,
+         min_dist=min_dist, do_tsne=do_tsne, consensus_cluster=consensus_cluster, n_jobs=n_jobs,
+         anndata_store=cfg.anndata_store)
 
 @cli.command(
     name="resolvi-dataset",
