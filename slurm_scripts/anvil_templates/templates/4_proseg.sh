@@ -86,7 +86,6 @@ pixi run --frozen -e preprocessing \
     {PROSEG_PREFIX} \
     --exp {EXPERIMENT} \
     --reg {REGION} \
-    --seg_fam proseg \
     --cutoffs_path {PROSEG_CUTOFFS_PATH} \
     --plot \
     {OVERWRITE_ARG}
