@@ -1,13 +1,15 @@
 """
 Reading and writing a zarr store.
 
-read_table reads one table with anndata only (no spatialdata needed); open_store opens the whole store.
+read_table reads one table with anndata only (no spatialdata needed).
+open_store opens the whole store.
 is_writeable checks up front for overwrites (pathlib only).
 write_element replaces an existing element by temp-swap.
-update_obs rewrites only a table's (anndata) obs (no spatialdata needed).
+update_obs rewrites only a table's obs field (no spatialdata needed).
 """
 
 import logging
+import shutil
 import warnings
 from pathlib import Path
 from typing import Iterable
@@ -139,16 +141,47 @@ def _sd():
 
 def open_store(
     zarr_path: str | Path,
+    selection: Iterable[str] | None = None,
 ):
     """
     The region's whole store as a SpatialData object (elements read lazily where spatialdata does).
     Parameters:
     zarr_path (str | Path): The region's zarr store.
+    selection (Iterable[str], optional): Element kind to read (e.g. ("shapes", "points")); default all.
     """
     sd = _sd()
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        return sd.read_zarr(zarr_path)
+        return sd.read_zarr(zarr_path, selection=tuple(selection) if selection else None)
+
+
+def write_store(
+    zarr_path: str | Path,
+    sdata,
+    overwrite: bool = False,
+) -> None:
+    """
+    Write a whole SpatialData object as a new store: written to ``<store>__tmp`` first, then swapped in,
+    so a crash never leaves a half-written store at ``zarr_path``.
+    Parameters:
+    zarr_path (str | Path): The store to create.
+    sdata (SpatialData): The object to write.
+    overwrite (bool): Replace an existing store.
+    """
+    zarr_path = Path(zarr_path)
+    if zarr_path.exists() and not overwrite:
+        raise FileExistsError(f"{zarr_path} already exists (pass --overwrite to replace)")
+    tmp = zarr_path.with_name(zarr_path.name + TMP_SUFFIX)
+    if tmp.exists():
+        logger.warning("Removing %s left by an earlier failed write.", tmp)
+        shutil.rmtree(tmp)
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        sdata.write(tmp)
+    if zarr_path.exists():
+        shutil.rmtree(zarr_path)
+    tmp.rename(zarr_path)
 
 
 def read_table(

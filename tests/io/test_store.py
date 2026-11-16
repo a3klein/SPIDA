@@ -274,3 +274,52 @@ def test_require_empty_dir_is_missing(tmp_path):
     (tmp_path / "images").mkdir()
     with pytest.raises(FileNotFoundError, match="images"):
         require(files=[tmp_path / "images"])
+
+
+# ---- open_store selection / write_store ----
+
+def test_open_store_selection(store):
+    from spida.io.store import open_store
+    s = open_store(store, selection=("shapes", "points"))
+    assert set(s.shapes) == {"cells"} and set(s.points) == {"tx"}
+    assert not s.images and not s.labels and not s.tables
+
+
+def _small(rng):
+    s = _sdata(rng)
+    return sd.SpatialData(shapes=dict(s.shapes), tables=dict(s.tables))
+
+
+def test_write_store_new(tmp_path):
+    from spida.io.store import write_store
+    path = tmp_path / "p.zarr"
+    write_store(path, _small(np.random.default_rng(1)))
+    r = sd.read_zarr(path)
+    assert len(r["cells"]) == N and r["table"].n_obs == N
+    assert not (tmp_path / "p.zarr__tmp").exists()
+
+
+def test_write_store_existing_without_overwrite_raises_and_keeps(store):
+    from spida.io.store import write_store
+    before = _mtimes(store, skip=None)
+    with pytest.raises(FileExistsError, match="--overwrite"):
+        write_store(store, _small(np.random.default_rng(1)))
+    assert _mtimes(store, skip=None) == before
+
+
+def test_write_store_overwrite_replaces(store):
+    from spida.io.store import write_store
+    write_store(store, _small(np.random.default_rng(1)), overwrite=True)
+    r = sd.read_zarr(store)
+    assert set(r.shapes) == {"cells"} and not r.images and not r.points  # old store fully replaced
+    assert not store.with_name(store.name + "__tmp").exists()
+
+
+def test_write_store_removes_stale_tmp(tmp_path):
+    from spida.io.store import write_store
+    path = tmp_path / "p.zarr"
+    stale = tmp_path / "p.zarr__tmp"
+    stale.mkdir()
+    (stale / "junk").write_text("x")
+    write_store(path, _small(np.random.default_rng(1)))
+    assert not stale.exists() and len(sd.read_zarr(path)["cells"]) == N
