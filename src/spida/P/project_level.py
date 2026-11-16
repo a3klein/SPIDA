@@ -16,9 +16,7 @@ Project JSON describes a project
 
 import json
 import logging
-import os
 import re
-import shutil
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +31,6 @@ from spida._constants import POINTS_KEY, SHAPES_KEY, TABLE_KEY
 logger = logging.getLogger(__package__)
 
 PROJECTS_DIR = "_projects"  # under each store root
-TMP_SUFFIX = "__tmp"
 _KEYS = {"project_name", "prefix", "suffix", "sample_id", "required_obs", "obs_defaults", "samples"}
 _SAMPLE_KEYS = {"exp", "reg", "obs"}
 _NAME = re.compile(r"[A-Za-z0-9_.-]+")  # allowed in element and folder names
@@ -163,15 +160,13 @@ def _check_inputs(spec: ProjectSpec, layout: TreeLayout) -> dict:
 
 def _warn_unsynced(spec: ProjectSpec, datasets: dict) -> None:
     # annotation columns on a sample's h5ad copy that its zarr table (the source used here) lacks
-    import anndata as ad
+    from spida.io.anndata import read_obs
 
     for s in spec.samples:
         path = datasets[s.id].table_h5ad(spec.table_key) if datasets[s.id].anndata else None
         if path is None or not path.exists():
             continue
-        a = ad.read_h5ad(path, backed="r")
-        cols = [c for c in a.obs.columns if c.startswith(("mmc_", "allcools_"))]
-        a.file.close()
+        cols = [c for c in read_obs(path).columns if c.startswith(("mmc_", "allcools_"))]
         if lost := sorted(set(cols) - set(obs_columns(datasets[s.id].zarr, spec.table_key))):
             logger.warning("%s: %d annotation columns are in %s but not in its zarr table, so not in the "
                            "project (run sync-annotations first): %s", s.id, len(lost), path.name, ", ".join(lost))
@@ -258,9 +253,9 @@ def read_combined(
     path (str | Path): The combined h5ad.
     backed (str, optional): Passed to anndata.read_h5ad.
     """
-    import anndata as ad
+    from spida.io.anndata import read_adata
 
-    adata = ad.read_h5ad(path, backed=backed)
+    adata = read_adata(path, backed=backed)
     attrs = adata.uns.get("spatialdata_attrs", {})
     if isinstance(attrs.get("region"), np.ndarray):
         attrs["region"] = attrs["region"].tolist()
@@ -280,9 +275,10 @@ def combine_project(
     config (SpidaConfig): Store roots.
     overwrite (bool): Replace an existing project zarr / combined h5ad.
     """
-    from spida.io.store import _sd
+    from spida.io.anndata import write_adata
+    from spida.io.store import _sd, open_store, write_store
 
-    sd = _sd()
+    sd = _sd()  # builds the project SpatialData in memory
     paths = project_paths(config, spec)
     datasets = _check_inputs(spec, TreeLayout(config))
     is_writeable(files=[paths.zarr, paths.h5ad], overwrite=overwrite)
@@ -294,9 +290,7 @@ def combine_project(
         d = datasets[s.id]
         logger.info("Adding %s (%s / %s)", s.id, s.exp, s.reg)
         src = d.keys(spec.prefix)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore")
-            sdata = sd.read_zarr(d.zarr, selection=("shapes", "points"))
+        sdata = open_store(d.zarr, selection=("shapes", "points"))
         shp, pts = sdata[src[SHAPES_KEY]], sdata[src[POINTS_KEY]]
         for element in (shp, pts):
             _to_sample_cs(element, s.id)
@@ -314,28 +308,15 @@ def combine_project(
 
     combined = _combine_tables(spec, tables, region_key, instance_key)
 
-    # project zarr: written beside, then swapped in
-    tmp = paths.zarr.with_name(paths.zarr.name + TMP_SUFFIX)
-    if tmp.exists():
-        logger.warning("Removing %s left by an earlier failed write.", tmp)
-        shutil.rmtree(tmp)
-    tmp.parent.mkdir(parents=True, exist_ok=True)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         project = sd.SpatialData(shapes=shapes, points=points,
                                  tables={spec.table(s): tables[s.id] for s in spec.samples})
-        project.attrs["spida"] = {"project": spec.raw}
-        project.write(tmp)
-    if paths.zarr.exists():
-        shutil.rmtree(paths.zarr)
-    tmp.rename(paths.zarr)
+    project.attrs["spida"] = {"project": spec.raw}
+    write_store(paths.zarr, project, overwrite=overwrite)
     logger.info("Wrote project store %s", paths.zarr)
 
-    # combined h5ad: written beside, then swapped in
-    paths.h5ad.parent.mkdir(parents=True, exist_ok=True)
-    tmp_h5ad = paths.h5ad.with_name(f"{paths.h5ad.stem}{TMP_SUFFIX}.h5ad")
-    combined.write_h5ad(tmp_h5ad)
-    os.replace(tmp_h5ad, paths.h5ad)
+    write_adata(paths.h5ad, combined)
     logger.info("Wrote combined table %s (%d cells x %d genes)", paths.h5ad, combined.n_obs, combined.n_vars)
     return paths
 
@@ -355,14 +336,14 @@ def sync_project(
     columns (Iterable[str]): obs columns of the combined h5ad to copy.
     overwrite (bool): Replace columns that already exist in the project tables.
     """
-    import anndata as ad
+    from spida.io.anndata import read_adata
 
     cols = list(columns or [])
     if not cols:
         raise ValueError("sync-project: name the columns to copy (--columns)")
     paths = project_paths(config, spec)
     require(paths.zarr, [spec.table(s) for s in spec.samples], files=[paths.h5ad])
-    a = ad.read_h5ad(paths.h5ad, backed="r")
+    a = read_adata(paths.h5ad, backed="r")
     obs, region_key = a.obs.copy(), a.uns["spatialdata_attrs"]["region_key"]
     a.file.close()
     if missing := [c for c in cols if c not in obs.columns]:

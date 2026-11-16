@@ -587,21 +587,14 @@ def setup_dataset(
     This function runs resolvi on a dataset level object. Takes more time and memory than resolvi_region.
     """
     from spida.P.setup_adata import combined_setup
-    import anndata as ad
+    from spida.io.anndata import write_adata
 
     logger.info(f"SETUP ON {dataset_name}")
-    anndata_path = _require_dir(anndata_store, "ANNDATA_STORE_PATH") / dataset_name
-    try: 
-        adata = ad.read_h5ad(anndata_path.with_suffix(".h5ad"))
-    except FileNotFoundError:
-        logger.warning(f"Anndata file not found at {anndata_path}. Please check the path.")
-        logger.info("trying to read from file with no suffix")
-        adata = ad.read_h5ad(anndata_path)
-    logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
+    adata, anndata_path = _read_adata(dataset_name, anndata_store=anndata_store, return_path=True)
 
     adata = combined_setup(adata, batch_key=batch_key, key_added=key_added, leiden_res=leiden_res, knn=knn,
                            min_dist=min_dist, do_tsne=do_tsne, consensus_cluster=consensus_cluster, n_jobs=n_jobs)
-    adata.write_h5ad(anndata_path.with_suffix(".h5ad"))
+    write_adata(anndata_path, adata)
     logger.info(f"DONE SETUP ON {dataset_name}")
 
 def resolvi_dataset(
@@ -622,21 +615,14 @@ def resolvi_dataset(
     """
     from spida.P.scvi_toolkit import resolvi_cluster
     from spida.utilities.ad_utils import _calc_embeddings
-    import anndata as ad
+    from spida.io.anndata import write_adata
 
     model_kwargs = model_kwargs['model_kwargs']
-    
+
     logger.info(f"RESOLVI ON {dataset_name}")
     anndata_store = _require_dir(anndata_store, "ANNDATA_STORE_PATH")
-    anndata_path = anndata_store / dataset_name
-    try: 
-        adata = ad.read_h5ad(anndata_path.with_suffix(".h5ad"))
-    except FileNotFoundError:
-        logger.warning(f"Anndata file not found at {anndata_path}. Please check the path.")
-        logger.info("trying to read from file with no suffix")
-        adata = ad.read_h5ad(anndata_path)
-    logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
-    
+    adata, anndata_path = _read_adata(dataset_name, anndata_store=anndata_store, return_path=True)
+
     
     adata = resolvi_cluster(
         adata,
@@ -658,7 +644,7 @@ def resolvi_dataset(
     logger.info("embedding generated expression")
     _calc_embeddings(adata, layer="generated_expression", key_added="corr_")
 
-    adata.write_h5ad(anndata_path.with_suffix(".h5ad"))
+    write_adata(anndata_path, adata)
     logger.info(f"DONE RESOLVI ON {dataset_name}")
 
     logger.info("PLOTTING DATASET")
@@ -690,20 +676,27 @@ def plot_dataset_setup(
 
 def _read_adata(
     dataset_name: str | Path,
-    anndata_store: str | Path = None
-): 
-    """ handle adata reading with different suffixes and paths """
-    import anndata as ad
+    anndata_store: str | Path = None,
+    return_path: bool = False,
+):
+    """
+    A dataset-level h5ad under the AnnData store: ``<name>.h5ad``, else ``<name>`` as given.
+    Parameters:
+    dataset_name (str | Path): Path under the AnnData store, with or without ``.h5ad``.
+    anndata_store (str | Path, optional): The AnnData store root (default: ANNDATA_STORE_PATH).
+    return_path (bool): Also return the ``.h5ad`` path that writes go to.
+    """
+    from spida.io.anndata import read_adata
 
     path = _require_dir(anndata_store, "ANNDATA_STORE_PATH") / dataset_name
-    try: 
-        adata = ad.read_h5ad(path.with_suffix(".h5ad"))
+    try:
+        adata = read_adata(path.with_suffix(".h5ad"))
     except FileNotFoundError:
         logger.warning(f"Anndata file not found at {path}. Please check the path.")
         logger.info("trying to read from file with no suffix")
-        adata = ad.read_h5ad(path)
+        adata = read_adata(path)
     logger.info(f"Loaded AnnData object with {adata.n_obs} cells and {adata.n_vars} genes.")
-    return adata
+    return (adata, path.with_suffix(".h5ad")) if return_path else adata
 
 def call_region_tz(
     dataset: Dataset,

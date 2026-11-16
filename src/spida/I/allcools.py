@@ -12,6 +12,7 @@ from ALLCools.integration.seurat_class import SeuratIntegration  # type: ignore
 from sklearn.decomposition import TruncatedSVD
 
 from ..utilities.ad_utils import normalize_adata
+from spida.io.anndata import read_adata, write_adata
 import time
 
 logger = logging.getLogger(__name__)
@@ -783,8 +784,7 @@ def run_allcools_seurat(
     qry_adata.uns[_labels_key] = _score_df.columns.tolist()
 
     if save_query:
-        Path(query_path).parent.mkdir(parents=True, exist_ok=True)
-        qry_adata.write_h5ad(query_path)
+        write_adata(query_path, qry_adata)
 
     if save_integrator:
         ### Making sure that there are no category dtypes in the integrator (they have nan's)
@@ -803,7 +803,7 @@ def run_allcools_seurat(
     if save_adata_comb:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         logger.info(f"Saving combined adata to {output_dir}/adata_comb_rna_merfish.h5ad")
-        adata_comb.write_h5ad(f"{output_dir}/adata_comb_rna_merfish.h5ad")
+        write_adata(f"{output_dir}/adata_comb_rna_merfish.h5ad", adata_comb)
 
     return qry_adata, adata_comb
 
@@ -898,8 +898,7 @@ def integrate_adata(
             store[key.replace("allcools_", f"allcools_{reference}_", 1)] = store.pop(key)
 
     query_path = Path(query_path)
-    query_path.parent.mkdir(parents=True, exist_ok=True)
-    qry.write_h5ad(query_path)
+    write_adata(query_path, qry)
     return qry, comb, names
 
 
@@ -964,8 +963,8 @@ def plot_integration(
     from spida.pl import plot_allcools_joint_embeddings, plot_allcools_spatial_annot
     from matplotlib.backends.backend_pdf import PdfPages
 
-    qry_adata = ad.read_h5ad(query_path)
-    adata_comb = ad.read_h5ad(comb_path)
+    qry_adata = read_adata(query_path)
+    adata_comb = read_adata(comb_path)
     annot = f"allcools_{reference}"
     names = dict(exp_name=qry_adata.uns.get("experiment"), seg_name=qry_adata.uns.get("segmentation"),
                  donor=qry_adata.uns.get("donor"))

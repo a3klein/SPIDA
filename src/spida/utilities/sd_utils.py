@@ -76,11 +76,10 @@ def _write_adata(zarr_path, table_key: str, output_file: Path):
     table_key (str): The table to export.
     output_file (Path): The H5AD file to write.
     """
+    from spida.io.anndata import write_adata
     from spida.io.store import read_table
 
-    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
-    adata = read_table(zarr_path, table_key)
-    adata.write_h5ad(Path(output_file))
+    write_adata(output_file, read_table(zarr_path, table_key))
 
 
 def _get_obs_or_gene(adata, col, layer): 

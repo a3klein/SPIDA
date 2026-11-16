@@ -7,15 +7,10 @@ from pathlib import Path
 
 import anndata as ad
 
+from spida.io.anndata import read_adata, read_obs, write_adata  # noqa: F401  (read_adata re-exported)
 from spida.io.layout import table_key
 
 logger = logging.getLogger(__name__)
-
-
-def read_adata(path) -> ad.AnnData:
-    """An AnnData file: ``.h5ad``, or a zarr-encoded AnnData directory."""
-    path = Path(path)
-    return ad.read_zarr(path) if path.is_dir() else ad.read_h5ad(path)
 
 
 def load_table(
@@ -42,19 +37,16 @@ def load_table(
     path = dataset.table_h5ad(key)
     if path.exists() and not refresh:
         logger.info(f"reading table copy {path}")
-        return ad.read_h5ad(path), path
+        return read_adata(path), path
     if path.exists():  # --refresh_table: the rebuilt copy has none of this file's annotations
-        old = ad.read_h5ad(path, backed="r")
-        lost = [c for c in old.obs.columns if c.startswith(("mmc_", "allcools_"))]
-        old.file.close()
+        lost = [c for c in read_obs(path).columns if c.startswith(("mmc_", "allcools_"))]
         if lost:
             logger.warning("--refresh_table: rebuilding %s drops %d annotation columns: %s",
                            path.name, len(lost), ", ".join(lost))
     logger.info(f"copying table {key} from {dataset.require('zarr')} to {path}")
     from spida.io.store import read_table
     adata = read_table(dataset.require("zarr"), key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    adata.write_h5ad(path)
+    write_adata(path, adata)
     return adata, path
 
 
@@ -110,12 +102,7 @@ def sync_annotations(
     zarr_path = dataset.require("zarr")
     src_path = Path(adata_file) if adata_file is not None else dataset.table_h5ad(key)
     require(zarr_path, [key], files=[src_path])
-    if src_path.is_dir():
-        src = ad.read_zarr(src_path).obs
-    else:
-        a = ad.read_h5ad(src_path, backed="r")
-        src = a.obs.copy()
-        a.file.close()
+    src = read_obs(src_path)
 
     if columns:
         cols = list(columns)
