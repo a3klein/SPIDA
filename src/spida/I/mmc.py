@@ -16,6 +16,8 @@ import pandas as pd
 import anndata as ad
 from scipy import sparse
 
+from spida.io.anndata import write_adata
+
 logger = logging.getLogger(__name__)
 
 
@@ -607,8 +609,7 @@ def annotate_adata(
     config.validate()
     annot = f"mmc_{identifier}"
     query_path = Path(query_path)
-    query_path.parent.mkdir(parents=True, exist_ok=True)
-    query_adata.write_h5ad(query_path)
+    write_adata(query_path, query_adata)
 
     annotator = MMCAnnotator(config)
     _, csv_path = annotator.annotate(query_path, identifier, output_dir, **annotation_params)
@@ -624,7 +625,7 @@ def annotate_adata(
     for col in hierarchy_list:
         query_adata.obs[f'{annot}_{col}'] = query_adata.obs[f'{annot}_{col}'].astype(str).astype("category")
         query_adata.obs[f'{annot}_{col}_transfer_score'] = query_adata.obs[f'{annot}_{col}_transfer_score'].astype(float).fillna(0)
-    query_adata.write_h5ad(query_path)
+    write_adata(query_path, query_adata)
 
     if plot_path is not None:
         logger.info("Generating annotation plots")
