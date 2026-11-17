@@ -33,9 +33,9 @@ rm -rf ~/.cache/pypoetry # optional step to remove .cache
 rm -rf /path/to/programs/vizgen-postprocessing # optional step to remove the dir
 ```
 
-Once you have a binary file which contains vpt make sure to update the `VPT_BIN_PATH` parameter of the configurations file (or the .env file in the base SPIDA folder) with the full path to that bin. In the above setup the binary path will be `/path-to-micromamba_dir/envs/vpt/bin`
+Once you have a binary file which contains vpt, set `VPT_BIN_PATH` in your config JSON to the full path of that bin directory. In the above setup the binary path will be `/path-to-micromamba_dir/envs/vpt/bin`
 
-## Proseg
+## Proseg - optional
 
 [Proseg](https://github.com/dcjones/proseg), *[D.C. Jones, et al.](https://www.nature.com/articles/s41592-025-02697-0)* is a transcript aware segmentation algorithm that attempts to optimize cell segmentation seeds. In this package we offer the option to use proseg on top of Cellpose to enhance segmentations. 
 
@@ -49,8 +49,11 @@ cargo install proseg
 
 Your `RUST_BIN_PATH` should then be under `~/.cargo/bin`. 
 
-## Configuring .env file
+## Pointing the config at these tools
 
-Typically, relative filepaths for projects can change, however these software dependencies stay the same. I will at the very least make sure that the .env file in the SPIDA root project folder is updated with the `DECONWOLF_CONFIG` and `RUST_BIN_PATH`, since these parameters are unlikely to change between projects on the same machine. (`VPT_BIN_PATH` is optional — only set it if you use the `--backend vpt` fallback.) 
+Set `DECONWOLF_CONFIG` and `RUST_BIN_PATH` in each project's config JSON (`VPT_BIN_PATH` only if
+you use the `--backend vpt` fallback). Since these rarely change between projects on one machine,
+you can also export them as environment variables, which SPIDA uses when a config file does not
+set them.
 
-You can refer to the [Configuration](./configuration.md) page for more information.
+See the [Configuration](./configuration.md) page for more information.

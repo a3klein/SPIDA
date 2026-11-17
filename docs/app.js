@@ -10,6 +10,9 @@ const docs = [
 	{ label: "README", file: "README.md" },
 	{ label: "Quick start", file: "quick_start.md" },
 	{ label: "Configuration", file: "configuration.md" },
+	{ label: "Processing pipeline", file: "pipeline.md" },
+	{ label: "Project-level datasets", file: "project_level.md" },
+	{ label: "Data layout", file: "data_layout.md" },
 	{ label: "Software setup", file: "software_setup.md" },
 	{ label: "Deconvolution", file: "deconvolution.md" },
 ];

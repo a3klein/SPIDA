@@ -122,13 +122,12 @@ instruments needs one ini per instrument.
 
 ## Configure SPIDA
 
-### 1. Update .env / .json file
+### 1. Update the config JSON
 
 Add the deconwolf config path:
 
-```bash
-# .env / .json
-DECONWOLF_CONFIG=/home/user/config/deconwolf.ini
+```json
+"DECONWOLF_CONFIG": "/home/user/config/deconwolf.ini"
 ```
 
 ## Run Deconvolution
@@ -138,19 +137,23 @@ DECONWOLF_CONFIG=/home/user/config/deconwolf.ini
 ```bash
 spida-S --config <config.json> transform-image \
     -i <experiment>/out/<region>/images \
-    --data_org_path <experiment>/out/dataorganization.csv \
-    --tile_dir <scratch>/<region>/tile_images \
-    --stitched_dir <experiment>/out/<region>/images \
+    --data_org_path <experiment>/raw/dataorganization.csv \
+    --tile_dir <experiment>/out/<region>/decon-tiles-DAPI \
+    --stitched_dir <experiment>/out/<region>/decon-images \
     --channels DAPI \
     --tile_size 2960 --overlap 400 --z_step 1.5 \
     --transform deconwolf \
     --transform_args iter 100 --transform_args tilesize 1000 \
+    --select-tiles tissue_mask --mask_path <experiment>/out/<region>/images/tissue_mask.tif \
     --gpu
 ```
 
-`--tile_dir` holds per-tile intermediates and is deleted after stitching;
-`--stitched_dir` is where the full-mosaic planes land. Defaulting `--stitched_dir`
-writes them next to the input mosaic, overwriting any previous deconvolution.
+`--tile_dir` holds per-tile intermediates; they are deleted after stitching, and the
+directory itself is removed once empty. `--stitched_dir` is where the full-mosaic planes
+land; the [pipeline](./pipeline.md) keeps them in `decon-images/`, apart from the raw
+`images/`. Leaving `--stitched_dir` unset writes them next to the input mosaic,
+overwriting any previous deconvolution. The tissue mask comes from `spida-P tissue-mask`
+(step 1 of the pipeline).
 
 `--transform` selects the per-tile operation (`deconwolf` or `dark_sectioning`);
 `--transform_args KEY VALUE` are that transform's own parameters. `--select-tiles`

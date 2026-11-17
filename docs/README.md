@@ -1,104 +1,88 @@
 #  SPIDA (Spatial Preprocessing Imputation Distribution Analysis)
 
-A package to host MERSCOPE experiment analysis with modular preprocessing, analysis, and integration pipelines.
+A package for MERSCOPE experiment analysis: ingestion, deconvolution, segmentation, QC,
+clustering and annotation, from single regions to multi-sample projects.
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
-This package uses [pixi](https://pixi.sh) for dependency management. Clone the repository and install your desired environment:
+SPIDA uses [pixi](https://pixi.sh). Clone the repository and install an environment:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/a3klein/SPIDA.git
 cd SPIDA
 pixi install -e preprocessing
 ```
 
-Available environments:
-- **preprocessing**: Main environment for most functionality
-- **preprocessing-gpu**: preprocessing but with GPU support
-- **cellpose**: Cellpose segmentation
-- **deepcell**: DeepCell/Mesmer segmentation
-- **mmc**: MapMyCells environment for annotations
+Environments:
+- **preprocessing**: main environment for most commands
+- **preprocessing-gpu**: preprocessing with GPU support (deconvolution)
+- **cellpose**: cellpose segmentation
+- **mmc**: MapMyCells annotation
 - **dist**: distribution analysis for downstream tasks
 
-### 2. Configure Your Project
+### 2. Configure your project
 
-Create a `.env` file in the repository root or a `.json` file to store project configurations. See [Configurations Guide](./configuration.md) for details.
+Create a JSON config file with your data paths and binary locations. See the
+[Configuration Guide](./configuration.md).
 
-### 3. Run Commands
+### 3. Run commands
 
 ```bash
-pixi run -e preprocessing python -m spida.{module}.cli {command} {args}
-```
-OR 
-```bash
-pixi run -e preprocessing spida-{module} {command} {args}
+pixi run -e preprocessing spida-{module} --config config.json {command} --exp {EXPERIMENT} --reg {REGION} [args]
 ```
 
 ## Documentation
 
-- **[Quick Start Guide](./docs/QUICK_START.md)**: Get running in 5 minutes
-- **[Configuration Guide](./configuration.md)**: Setting up a config file for your project
-- **[S Module (Spatial Processing)](./docs/S_USAGE.md)**: IO, deconvolution, segmentation, ...
-- **[P Module (Preprocessing)](./docs/P_USAGE.md)**: cell level QC + clustering, transcript level analysis
-- **[I Module (Integration)](./docs/I_USAGE.md)**: Annotation, imputation, and integration
-- **[D Module (Distribution)](./docs/D_USAGE.md)**: Distribution Analysis (coming soon...)
-- **[Deconvolution Setup](./deconvolution.md)**: Configure deconwolf for your imaging setup
+- **[Quick Start Guide](./quick_start.md)**: ingest a region and run the first QC
+- **[Configuration Guide](./configuration.md)**: the config file and its keys
+- **[Processing pipeline](./pipeline.md)**: the five steps from raw data to annotated tables, and SLURM job scripts
+- **[Project-level datasets](./project_level.md)**: combining regions into one dataset
+- **[Data layout](./data_layout.md)**: what is written where, and the `spida.io` layer
+- **[Software setup](./software_setup.md)**: proseg, deconwolf and the optional VPT binary
+- **[Deconvolution setup](./deconvolution.md)**: configure deconwolf for your imaging setup
 
-## Module Overview
+## Module overview
 
-### S (Spatial Processing)
+### S (Spatial processing)
 
-Handles image processing and segmentation:
-- Setup spatialdata objects (`.zarr` stores)
-- Run segmentation pipelines (cellpose, proseg, etc.)
-- Deconvolve images using deconwolf
+- Build SpatialData (`.zarr`) stores from MERSCOPE output
+- Run segmentations (cellpose, proseg, user-provided) and load them into the store
+- Deconvolve images with deconwolf
 
-**Quick start**: `pixi run -e preprocessing spida-S --help`
+`pixi run -e preprocessing spida-S --help`
 
 ### P (Preprocessing)
 
-Handles cell and transcript analysis:
-- Filter cells and generate QC metrics
-- Extract anndata objects to separate stores
-- Calculate dimensionality reduction and clustering
-- Detect and resolve doublets
+- Tissue masks, transcript-level QC and hex clustering
+- Cell filtering and QC metrics
+- Normalisation, dimensionality reduction and clustering, per region and per project
+- Project-level datasets (`combine-datasets`, `setup-dataset`, `sync-project`)
 
-**Quick start**: `pixi run -e preprocessing spida-P --help`
+`pixi run -e preprocessing spida-P --help`
 
-### I (Integration/Imputation)
+### I (Integration / annotation)
 
-Handles data annotation and imputation:
-- Annotate data (MapMyCells, ALLCools, etc.)
-- Impute whole transcriptome RNA expression
-- Impute methylation data onto spatial context
+- Annotate tables (MapMyCells, ALLCools)
+- Sync annotation columns back into the zarr store
 
-**Quick start**: `pixi run -e preprocessing spida-I --help`
+`pixi run -e mmc spida-mmc --help`
 
-## Project Structure
+## Project structure
 
 ```
 SPIDA/
 ├── src/spida/
-│   ├── config.py              # Central configuration system
-│   ├── settings.py            # Global settings management
-│   ├── S/                      # Spatial processing module
-│   ├── P/                      # Preprocessing module
-│   └── I/                      # Integration module
-|   └── D/                      # Distribution module
-├── docs/                       # Documentation files
-├── .env                        # Environment variables (create this)
-├── pixi.toml                   # Pixi configuration
-└── pyproject.toml              # Project metadata
+│   ├── config.py      # configuration
+│   ├── io/            # all reads and writes of SPIDA data (layout, zarr store, AnnData)
+│   ├── S/             # spatial processing
+│   ├── P/             # preprocessing
+│   ├── I/             # integration / annotation
+│   ├── pl/            # plotting
+│   ├── utilities/     # shared helpers
+│   └── site.py        # QC figures for the SPIDA website
+├── slurm_scripts/     # Anvil and AWS job-script generators and templates
+├── docs/              # this documentation
+└── pixi.toml          # environments and tasks
 ```
-
-## Advanced Topics
-
-- [Configuration Reference](./configuration.md): All available configuration options
-- [Deconvolution Setup](./deconvolution.md): Configure deconwolf for your imaging setup
-<!-- - [Architecture Overview](./docs/ARCHITECTURE.md): Understand the system design -->
-
-## Support
-
-For issues or questions, see the relevant module documentation or check existing issues.

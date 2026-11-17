@@ -1,66 +1,80 @@
 # SPIDA Configuration Guide
 
-SPIDA uses a per-project configuration file (`.env` or `.json`) to populate standard parameters such as data paths, zarr stores, binary locations, output directories, and other config files (e.g., QC/cutoffs).
+SPIDA reads its paths — data stores, binaries, cutoff files — from a JSON config file passed
+with `--config` before the command:
 
-## What the config controls
+```bash
+pixi run -e preprocessing spida-P --config /path/to/project/config.json <command> ...
+```
 
-Common keys:
-- `RUST_BIN_PATH`, `VPT_BIN_PATH`
-- `DECONWOLF_CONFIG`
-- `ZARR_STORAGE_PATH`
-- `PROCESSED_ROOT_PATH`
-- `SEGMENTATION_OUT_PATH`
-- `ANNDATA_STORE_PATH`
-- `ANNOTATION_STORE_PATH` (or `ANNOTATIONS_STORE_PATH`)
-- `IMAGE_STORE_PATH`
-- `CUTOFFS_PATH`
+## Resolution order
 
-## Configuration parameters
+1. Command-line options (e.g. `--zarr_store`, `--zarr_path`)
+2. The `--config` JSON
+3. Environment variables of the same name
+4. Unset — a command that needs a missing path stops and names the key
 
-- `RUST_BIN_PATH`: Path to the Rust binary used by SPIDA.
-- `VPT_BIN_PATH`: Path to the VPT binary. **Optional** — only needed for the legacy `--backend vpt` post-processing fallback; the default native (pure-Python) path needs no binary.
-- `DECONWOLF_CONFIG`: Path to the Deconwolf configuration file.
-- `ZARR_STORAGE_PATH`: Root directory for Zarr stores.
-- `PROCESSED_ROOT_PATH`: Root directory for processed outputs.
-- `SEGMENTATION_OUT_PATH`: Directory for segmentation outputs.
-- `ANNDATA_STORE_PATH`: Directory for AnnData (.h5ad) storage.
-- `ANNOTATION_STORE_PATH`: Directory for annotation artifacts/labels.
-- `IMAGE_STORE_PATH`: Directory for image outputs/exports.
-- `CUTOFFS_PATH`: Path to QC/cutoffs configuration file.
+`.env` files are no longer read; a config path that is not `.json` is rejected.
+
+## Keys
+
+| Key | Meaning |
+|---|---|
+| `PROCESSED_ROOT_PATH` | Raw MERSCOPE output: `{root}/{experiment}/out/{region}/` and `{root}/{experiment}/raw/`. |
+| `ZARR_STORAGE_PATH` | SpatialData zarr stores. |
+| `SEGMENTATION_OUT_PATH` | Segmenter output and segmentation-schema files. |
+| `ANNDATA_STORE_PATH` | h5ad copies of tables, and project tables. |
+| `ANNOTATION_STORE_PATH` | Annotation intermediates (`ANNOTATIONS_STORE_PATH` is accepted as an alias). |
+| `IMAGE_STORE_PATH` | Figures. |
+| `CUTOFFS_PATH` | QC cutoffs JSON for `filter-cells-region`. |
+| `REGION_LABELS` | Optional JSON `{region name: label}` (e.g. donor); default is the region name without `region_`. |
+| `RUST_BIN_PATH` | Directory with the `proseg` binary. |
+| `DECONWOLF_CONFIG` | deconwolf `.config.ini` (see [Deconvolution](./deconvolution.md)). |
+| `MMC_DIR` | MapMyCells reference store. |
+| `CELLPOSE_MODEL_PATH` | Optional cellpose weights directory. |
+| `GENE_PANEL_PATH` | Optional gene panel files. |
+| `SPIDA_SITE_DIR` | Optional SPIDA website directory (QC figures). |
+| `VPT_BIN_PATH` | **Optional** — only for the legacy `--backend vpt` post-processing fallback. |
+
+See [Data layout](./data_layout.md) for what each store holds.
+
+Example:
+
+```json
+{
+    "PROCESSED_ROOT_PATH": "/data/merscope",
+    "ZARR_STORAGE_PATH": "/project/data/zarr_store",
+    "SEGMENTATION_OUT_PATH": "/project/data/segmented",
+    "ANNDATA_STORE_PATH": "/project/data/aggregated",
+    "ANNOTATION_STORE_PATH": "/project/data/annotated",
+    "IMAGE_STORE_PATH": "/project/images",
+    "CUTOFFS_PATH": "/project/config/filtering_cutoffs.json",
+    "REGION_LABELS": "/project/config/region_labels.json",
+    "RUST_BIN_PATH": "/home/user/.cargo/bin",
+    "DECONWOLF_CONFIG": "/project/config/deconwolf.config.ini",
+    "MMC_DIR": "/project/data/reference/mmc"
+}
+```
 
 ## Create a config file
 
-Use the CLI to generate a `.env` or `.json` file:
-
 ```bash
-spida config setup-config --config_store_path /path/to/project/.env --ext_type env
+pixi run config setup-config --config_store_path /path/to/project/config.json
 ```
 
-```bash
-spida config setup-config --config_store_path /path/to/project/config --ext_type json
-```
+Prompts for each key, defaulting to the environment variable of the same name; any key can be
+given as an option instead (`--zarr_storage_path`, `--root_path`, ...). `.json` is appended if
+missing, and an existing file is kept unless `--overwrite`. Keys it does not prompt for
+(`REGION_LABELS`, `MMC_DIR`, ...) can be added to the file by hand.
 
-Notes:
-- `.env` or `.json` is appended automatically if missing.
-- Existing files are preserved unless `--overwrite` is used.
-- Defaults come from environment variables or built-in defaults.
-
-## Display an existing config
+## Display a config
 
 ```bash
-spida config display-config /path/to/project/.env
+pixi run config display-config /path/to/project/config.json
 ```
+
+To see what a command will actually use (config file, environment and defaults combined):
 
 ```bash
-spida config display-config /path/to/project/config.json
+pixi run -e preprocessing spida-P --config /path/to/project/config.json test
 ```
-
-## Loading behavior (summary)
-
-Resolution order is:
-1. CLI options
-2. Config file
-3. Environment variables
-4. Built-in defaults
-
-The `ANNOTATIONS_STORE_PATH` env var (or key) is accepted as an alias for `ANNOTATION_STORE_PATH`.

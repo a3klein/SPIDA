@@ -1,10 +1,10 @@
 # Quick Start Guide
 
-This page will take you through setting up the basic QC on a merscope experiment.
+This page takes you through ingesting one MERSCOPE region and running the first QC steps.
 
-## File Format
+## File format
 
-MRESCOPE data is assumed to be in the following folder structure: 
+MERSCOPE data is expected in this layout:
 ```
 PROCESSED_ROOT_PATH
 |__experiment_1
@@ -16,62 +16,66 @@ PROCESSED_ROOT_PATH
 |__experiment_2
   |__out
   |__raw
-|__experiment_3
-|__ ... 
+|__ ...
 ```
 
-Where the `out` folder is the contents of `merscope_output` and the `raw` folder is the contents of `merscope_raw_data` from the standard vizgen MERSCOPE run Z drive. Technically for a simple preprocessing pipeline only the `dataorganization.csv` is needed from the raw data, and only for the deconvolution step. So, if you want to skip deconvolution you can ignore the raw folder. If you want use deconvolution but not have to worry about the raw folder, you can copy the `dataorganization.csv` file into the `out` folder and ignore the raw data. 
+`out` holds the contents of `merscope_output` and `raw` the contents of `merscope_raw_data` from a
+standard Vizgen MERSCOPE run. Only `raw/dataorganization.csv` is needed from the raw data, and only
+for deconvolution; without deconvolution the `raw` folder can be left out.
 
-## Cloning Spida
+## Installing SPIDA
 
-SPIDA is currently not available as a pypi or conda package, you need to install it using git. 
+SPIDA is not on PyPI or conda; install it from git:
 
-```
+```bash
 git clone https://github.com/a3klein/SPIDA.git
-export CONDA_OVERRIDE_CUDA=12.0 # This is necessary if attempting to install a package with dependency on a GPU from an environment with no GPU available (i.e. from a different slurm / aws instance).
 cd SPIDA
-pixi install -a
+export CONDA_OVERRIDE_CUDA=12.0  # only when installing GPU environments on a machine without a GPU
+pixi install -a                  # or one environment: pixi install -e preprocessing
 ```
 
-This will make sure you all the spida environments installed within the SPIDA pixi environment.
+## A config file
 
-## configuring an empty config file
+Most commands need store paths from a JSON config file. Create one:
 
-in order to run most steps there needs to at least exist a config file. SPIDA takes as an argument a --config option (.json or .env file) that holds within it default parameters such as paths to binaries, data paths, etc... . If the config file is not passed, SPIDA looks for a .env file in the SPIDA directory. I suggest at this point populating an empty .env file in the SPIDA directory and then adding to it later once you get a better understanding of how the package works. 
-
-For now, run the following command: 
-```
-pixi run config setup-config
+```bash
+pixi run config setup-config --config_store_path /path/to/project/config.json
 ```
 
-This will guide you through instructions on what each parameter in the config file represents, for now I will only setup the `PROCESSED_ROOT_PATH` parameter (this is where your MERSCOPE outputs live as described above), and the `ZARR_STORAGE_PATH` parameter (this is where the spatialdata output objects are going to live). It will also be nice to populate the `IMAGE_STORE_PATH` at this point, as this will allow you to automatically write out images from these initial steps. 
+For a first run set at least `PROCESSED_ROOT_PATH` (where the MERSCOPE output lives, as above),
+`ZARR_STORAGE_PATH` (where the SpatialData stores are written) and `IMAGE_STORE_PATH` (figures).
+See [Configuration](./configuration.md) for every key.
 
-See the [Configurations](./configuration.md) page for more information on this. 
+## Command structure
 
-## Running test command
-
-The standard strucure for a SPIDA command is: 
-
-```
-pixi run -e {environment} spida-{module} {command} {EXPERIMENT_NAME} {REGION_NAME} {PREFIX}
+```bash
+pixi run -e {environment} spida-{module} --config {config.json} {command} --exp {EXPERIMENT} --reg {REGION} [PREFIX] [options]
 ```
 
-- `environment` specifies which pixi environment is used for a given command
-- `module` specifies which module to run (S, P, I, ...)
-- `command` specifies the precise command within that module
-- `EXPERIMENT_NAME` is the name of the experiment for which to run the command (i.e. experiment_{1/2/3/...} in this example)
-- `REGION_NAME` is the name of the region in the given experiment for which to run the command (i.e. region_{1/2/...} in this example)
-- `PREFIX` (Optional) is the name of the segmentation on which to run that command (this only becomes relevant in segmentation dependent commands)
+- `environment`: the pixi environment for the command (`preprocessing` for most)
+- `module`: `S` (spatial processing), `P` (preprocessing), `I` (integration / annotation)
+- `--exp` / `--reg`: the experiment and region, e.g. `experiment_1` / `region_1`
+- `PREFIX`: the segmentation a command works on (e.g. `cellpose_cell`), for segmentation steps
 
-To get an idea of how the commands work you can run: 
-```
-pixi run -e preprocessing spida-S --help
+`pixi run -e preprocessing spida-S --help` lists a module's commands; `<command> --help` lists its
+options.
+
+## First QC run
+
+```bash
+C=/path/to/project/config.json
+pixi run -e preprocessing spida-S --config $C ingest-region --exp experiment_1 --reg region_1 --plot
+pixi run -e preprocessing spida-P --config $C tissue-mask --exp experiment_1 --reg region_1 --plot
+pixi run -e preprocessing spida-P --config $C transcript-qc --exp experiment_1 --reg region_1 --hex_size 30 --min_transcripts 100 --plot
+pixi run -e preprocessing spida-P --config $C cluster-hexes --exp experiment_1 --reg region_1 --hex_size 30 --min_transcripts 100 --leiden_resolution 0.7 --plot
 ```
 
-## Running initial QC runs
-To start initial runs you can run the following commands: 
-```
-pixi run -e preprocessing spida-S ingest-region {EXPERIMENT_NAME} {REGION_NAME} --plot
-pixi run -e preprocessing spida-P transcript-qc {EXPERIMENT_NAME} {REGION_NAME} --hex_size 30 --min_transcripts 100 --plot
-pixi run -e preprocessing spida-P cluster-hexes {EXPERIMENT_NAME} {REGION_NAME} --hex_size 30 --min_transcripts 100 --leiden_resolution 0.7 --plot
-```
+This writes the region's zarr store (`ZARR_STORAGE_PATH/experiment_1/region_1/`), its tissue mask,
+and QC figures under `IMAGE_STORE_PATH/experiment_1/region_1/`.
+
+## Next
+
+- [The processing pipeline](./pipeline.md): deconvolution, segmentation, filtering, annotation, and
+  job scripts for SLURM.
+- [Project-level datasets](./project_level.md): combining processed regions.
+- [Data layout](./data_layout.md): what is written where.
