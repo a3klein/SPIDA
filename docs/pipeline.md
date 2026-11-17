@@ -87,7 +87,15 @@ Submitted job IDs are written to `jobs.env` next to `chain.sh`.
 ### Sizing wall times
 
 Ask for about 1.1–1.2x a measured runtime on GPU steps and 1.5–2x on CPU steps; over-asking only
-costs queue time. Step 3a dominates. With `--gpu_tile_size auto` its runtime is close to linear in
+costs queue time. Scale by the work, not by another region's runtime: regions differ a lot in size.
+
+Step 2 is linear in the number of tiles kept by the tissue mask (logged as
+`Tissue-mask tile filter: kept N/M tiles`): in our runs about 13 s per tile plus ~10 min of loading
+and stitching per stain. A decon job that runs out of time can be resumed: rerun it with
+`--continue_stalled`, which skips tiles already deconvolved in `--tile_dir` (kept until a
+successful stitch).
+
+Step 3a dominates. With `--gpu_tile_size auto` its runtime is close to linear in
 the GPU work: in our runs (3d_true, cpsam_v2, two tiles at a time on one A100)
 
 ```
