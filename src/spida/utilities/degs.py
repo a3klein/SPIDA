@@ -1,6 +1,9 @@
 # author: Amit Klein - a3klein@ucsd.edu
+import io
 import warnings
 import logging
+import tempfile
+import contextlib
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +26,7 @@ try:
 except ImportError:
     _DeseqDataSet = _DefaultInference = _DeseqStats = None
 
-from spida.utilities.ad_utils import _remove_small_clusters, _downsample_ref_clusters
+from spida.utilities.ad_utils import _remove_small_clusters, _downsample_ref_clusters, default_n_jobs
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +414,239 @@ def summarize_scran_results(
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# NSForest markers  (minimal marker combinations, one cluster at a time)
+# ---------------------------------------------------------------------------
+NSFOREST_GENE_SELECTION = ("BinaryFirst_high", "BinaryFirst_moderate", "BinaryFirst_mild", None)
+
+def _quiet(verbose: bool):
+    """NSForest prints progress to stdout / stderr; silence it unless verbose."""
+    if verbose:
+        return contextlib.nullcontext()
+    stack = contextlib.ExitStack()
+    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+    stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+    return stack
+
+
+def call_markers_nsforest(
+    adata: ad.AnnData,
+    celltype_col: str,
+    layer: str | None = None,
+    n_markers: int | None = 5,
+    use_mean: bool = True,
+    min_cells: int = 10,
+    max_cells_per_cluster: int | None = 2000,
+    n_trees: int = 1000,
+    n_top_genes: int = 15,
+    n_binary_genes: int = 10,
+    n_genes_eval: int = 6,
+    beta: float = 0.5,
+    gene_selection: str | None = "BinaryFirst_moderate",
+    n_jobs: int | None = None,
+    random_state: int = 13,
+    save_results: bool = False,
+    output_dir: str | None = None,
+    uns_key: str | None = None,
+    verbose: bool = False,
+) -> dict[str, pd.DataFrame]:
+    """
+    Marker genes per cell type with NSForest. NSForest's minimal marker set is padded
+    to n_markers from the cluster's binary-score ranking; is_nsforest_marker flags the
+    genes NSForest itself picked.
+
+    Parameters:
+        adata: AnnData; log-normalized X recommended.
+        celltype_col: obs column with cluster / cell type labels.
+        layer: layer to use. None -> adata.X.
+        n_markers: genes per cluster after padding. None -> NSForest markers + all binary genes.
+        use_mean: cluster means instead of medians (medians are 0 for sparse genes).
+        min_cells: clusters with fewer cells are excluded.
+        max_cells_per_cluster: downsample each cluster to this many cells. None -> no cap.
+        n_trees, n_top_genes, n_binary_genes, n_genes_eval, beta: passed to NSForest.
+        gene_selection: binary-score pre-filter, one threshold over all cluster x gene scores:
+            'BinaryFirst_high' (>= mean + 2 SD; NSForest's default), 'BinaryFirst_moderate'
+            (>= mean + 1 SD), 'BinaryFirst_mild' (>= median), None (all genes). 'high' leaves clusters
+            without an exclusive gene with no candidates (skipped / 1-gene markers); 'moderate' did not
+            on 4 HTH tables (2026-11-16).
+        n_jobs: random forest workers. None -> the job's cores (max 24).
+        random_state: downsampling seed. NSForest seeds its own forest.
+        uns_key: store stacked results (one row per cluster x gene) in adata.uns[uns_key];
+            skipped clusters go to adata.uns[f"{uns_key}_skipped"].
+
+    Returns:
+        dict[str, pd.DataFrame]: cell type -> marker rows ordered by rank.
+    """
+    try:
+        import nsforest as ns
+    except ImportError as e:
+        raise ImportError("nsforest is required for call_markers_nsforest.") from e
+    if celltype_col not in adata.obs.columns:
+        raise ValueError(f"Column '{celltype_col}' not found in adata.obs")
+    # NSForest falls back to 'high' (with only a printed warning) on any other value, e.g. its documented "_low"
+    if gene_selection not in NSFOREST_GENE_SELECTION:
+        raise ValueError(f"gene_selection must be one of {NSFOREST_GENE_SELECTION}, got {gene_selection!r}")
+    if n_jobs is None:
+        n_jobs = default_n_jobs()
+
+    # slim copy: NSForest densifies X and writes varm in place
+    sub = ad.AnnData(
+        X=adata.layers[layer] if layer is not None else adata.X,
+        obs=pd.DataFrame({"cluster": adata.obs[celltype_col].astype(str).values}, index=adata.obs_names),
+        var=pd.DataFrame(index=adata.var_names),
+    )
+    sub = _remove_small_clusters(sub, col="cluster", min_cells=min_cells)
+    if max_cells_per_cluster is not None:
+        sub = _downsample_ref_clusters(sub, col="cluster", max_cells=max_cells_per_cluster,
+                                       random_state=random_state)
+    sub.obs["cluster"] = pd.Categorical(sub.obs["cluster"])
+    if sub.obs["cluster"].nunique() < 2:
+        raise ValueError("Need at least 2 cell types with sufficient cells")
+    if verbose:
+        logger.info(f"NSForest: {sub.n_obs} cells, {sub.n_vars} genes, {sub.obs['cluster'].nunique()} cell types")
+
+    with _quiet(verbose):
+        sub = ns.pp.prep_medians(sub, "cluster", use_mean=use_mean)
+        sub = ns.pp.prep_binary_scores(sub, "cluster")
+
+    # per cluster: NSForest raises on a cluster with no genes passing pre-selection
+    # output_folder must exist even with save=False; nothing is written to it
+    parts, skipped = [], []
+    with tempfile.TemporaryDirectory() as tmp:
+        for cl in sub.obs["cluster"].cat.categories:
+            try:
+                with _quiet(verbose):
+                    parts.append(ns.nsforesting.NSForest(
+                        sub, "cluster", cluster_list=[cl],
+                        n_trees=n_trees, n_jobs=n_jobs, beta=beta, n_top_genes=n_top_genes,
+                        gene_selection=gene_selection,
+                        n_binary_genes=n_binary_genes, n_genes_eval=n_genes_eval,
+                        output_folder=f"{tmp}/",
+                    ))
+            except ValueError as e:
+                skipped.append(cl)
+                logger.warning(f"NSForest skipped {cl}: {e}")
+    if not parts:
+        raise RuntimeError("NSForest returned no results for any cluster")
+    raw = pd.concat(parts, ignore_index=True)
+
+    results = {}
+    for _, r in raw.iterrows():
+        nsf = list(r["NSForest_markers"])
+        genes = list(dict.fromkeys(nsf + list(r["binary_genes"])))
+        if n_markers is not None:
+            genes = genes[:max(n_markers, len(nsf))]
+        results[r["clusterName"]] = pd.DataFrame({
+            "names": genes,
+            "rank": range(1, len(genes) + 1),
+            "is_nsforest_marker": [g in nsf for g in genes],
+            "cell_type": r["clusterName"],
+            "cluster_size": r["clusterSize"],
+            "f_score": r["f_score"],
+            "precision": r["precision"],
+            "recall": r["recall"],
+            "onTarget": r["onTarget"],
+        })
+
+    stacked = pd.concat(results.values(), ignore_index=True)
+    if uns_key is not None:
+        adata.uns[uns_key] = stacked
+        adata.uns[f"{uns_key}_skipped"] = list(skipped)
+
+    if save_results and output_dir:
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        stacked.to_csv(out / f"nsforest_all_{celltype_col}.csv", index=False)
+        raw.to_csv(out / f"nsforest_raw_{celltype_col}.csv", index=False)
+        if verbose:
+            logger.info(f"Results saved to {out}")
+
+    return results
+
+
+def summarize_nsforest_results(
+    nsforest_results: dict[str, pd.DataFrame],
+    top_n: int = 5,
+    nsforest_only: bool = False,
+) -> pd.DataFrame:
+    """
+    Summary table of NSForest results (output of call_markers_nsforest).
+
+    Parameters:
+        nsforest_results: output of call_markers_nsforest.
+        top_n: max markers listed per cell type.
+        nsforest_only: list only is_nsforest_marker genes (no padding genes).
+    """
+    rows = []
+    for ct, df in nsforest_results.items():
+        df = df.sort_values("rank")
+        nsf = df.loc[df["is_nsforest_marker"], "names"].tolist()
+        top = (nsf if nsforest_only else df["names"].tolist())[:top_n]
+        rows.append({
+            "cell_type": ct,
+            "cluster_size": int(df["cluster_size"].iloc[0]),
+            "f_score": round(float(df["f_score"].iloc[0]), 3),
+            "precision": round(float(df["precision"].iloc[0]), 3),
+            "recall": round(float(df["recall"].iloc[0]), 3),
+            "nsforest_markers": nsf,
+            f"top_{top_n}_markers": top,
+        })
+    return pd.DataFrame(rows)
+
+
+def summarize_nsforest_results_from_uns(
+    adata: ad.AnnData,
+    uns_key: str = "nsforest_markers",
+    top_n: int = 5,
+    nsforest_only: bool = False,
+) -> pd.DataFrame:
+    """
+    Summary table from NSForest results stored in adata.uns; works after an h5ad / zarr round-trip.
+
+    Parameters:
+        uns_key: key the stacked DataFrame was stored under.
+        top_n, nsforest_only: passed to summarize_nsforest_results.
+    """
+    if uns_key not in adata.uns:
+        raise KeyError(f"'{uns_key}' not found in adata.uns")
+    stacked = adata.uns[uns_key].copy()
+    stacked["is_nsforest_marker"] = stacked["is_nsforest_marker"].astype(bool)
+    results = {ct: grp.reset_index(drop=True) for ct, grp in stacked.groupby("cell_type", sort=False)}
+    return summarize_nsforest_results(results, top_n=top_n, nsforest_only=nsforest_only)
+
+
+# ---------------------------------------------------------------------------
+# Method dispatch (setup steps)
+# ---------------------------------------------------------------------------
+
+MARKER_METHODS = ("nsforest", "scran", "scanpy")
+
+
+def call_markers(
+    adata: ad.AnnData,
+    celltype_col: str,
+    method: str = "nsforest",
+    uns_key: str | None = None,
+    **kwargs,
+) -> dict[str, pd.DataFrame]:
+    """
+    Cluster markers by the chosen method, stored in adata.uns[uns_key].
+
+    Parameters:
+        method: 'nsforest', 'scran' or 'scanpy'.
+        uns_key: None -> f"{method}_markers".
+        **kwargs: passed to the method's call_* function.
+    """
+    funcs = {
+        "nsforest": call_markers_nsforest,
+        "scran": call_degs_scran,
+        "scanpy": call_degs_scanpy,
+    }
+    if method not in funcs:
+        raise ValueError(f"method must be one of {MARKER_METHODS}, got '{method}'")
+    return funcs[method](adata, celltype_col, uns_key=uns_key or f"{method}_markers", **kwargs)
 
 
 # ---------------------------------------------------------------------------

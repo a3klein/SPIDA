@@ -545,3 +545,34 @@ class TestFiltAdataAllcools:
         n_unknown_strict = (adata_strict.obs["allcools_CellType_filt"] == "unknown").sum()
         n_unknown_lenient = (adata_lenient.obs["allcools_CellType_filt"] == "unknown").sum()
         assert n_unknown_strict >= n_unknown_lenient
+
+
+# ---------------------------------------------------------------------------
+# _get_joined_deg_list
+# ---------------------------------------------------------------------------
+
+def _marker_adata(labels, n_per=40, n_genes=30, seed=0):
+    """Log-normalized AnnData; label i is marked by genes 3i..3i+2."""
+    rng = np.random.default_rng(seed)
+    lam = np.full((len(labels), n_genes), 0.5)
+    for i in range(len(labels)):
+        lam[i, 3 * i:3 * i + 3] = 6.0
+    X = np.vstack([rng.poisson(lam[i], size=(n_per, n_genes)) for i in range(len(labels))])
+    X = np.log1p(X / X.sum(1, keepdims=True) * 1e3)
+    obs = pd.DataFrame({"ct": np.repeat(labels, n_per)}, index=[f"{seed}_{i}" for i in range(len(X))])
+    return ad.AnnData(sp.csr_matrix(X), obs=obs, var=pd.DataFrame(index=[f"gene_{i}" for i in range(n_genes)]))
+
+
+class TestGetJoinedDegList:
+
+    @pytest.fixture(autouse=True)
+    def _skip_if_no_scranpy(self):
+        pytest.importorskip("scranpy")
+
+    def test_scran_path_used_no_fallback(self):
+        from spida.I.allcools import _get_joined_deg_list
+        ref = _marker_adata(["A", "B", "C"], seed=0)
+        qry = _marker_adata(["x", "y"], seed=1)
+        with patch("spida.utilities.degs.call_degs_scanpy", side_effect=AssertionError("fell back to scanpy")):
+            genes = _get_joined_deg_list(ref, "ct", qry, "ct", top_n=3, min_cells=10, verbose=0)
+        assert set(genes) == {f"gene_{i}" for i in range(9)}

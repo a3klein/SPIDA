@@ -13,6 +13,7 @@ def plot_dotplot(
     gene_col: str | None = None,
     layer: str | None = None,
     celltypes: list[str] | None = None,
+    min_cells: int | None = None,
     palette: dict[str, str] | None = None,
     cmap: str = 'Reds',
     figsize: tuple | None = None,
@@ -43,6 +44,8 @@ def plot_dotplot(
         Layer for expression values. None → adata.X.
     celltypes : list[str], optional
         Subset of rows in summary_df to include. None → all rows.
+    min_cells : int, optional
+        Drop y-axis cell types with fewer cells. None → all cell types.
     palette : dict[str, str], optional
         Mapping {cell_type: color} for coloring x-tick gene labels by their
         cell-type of origin. None → all gene labels drawn in black.
@@ -101,7 +104,8 @@ def plot_dotplot(
     X_sub = X[:, gene_idx].toarray() if sp.issparse(X) else np.asarray(X)[:, gene_idx]
 
     ct_labels = adata.obs[celltype_col].astype(str).values
-    all_cts   = sorted(adata.obs[celltype_col].unique())
+    counts    = adata.obs[celltype_col].value_counts()
+    all_cts   = sorted(counts.index[counts >= max(min_cells or 1, 1)])
     n_g, n_c  = len(genes), len(all_cts)
 
     if figsize is None:

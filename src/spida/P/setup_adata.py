@@ -1,13 +1,33 @@
+import logging
+
+import numpy as np
+import anndata as ad
 import scanpy as sc
+import scipy.sparse as scp
 
 from spida.io.layout import RegionMeta
-import anndata as ad
-import scipy.sparse as scp
-import numpy as np
-
 from ..utilities.ad_utils import (
     normalize_adata, _calc_embeddings
 )
+
+logger = logging.getLogger(__name__)
+
+def _cluster_markers(
+    adata: ad.AnnData,
+    cluster_col: str,
+    method: str | None,
+    n_jobs: int | None = None,
+):
+    """Cluster markers. Results in adata.uns[f"{method}_markers"]. Failure is logged, not raised."""
+    if method is None:
+        return
+    from ..utilities.degs import call_markers
+    kwargs = {"n_jobs": n_jobs} if method == "nsforest" else {}
+    try:
+        call_markers(adata, celltype_col=cluster_col, method=method, **kwargs)
+    except Exception as e:
+        logger.warning(f"{method} markers on {cluster_col} failed: {e}")
+
 
 # Individual adatas
 def run_setup(
@@ -16,6 +36,7 @@ def run_setup(
     do_tsne: bool = False,
     consensus_cluster: bool = True,
     n_jobs: int | None = None,
+    marker_method: str | None = "nsforest",
 ):
     """
     Setup the AnnData object for further analysis.
@@ -27,6 +48,7 @@ def run_setup(
     consensus_cluster (bool, optional): Use ALLCools consensus clustering (200 Leiden
         repeats across `n_jobs` workers) rather than a single Leiden run. Defaults to True.
     n_jobs (int | None, optional): Consensus clustering workers. Defaults to None: the job's cores, max 24.
+    marker_method (str | None, optional): 'nsforest', 'scran' or 'scanpy' -> uns["<method>_markers"]; None skips. Defaults to 'nsforest'.
     Returns:
     AnnData: The modified AnnData object.
     """
@@ -53,11 +75,7 @@ def run_setup(
     _calc_embeddings(adata, layer=None, key_added="base_", leiden_res=1, knn=35,
                      consensus_cluster=consensus_cluster, do_tsne=do_tsne, n_jobs=n_jobs)
 
-    try:
-        from ..utilities.degs import call_degs_scran
-        call_degs_scran(adata, celltype_col="base_leiden", uns_key="scran_markers", num_threads=4)
-    except Exception:
-        pass
+    _cluster_markers(adata, "base_leiden", marker_method, n_jobs=n_jobs)
     sc.tl.rank_genes_groups(adata, groupby="base_leiden", method="t-test_overestim_var")
 
     return adata
@@ -73,6 +91,7 @@ def combined_setup(
     do_tsne: bool = False,
     consensus_cluster: bool = True,
     n_jobs: int | None = None,
+    marker_method: str | None = "nsforest",
 ):
     """
     Joint embedding + clustering of a project's combined table.
@@ -87,6 +106,7 @@ def combined_setup(
     do_tsne (bool, optional): Also compute the tSNE embedding. Defaults to False.
     consensus_cluster (bool, optional): ALLCools consensus clustering rather than a single Leiden run. Defaults to True.
     n_jobs (int | None, optional): Consensus clustering workers. Defaults to None: the job's cores, max 24.
+    marker_method (str | None, optional): 'nsforest', 'scran' or 'scanpy' -> uns["<method>_markers"]; None skips. Defaults to 'nsforest'.
     Returns:
     AnnData: The modified AnnData object.
     """
@@ -98,7 +118,7 @@ def combined_setup(
     for name in (f"{key_added}pca", f"{key_added}pca_harmony"):
         if name in adata.obsm:
             adata.obsm[f"X_{name}"] = adata.obsm.pop(name)
-    # TODO: NSForest markers (replacing scran DEGs) for plotting
+    _cluster_markers(adata, f"{key_added}leiden", marker_method, n_jobs=n_jobs)
     return adata
 
 

@@ -183,6 +183,7 @@ def setup_adata_region(
     consensus_cluster: bool = True,
     n_jobs: int | None = None,
     overwrite: bool = False,
+    marker_method: str | None = "nsforest",
 ):
     """
     Setup the AnnData object for downstream analysis.
@@ -198,6 +199,7 @@ def setup_adata_region(
     n_jobs (int | None, optional): Consensus clustering workers. Defaults to None: the job's cores, max 24.
     overwrite (bool, optional): Rebuild ``{prefix}_table{suffix}`` if it exists (drops doublet / resolvi
         results on it). Defaults to False.
+    marker_method (str | None, optional): Cluster markers: 'nsforest', 'scran' or 'scanpy'; None skips. Defaults to 'nsforest'.
     """
     from spida.P.setup_adata import run_setup
 
@@ -214,7 +216,7 @@ def setup_adata_region(
     adata = read_table(zarr_path, KEYS[TABLE_KEY])
     # Run the setup
     adata = run_setup(adata, dataset.meta(prefix_name), do_tsne=do_tsne,
-                      consensus_cluster=consensus_cluster, n_jobs=n_jobs)
+                      consensus_cluster=consensus_cluster, n_jobs=n_jobs, marker_method=marker_method)
     # backup the adata object
     write_table(zarr_path, out, adata, overwrite=True)  # new table or swap if overwrite
 
@@ -582,6 +584,7 @@ def setup_dataset(
     consensus_cluster : bool = True,
     n_jobs : int | None = None,
     anndata_store : Path = None,
+    marker_method : str | None = "nsforest",
 ):
     """
     This function runs resolvi on a dataset level object. Takes more time and memory than resolvi_region.
@@ -593,7 +596,8 @@ def setup_dataset(
     adata, anndata_path = _read_adata(dataset_name, anndata_store=anndata_store, return_path=True)
 
     adata = combined_setup(adata, batch_key=batch_key, key_added=key_added, leiden_res=leiden_res, knn=knn,
-                           min_dist=min_dist, do_tsne=do_tsne, consensus_cluster=consensus_cluster, n_jobs=n_jobs)
+                           min_dist=min_dist, do_tsne=do_tsne, consensus_cluster=consensus_cluster, n_jobs=n_jobs,
+                           marker_method=marker_method)
     write_adata(anndata_path, adata)
     logger.info(f"DONE SETUP ON {dataset_name}")
 

@@ -100,7 +100,7 @@ def _get_joined_deg_list(
                 adata, celltype_col=celltype_col,
                 min_cells=min_cells, verbose=inner_verbose,
             )
-            summary = summarize_scran_results(raw, n_genes=n)
+            summary = summarize_scran_results(raw, top_n=n)
             top_col = next(c for c in summary.columns if c.startswith('top_') and c.endswith('_markers'))
             return np.unique([g for genes in summary[top_col] for g in genes])
         except Exception as e:

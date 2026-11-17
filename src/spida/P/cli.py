@@ -234,6 +234,7 @@ def write_adata(
 @click.option("--do_tsne", is_flag=True, default=False, help="Also compute the tSNE embedding (needed by the setup plots; default: False = UMAP only)")
 @click.option("--consensus/--no-consensus","consensus_cluster",default=True,help="Consensus clustering (200 Leiden repeats) vs a single Leiden run. ")
 @click.option("--n_jobs", "--n-jobs", "n_jobs", type=int, default=None, help="Consensus clustering workers (default: the job's cores, max 24)")
+@click.option("--marker_method", type=click.Choice(["nsforest", "scran", "scanpy", "none"]), default="nsforest", help="Cluster markers stored in uns['<method>_markers'] (default: nsforest)")
 @click.option("--image_path", type=click.Path(exists=True), default=None, help="Path to store the image")
 @click.option("--image_store", type=click.Path(), default=None, help="Root of the figures (default: IMAGE_STORE_PATH in the config)")
 @click.option("zarr_store", "--zarr_store", default=None, type=click.Path(), help="Root of the zarr stores (default: ZARR_STORAGE_PATH in the config)")
@@ -249,6 +250,7 @@ def setup_adata_region(
     do_tsne: bool = False,
     consensus_cluster: bool = True,
     n_jobs: int | None = None,
+    marker_method: str = "nsforest",
     image_path: Path = None,
     image_store: Path = None,
     zarr_store: Path = None,
@@ -262,7 +264,8 @@ def setup_adata_region(
                        zarr_store=zarr_store, image_store=image_store)
     from spida.P.main import setup_adata_region as func
     func(dataset, prefix_name, suffix=suffix, plot=plot, do_tsne=do_tsne,
-         consensus_cluster=consensus_cluster, n_jobs=n_jobs, image_path=image_path, overwrite=overwrite)
+         consensus_cluster=consensus_cluster, n_jobs=n_jobs, image_path=image_path, overwrite=overwrite,
+         marker_method=None if marker_method == "none" else marker_method)
 
 
 @cli.command(
@@ -624,6 +627,7 @@ def sync_project(
 @click.option("--do_tsne", is_flag=True, default=False, help="Also compute the tSNE embedding (default: False)")
 @click.option("--consensus/--no-consensus", "consensus_cluster", default=True, help="Consensus clustering (200 Leiden repeats) vs a single Leiden run.")
 @click.option("--n_jobs", "--n-jobs", "n_jobs", type=int, default=None, help="Consensus clustering workers (default: the job's cores, max 24)")
+@click.option("--marker_method", type=click.Choice(["nsforest", "scran", "scanpy", "none"]), default="nsforest", help="Cluster markers stored in uns['<method>_markers'] (default: nsforest)")
 @click.option("--anndata_store", type=click.Path(exists=True), default=None, help="Root of the AnnData (.h5ad) files (default: ANNDATA_STORE_PATH in the config)")
 @click.pass_context
 def setup_dataset(
@@ -637,6 +641,7 @@ def setup_dataset(
     do_tsne: bool = False,
     consensus_cluster: bool = True,
     n_jobs: int | None = None,
+    marker_method: str = "nsforest",
     anndata_store: Path = None,
 ):
     """
@@ -646,7 +651,7 @@ def setup_dataset(
     from spida.P.main import setup_dataset as func
     func(dataset_name=dataset_name, batch_key=batch_key, key_added=key_added, leiden_res=leiden_res, knn=knn,
          min_dist=min_dist, do_tsne=do_tsne, consensus_cluster=consensus_cluster, n_jobs=n_jobs,
-         anndata_store=cfg.anndata_store)
+         anndata_store=cfg.anndata_store, marker_method=None if marker_method == "none" else marker_method)
 
 @cli.command(
     name="resolvi-dataset",
