@@ -64,7 +64,8 @@ def _ingest_3d_pixel(pq, micron_to_mosaic, micron_per_z, entity_type, zcol):
     if micron_to_mosaic is not None:
         mat = np.linalg.inv(read_transform(micron_to_mosaic))
         flat = [*mat[:2, :2].flatten(), *mat[:2, 2].flatten()]
-        g[_GEOM] = g[_GEOM].apply(lambda x: _to_multipoly(affine_transform(x, flat)))
+        # re-validate: the affine can make valid pixel polygons self-intersect
+        g[_GEOM] = g[_GEOM].apply(lambda x: _to_multipoly(_get_valid(affine_transform(x, flat))))
         g = g.set_geometry(_GEOM)
     g["ZLevel"] = (g[_ZINDEX_COL] + 1) * micron_per_z
     # one EntityID per cell (consistent across its z-planes)
@@ -225,7 +226,7 @@ def ingest_custom_polygons(
     if boundaries_space == "pixel":
         mat = np.linalg.inv(read_transform(micron_to_mosaic))
         flat = [*mat[:2, :2].flatten(), *mat[:2, 2].flatten()]
-        out[_GEOM] = out[_GEOM].apply(lambda x: _to_multipoly(affine_transform(x, flat)))
+        out[_GEOM] = out[_GEOM].apply(lambda x: _to_multipoly(_get_valid(affine_transform(x, flat))))
         out = out.set_geometry(_GEOM)
         logger.info("ingest_custom_polygons: applied pixel->micron transform from %s", micron_to_mosaic)
 

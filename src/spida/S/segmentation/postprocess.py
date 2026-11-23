@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import pyarrow.parquet as pq
+import shapely
 from shapely import affinity, make_valid, geometry
 from shapely.ops import unary_union
 from shapely.affinity import affine_transform, translate
@@ -229,6 +230,28 @@ _METADATA_COLS = [
     "anisotropy", "transcript_count", "perimeter_area_ratio", "solidity",
 ]
 
+def _dissolve_repairing(
+    g: gpd.GeoDataFrame,
+    entity_col: str,
+) -> gpd.GeoDataFrame:
+    """
+    A cell whose union fails is repaired with make_valid and logged.
+
+    Parameters:
+        g: per-plane polygons with an entity column.
+        entity_col: column identifying the cell.
+    """
+    merged, repaired = {}, []
+    for eid, planes in g.groupby(entity_col)[g.geometry.name]:
+        try:
+            merged[eid] = shapely.union_all(planes.values)
+        except shapely.errors.GEOSException:
+            merged[eid] = shapely.union_all(make_valid(planes.values))
+            repaired.append(eid)
+    logger.warning("derive_entity_metadata: repaired %d cell(s) whose planes failed to union: %s",
+                   len(repaired), repaired[:10])
+    return gpd.GeoDataFrame(geometry=gpd.GeoSeries(merged, crs=g.crs))
+
 
 def _anisotropy(mrr) -> float:
     """major/minor side-length ratio of a minimum rotated rectangle polygon."""
@@ -332,7 +355,10 @@ def derive_entity_metadata(
     out["perimeter_area_ratio"] = grp["_par"].mean()
     out["solidity"] = grp["_area"].sum() / grp["_hull"].sum()
 
-    dissolved = g.dissolve(by=entity_col)
+    try:
+        dissolved = g.dissolve(by=entity_col)
+    except shapely.errors.GEOSException:
+        dissolved = _dissolve_repairing(g, entity_col)
     mrr = dissolved.geometry.minimum_rotated_rectangle()
     out["anisotropy"] = [_anisotropy(m) for m in mrr]
 
@@ -526,7 +552,7 @@ def convert_geometry(
         mat = np.linalg.inv(m2m)
         flat = [*mat[:2, :2].flatten(), *mat[:2, 2].flatten()]
         out[_GEOM] = out[_GEOM].apply(
-            lambda x: _to_multipoly(affinity.affine_transform(x, flat))
+            lambda x: _to_multipoly(_get_valid(affinity.affine_transform(x, flat)))
         )
         out = out.set_geometry(_GEOM)
 
